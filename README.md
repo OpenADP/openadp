@@ -48,17 +48,18 @@ Variables:
 
 * UID: User ID string, typically an email address.
 * DID: Device ID, a serialized gRPC protocol buffer describing the device.
-* BID = HKDF(s, "Backup ID"): A backup ID used to identify a backup encrypted with `enc_key`.
+* BID: A backup ID used to identify a backup encrypted with `enc_key`.
 * pin: Secret pin a user will easily remember, typically their phone unlock secret.
 * H: Hash function mapping input parameters (with length prefixes) to a point
-  on the curve, curve25519 to start.
+  on the curve, curve25519 to start.  It MUST produce points without known
+  relationships to other points on the curve.
 * U = H(UID, DID, pin),  a point on the elliptic curve.
 * s: A strong random secret value, 256 bits long.
 * s[i[: The ith Shamir secret share of s.
 * r: a random blinding factor in the range of [1..group order - 1].
 * B = r\*U, A "blinded" point on the curve which has information theoretic
   security for `pin`.
-* B[i] = s[i]\*B, shares fo B returned by OpenADP servers.
+* sB[i] = s[i]\*B, shares fo B returned by OpenADP servers.
 * w[i]: Weights used in [Shamir secret recovery]
 * S = s\*U, a secret point on the curve from which we derive encryption keys.
   (https://en.wikipedia.org/wiki/Shamir%27s_secret_sharing).
@@ -66,7 +67,7 @@ Variables:
 * N: The number of OpenADP servers used to protect s.
 * T: The number of OpenADP servers that need to be online for the device to recover s.
 
-THe steps involved by the device to backup data are:
+The steps involved by the device to backup data are:
 
 * Computes `U` and picks `s`.
 * Computes `S = s*U`.
@@ -102,11 +103,11 @@ Each OpenADP server saves a record containing:
 bytes UID  // User ID
 bytes DID  // Device ID
 bytes BID  // Backup ID
-uint32 i  // The X position of the Shamir secret share.
-bytes s[i] // The Y position of the Shamir secret share.
+uint32 x  // The X position of the Shamir secret share.
+bytes y  // The s[i] Y position of the Shamir secret share.
 uint32 bad_guesses  // Initialized to 0.
 uint32 max_guesses  // Usually 10.
-bytes enc_s  // The secret s, encrypted with enc_key.
+date expiration  // Date after which this record is deleted.
 ```
 
 `UID` is the primary key, `DID` is the device ID, `s[i]` is the user's secret

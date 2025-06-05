@@ -1,7 +1,16 @@
 # See https://datatracker.ietf.org/doc/html/rfc8032
 
 import hashlib
-import os;
+
+# Convert (x, y) to the expanded form (x, y, 1, x*y)
+def to_expanded_point(point):
+    (x, y) = point
+    return (x, y, 1, x*y % p)
+
+def from_expanded_point(point):
+    (X, Y, Z, T) = point
+    z_inv = modp_inv(Z)
+    return (X*z_inv % p, Y*z_inv % p)
 
 def sha256(s):
     return hashlib.sha256(s).digest()
