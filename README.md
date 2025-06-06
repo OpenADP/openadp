@@ -53,7 +53,7 @@ Variables:
 * H: Hash function mapping input parameters (with length prefixes) to a point
   on the curve, curve25519 to start.  It MUST produce points without known
   relationships to other points on the curve.
-* U = H(UID, DID, pin),  a point on the elliptic curve.
+* U = H(UID, DID, BID, pin),  a point on the elliptic curve.
 * s: A strong random secret value, 256 bits long.
 * s[i[: The ith Shamir secret share of s.
 * r: a random blinding factor in the range of [1..group order - 1].
@@ -127,9 +127,9 @@ share of `S`.
 
 The new device first calls ListValuts on all N servers, to see what vaults are
 available on which servers.  The user is asked to pick an appropriate backup,
-e.g. an Android backup for an Android device, and an iOS backup for an iOS
-device.  The DID string should encode the information needed in a format that
-is TBD.
+for example an Android backup for an Android device, and an iOS backup for an
+Apple device.  The DID string should encode the information needed in a format
+that is TBD.
 
 Once the user picks a backup to restore, they are asked for their secret pin,
 or possibly an Android pattern if the user used their Android unlock pattern as
@@ -189,7 +189,7 @@ returns this data.
 
 In a 9-of-15 scheme, if two OpenADP servers are compromised and under
 control of the attacker, the protocol can complete correctly, and the attacker
-learns nothing oth8er than 2 Shamir secret shares.
+learns nothing other than 2 Shamir secret shares.
 
 However, with 3 compromised nodes, if the attacker controls the network, they
 can can split the honest nodes into two groups of 6, and add their compromised
@@ -197,7 +197,13 @@ nodes to both groups.  The attacker can then make 20 guesses, 10 with each
 group.  This splitting attack is worse for other systems, but isn't too bad for
 OpenADP.
 
+When a compromised node returns invalid points rather than `s[i]*B`,  then all
+subsets of `T` responses should be checked to see if they result in a valid
+solution.  Reporting bad nodes needs to be supported, and is TBD.
+
 ### Language choice for OpenADP server
+
+adsfisdf
 
 OpenADP will be designed to be compatible with running in Confidential VMs
 (CVMs), which can be remotely verified to be running trustworthy binaries, at
