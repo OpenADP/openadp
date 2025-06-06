@@ -33,14 +33,14 @@ q = 2**252 + 27742317777372353535851937790883648493
 # coordinates, with x = X/Z, y = Y/Z, x*y = T/Z
 
 def point_add(P, Q):
-    A, B = (P[1]-P[0]) * (Q[1]-Q[0]) % p, (P[1]+P[0]) * (Q[1]+Q[0]) % p;
-    C, D = 2 * P[3] * Q[3] * d % p, 2 * P[2] * Q[2] % p;
-    E, F, G, H = B-A, D-C, D+C, B+A;
-    return (E*F, G*H, F*G, E*H);
+    A, B = (P[1]-P[0]) * (Q[1]-Q[0]) % p, (P[1]+P[0]) * (Q[1]+Q[0]) % p
+    C, D = 2 * P[3] * Q[3] * d % p, 2 * P[2] * Q[2] % p
+    E, F, G, H = B-A, D-C, D+C, B+A
+    return (E*F % p, G*H % p, F*G % p, E*H % p)
 
 # Computes Q = s * Q
 def point_mul(s, P):
-    Q = (0, 1, 1, 0)  # Neutral element
+    Q = zero_point
     while s > 0:
         if s & 1:
             Q = point_add(Q, P)
@@ -88,6 +88,7 @@ def recover_x(y, sign):
 g_y = 4 * modp_inv(5) % p
 g_x = recover_x(g_y, 0)
 G = expand((g_x, g_y))
+zero_point = (0, 1, 1, 0)  # Neutral element
 
 def point_compress(P):
     zinv = modp_inv(P[2])
@@ -146,8 +147,8 @@ def from_le(s): return int.from_bytes(s, byteorder="little")
 
 if __name__ == '__main__':
 
-  A = point_mul(123, G)
-  B = point_mul(456, G)
-  assert point_equal(point_add(A, B), point_mul(123 + 456, G))
-  assert unexpand(expand((123, 456))) == (123, 456)
-  assert point_equal(point_mul(modp_inv(2, q), point_mul(2, G)), G)
+    A = point_mul(123, G)
+    B = point_mul(456, G)
+    assert point_equal(point_add(A, B), point_mul(123 + 456, G))
+    assert unexpand(expand((123, 456))) == (123, 456)
+    assert point_equal(point_mul(modp_inv(2, q), point_mul(2, G)), G)

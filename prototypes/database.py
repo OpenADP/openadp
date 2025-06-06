@@ -1,9 +1,9 @@
 import sqlite3
 
-class Database():
+class Database:
 
-    def __init__(self):
-        self.con = sqlite3.connect("openadp.db")
+    def __init__(self, dbName):
+        self.con = sqlite3.connect(dbName)
         cur = self.con.cursor()
         res = cur.execute("SELECT name FROM sqlite_master WHERE name='shares'").fetchone()
         if res == None:
@@ -44,7 +44,7 @@ class Database():
         
 
 if __name__ == '__main__':
-    db = Database()
+    db = Database("openadp_test.db")
     expiration = 1906979047  # Some time in 2030.  This is seconds since 1970.
     UID = "waywardgeek@gmail.com"
     DID = "Ubuntu beast Alienware laptop"
