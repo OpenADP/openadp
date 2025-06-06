@@ -3,11 +3,11 @@
 import hashlib
 
 # Convert (x, y) to the expanded form (x, y, 1, x*y)
-def expand_point(point):
+def expand(point):
     (x, y) = point
     return (x, y, 1, x*y % p)
 
-def unexpand_point(point):
+def unexpand(point):
     (X, Y, Z, T) = point
     z_inv = modp_inv(Z)
     return (X*z_inv % p, Y*z_inv % p)
@@ -18,8 +18,8 @@ def sha256(s):
 # Base field Z_p
 p = 2**255 - 19
 
-def modp_inv(x):
-    return pow(x, p-2, p)
+def modp_inv(x, prime=p):
+    return pow(x, prime-2, prime)
 
 # Curve constant
 d = -121665 * modp_inv(121666) % p
@@ -87,7 +87,7 @@ def recover_x(y, sign):
 # Base point
 g_y = 4 * modp_inv(5) % p
 g_x = recover_x(g_y, 0)
-G = (g_x, g_y, 1, g_x * g_y % p)
+G = expand((g_x, g_y))
 
 def point_compress(P):
     zinv = modp_inv(P[2])
@@ -143,3 +143,11 @@ def rol(x,b): return ((x << b) | (x >> (64 - b))) & (2**64-1)
 
 #From little endian.
 def from_le(s): return int.from_bytes(s, byteorder="little")
+
+if __name__ == '__main__':
+
+  A = point_mul(123, G)
+  B = point_mul(456, G)
+  assert point_equal(point_add(A, B), point_mul(123 + 456, G))
+  assert unexpand(expand((123, 456))) == (123, 456)
+  assert point_equal(point_mul(modp_inv(2, q), point_mul(2, G)), G)
