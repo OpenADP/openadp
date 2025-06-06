@@ -3,11 +3,11 @@
 import hashlib
 
 # Convert (x, y) to the expanded form (x, y, 1, x*y)
-def to_expanded_point(point):
+def expand_point(point):
     (x, y) = point
     return (x, y, 1, x*y % p)
 
-def from_expanded_point(point):
+def unexpand_point(point):
     (X, Y, Z, T) = point
     z_inv = modp_inv(Z)
     return (X*z_inv % p, Y*z_inv % p)

@@ -1,4 +1,12 @@
-# Dependencies
+# Dependencies.  Executed on Ubuntu 24.04
 
-sudo apt install postgresql-all
-sudo apt install python3-psycopg
+sudo apt install sqlite3
+
+## Some database commands
+
+To see the content of the sqlite3 table as SQL:
+
+```
+$ sqlite3 ./openadp.db
+sqlite> .dump
+```

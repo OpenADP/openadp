@@ -3,9 +3,7 @@
 import crypto
 import secrets
 
-p = crypto.p
-
-def eval_at(poly, x, prime):
+def evalAt(poly, x, prime):
     """Evaluates polynomial (coefficient tuple) at x, used to generate a
     shamir pool in make_random_shares below.
     """
@@ -16,42 +14,56 @@ def eval_at(poly, x, prime):
         x_pow = x_pow * x % prime
     return result
 
-def make_random_shares(secret, minimum, shares, prime=p):
+def makeRandomShares(secret, minimum, shares, prime=crypto.p):
     """
     Generates a random shamir pool for a given secret, returns share points.
     """
     if minimum > shares:
         raise ValueError("Pool secret would be irrecoverable.")
-    poly = [secret] + [secets.randbelow(prime) for i in range(minimum - 1)]
-    points = [(i, eval_at(poly, i, prime))
+    poly = [secret] + [secrets.randbelow(prime) for i in range(minimum - 1)]
+    points = [(i, evalAt(poly, i, prime))
               for i in range(1, shares + 1)]
     return points
 
-def recover_B(x, shares, prime=p):
+def recoverSB(shares, prime=crypto.p):
     """
     Recover s*B from T shares s[i]*B.
         w[i] = product(j != i, x[i]/(x[i] - x[j])).
         s*B = sum(w[i]s[i]*B)
     """
-    T = len(x_s)
-    # Comput w[i] weights.
+    T = len(shares)
+    # Compute w[i] weights.
     w = []
-    for i in range(T):
+    for xi, _ in shares:
         numerator = 1
         denominator = 1
-        for (xi _) in shares:
-            for (xj, _) in shares:
-                if xi != xj:
-                    numerator = numerator * xi % prime
-                    denominator = denominator * (xi - xj) % prime
-            w.append(numerator * pow(denominator, -1, prime) % prime)
+        for (xj, _) in shares:
+            if xi != xj:
+                numerator = numerator * xi % prime
+                denominator = denominator * (xi - xj) % prime
+        w.append(numerator * pow(denominator, -1, prime) % prime)
     # The mathematician Edwards believes angles should be measured clockwise
     # from the Y axis rather than counter-clockwise from the X axis, and so he
     # decided just for his Edwards curve to ignore thousands of years of
     # mathematical precedence.  This is why the point corresponding to 0 is at
     # (0, 1), rather than (1, 0).  Ugh...
-    sB = crypto.expand_point(0, 1)
+    sB = crypto.expand_point((0, 1))
     for i in range(len(shares)):
-        (xi, siB) in shares[i]
-        sB = point_add(sB, point_mul(w[i], siB))
-    return sB
+        (xi, siB) = shares[i]
+        sB = crypto.point_add(sB, crypto.point_mul(w[i], crypto.expand_point(siB)))
+    return crypto.unexpand_point(sB)
+
+if __name__ == '__main__':
+
+    secret = secrets.randbelow(crypto.p)
+    sB = crypto.unexpand_point(crypto.point_mul(secret, crypto.G))
+    print("sB =", sB)
+    shares = makeRandomShares(secret, 9, 15)
+    # Convert the y coordinate of each share into y*G
+    for i in range(len(shares)):
+        x, y = shares[i]
+        yG = crypto.unexpand_point(crypto.point_mul(y, crypto.G))
+        shares[i] = (x, yG)
+    recSB = recoverSB(shares)
+    print(recSB)
+    assert sB == recSB
