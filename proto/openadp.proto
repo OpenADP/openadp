@@ -1,10 +1,11 @@
+// Copyright 2025 OpenADP Authors.  This work is licensed under the Apache 2.0 license.
 syntax = "proto3";
 
 package openadp;
 
 service OpenADP {
     rpc RegisterSecret(RegisterSecretRequest) returns (RegisterSecretResponse) {}
-    rpc RecoverSecret(RecoverSeccretRequest) returns (RecoverSecretResponse) {}
+    rpc RecoverSecret(RecoverSecretRequest) returns (RecoverSecretResponse) {}
 }
 
 message RegisterSecretRequest {
@@ -15,7 +16,7 @@ message RegisterSecretRequest {
     uint32 x = 5;  // Shamir share X coordinate in range [1..N] if there are N shares.
     bytes y = 6;  // Y coordinate, little-endian
     uint32 max_guesses = 7;  // The maximum guesses for the user's recover pin
-    uint64 expiration, = 8;  // Seconds since 1970.
+    uint64 expiration = 8;  // Seconds since 1970.
 }
 
 message RegisterSecretResponse {
@@ -30,9 +31,9 @@ message RecoverSecretRequest {
 
 message RecoverSecretResponse {
     uint32 version = 1;
-    uint32 x = 2
+    uint32 x = 2;
     bytes siB = 3;  // y*B, a compressed elliptic curve point.
-    uint32 bad_guesses = 4;  // How many attempts, including good guesses, that have ever been made.
+    uint32 num_guesses = 4;  // How many attempts, including good guesses, that have ever been made.
     uint32 max_guesses = 5;  // Max guesses before we refuse to allow more.
-    uint64 expiration == 6;  // Date after which we may delete this share.
+    uint64 expiration = 6;  // Date after which we may delete this share.
 }

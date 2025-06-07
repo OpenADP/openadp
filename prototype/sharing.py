@@ -1,3 +1,4 @@
+# Copyright 2025 OpenADP Authors.  This work is licensed under the Apache 2.0 license.
 # Shamir secret sharing from https://en.wikipedia.org/wiki/Shamir%27s_secret_sharing.
 
 import crypto

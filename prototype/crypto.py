@@ -1,3 +1,4 @@
+# Copyright 2025 OpenADP Authors.  This work is licensed under the Apache 2.0 license.
 # See https://datatracker.ietf.org/doc/html/rfc8032
 
 import hashlib

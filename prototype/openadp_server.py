@@ -1,4 +1,6 @@
-# This is a prototype of the server for OPenADP.  Currently (June 1, 2025), the
+# Copyright 2025 OpenADP Authors.  This work is licensed under the Apache 2.0 license.
+#
+# This is a prototype of the server for OpenADP.  Currently (June 1, 2025), the
 # design is only lightly documented in the root level README.md.  This
 # prototype is meant to clarify that design and should work with both prototype
 # and real clients.
@@ -64,11 +66,10 @@ def checkRegisterInputs(UID, DID, BID, x, y, max_guesses, expiration):
         return Exception("Expiration is in the past")
     return True
 
-def registerSecret(dbName, UID, DID, BID, version, x, y, max_guesses, expiration):
+def registerSecret(db, UID, DID, BID, version, x, y, max_guesses, expiration):
     res = checkRegisterInputs(UID, DID, BID, x, y, max_guesses, expiration)
     if res != True:
         return res
-    db = database.Database(dbName)
     db.insert(UID, DID, BID, version, x, y, 0, max_guesses, expiration)
     return True
 
@@ -84,27 +85,36 @@ def checkRecoverInputs(UID, DID, BID, B):
         return Exception("Invalid point")
     return True
 
-def recoverSecret(dbName, UID, DID, BID, B):
+# The guess_num parameter prevents accidental replay causing counters to
+# increment more than once.  This makes the recoverSecret RPC idempotent.
+def recoverSecret(dbN, UID, DID, BID, B, guess_num):
     res = checkRecoverInputs(UID, DID, BID, B)
     if res != True:
         return res
-    db = database.Database(dbName)
     res = db.lookup(UID, DID, BID)
     if res == None:
         return Exception("Not found")
-    assert len(res) == 1
-    (version, x, y, bad_guesses, max_guesses, expiration) = res[0]
-    if bad_guesses >= max_guesses:
+    (version, x, y, num_guesses, max_guesses, expiration) = res
+    if guess_num != num_guesses:
+        return Exception("Expecting guess_num = %d" % num_guesses)
+    if num_guesses >= max_guesses:
         return Exception("Too many guesses")
-    bad_guesses += 1
-    db.insert(UID, DID, BID, version, x, y, bad_guesses, max_guesses, expiration)
+    num_guesses += 1
+    db.insert(UID, DID, BID, version, x, y, num_guesses, max_guesses, expiration)
     y = int.from_bytes(y, "little")
-    print("y =", y)
     siB = crypto.unexpand(crypto.point_mul(y, B))
-    return (version, x, siB, bad_guesses, max_guesses, expiration)
+    return (version, x, siB, num_guesses, max_guesses, expiration)
+
+def listBackups(db, UID):
+    return database.listBackups(UID)
     
 if __name__ == '__main__':
-
+    def findGuessNum(db, UID, DID, BID):
+        backup = db.lookup(UID, DID, BID)
+        if backup == None:
+            return None
+        return backup[3]
+        
     UID = b"waywardgeek@gmail.com"
     DID = b"Ubuntu beast Alienware laptop"
     BID = b"file://archive.tgz"
@@ -114,6 +124,9 @@ if __name__ == '__main__':
     U = H(UID, DID, BID, pin)
     print("U =", crypto.unexpand(U))
     p = crypto.q
+    r = secrets.randbelow(p - 1) + 1
+    r_inv = pow(r, -1, p)
+    B = crypto.point_mul(r, U)
     s = secrets.randbelow(p)
     S = crypto.point_mul(s, U)
     print("S =", crypto.unexpand(S))
@@ -127,18 +140,20 @@ if __name__ == '__main__':
     for (x, y) in shares:
         yEnc = int.to_bytes(y, 32, "little")
         dbName = "openadp_test%d.db" % x
-        registerSecret(dbName, UID, DID, BID, 1, x, yEnc, 10, 10000000000)
-    r = secrets.randbelow(crypto.q - 1) + 1
-    r_inv = pow(r, -1, crypto.q)
-    B = crypto.point_mul(r, U)
+        db = database.Database(dbName)
+        registerSecret(db, UID, DID, BID, 1, x, yEnc, 10, 10000000000)
+        for guess_num in range(secrets.randbelow(10)):
+            res = recoverSecret(db, UID, DID, BID, B, guess_num)
     assert crypto.point_equal(U, crypto.point_mul(r_inv, B))
     print("B =", crypto.unexpand(B))
     recShares = []
     for x, _ in shares:
         dbName = "openadp_test%d.db" % x
-        res = recoverSecret(dbName, UID, DID, BID, B)
+        db = database.Database(dbName)
+        guess_num = findGuessNum(db, UID, DID, BID)
+        res = recoverSecret(db, UID, DID, BID, B, guess_num)
         assert not isinstance(res, BaseException)
-        (version, x, siB, bad_guesses, max_guesses, expiration) = res
+        (version, x, siB, num_guesses, max_guesses, expiration) = res
         print("siB =", siB)
         recShares.append((x, siB))
     print("recShares =", recShares)

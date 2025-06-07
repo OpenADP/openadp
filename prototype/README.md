@@ -10,3 +10,5 @@ To see the content of the sqlite3 table as SQL:
 $ sqlite3 ./openadp.db
 sqlite> .dump
 ```
+
+you also need to build the Python files for openadp.proto.  To into ../proto and follow the README.md there.
