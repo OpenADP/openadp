@@ -84,7 +84,7 @@ def checkRecoverInputs(UID, DID, BID, B):
         return Exception("Invalid point")
     return True
 
-def recover(dbName, UID, DID, BID, B):
+def recoverSecret(dbName, UID, DID, BID, B):
     res = checkRecoverInputs(UID, DID, BID, B)
     if res != True:
         return res
@@ -136,7 +136,7 @@ if __name__ == '__main__':
     recShares = []
     for x, _ in shares:
         dbName = "openadp_test%d.db" % x
-        res = recover(dbName, UID, DID, BID, B)
+        res = recoverSecret(dbName, UID, DID, BID, B)
         assert not isinstance(res, BaseException)
         (version, x, siB, bad_guesses, max_guesses, expiration) = res
         print("siB =", siB)
