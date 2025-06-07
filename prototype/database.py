@@ -47,6 +47,12 @@ class Database:
         assert len(res) == 1
         return res[0]
 
+    def findGuessNum(self, UID, DID, BID):
+        backup = self.lookup(UID, DID, BID)
+        if backup == None:
+            return None
+        return backup[3]
+    
 if __name__ == '__main__':
 
     db = Database("openadp_test.db")

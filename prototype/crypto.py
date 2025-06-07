@@ -2,6 +2,8 @@
 # See https://datatracker.ietf.org/doc/html/rfc8032
 
 import hashlib
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes
 
 # Convert (x, y) to the expanded form (x, y, 1, x*y)
 def expand(point):
@@ -162,6 +164,40 @@ def rol(x,b): return ((x << b) | (x >> (64 - b))) & (2**64-1)
 
 #From little endian.
 def from_le(s): return int.from_bytes(s, byteorder="little")
+
+# Some low-ish level crypto specific to OpenADP.
+
+# Return a 16-bit length prefixed (little-endian) string.
+def prefixed(a):
+    l = len(a)
+    if len(a) >= 1 << 16:
+        raise Exception("Input string too long")
+    prefix = int.to_bytes(l, 2, "little")
+    return prefix + a
+
+# Hash function mapping input parameters (with length prefixes) to a point.
+def H(UID, DID, BID, pin):
+    s = sha256(prefixed(UID) + prefixed(DID) + prefixed(BID) + pin)
+    yBase = int.from_bytes(s, "little")
+    sign = yBase >> 255
+    yBase &= ((1 << 255) - 1)
+    counter = 0
+    while True:
+        y = yBase ^ counter
+        x = recover_x(y, sign)
+        if x != None:
+            # Force the point to be in a group of order q
+            P = expand((x, y))
+            P = point_mul8(P)
+            if point_valid(P):
+                return P
+        counter += 1
+
+# P a point in expanded format.
+def deriveEncKey(P):
+    p = point_compress(P)
+    hkdf = HKDF(hashes.SHA256(), 32, b"", b"OpenADP enc_key derivation");
+    return hkdf.derive(p)
 
 if __name__ == '__main__':
 

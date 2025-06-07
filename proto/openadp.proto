@@ -6,6 +6,7 @@ package openadp;
 service OpenADP {
     rpc RegisterSecret(RegisterSecretRequest) returns (RegisterSecretResponse) {}
     rpc RecoverSecret(RecoverSecretRequest) returns (RecoverSecretResponse) {}
+    rpc ListBackups(ListBackupsRequest) returns (ListBackupsResponse) {}
 }
 
 message RegisterSecretRequest {
@@ -36,4 +37,20 @@ message RecoverSecretResponse {
     uint32 num_guesses = 4;  // How many attempts, including good guesses, that have ever been made.
     uint32 max_guesses = 5;  // Max guesses before we refuse to allow more.
     uint64 expiration = 6;  // Date after which we may delete this share.
+}
+
+message ListBackupsRequest {
+    repeated Backup backups = 1;
+}
+
+message Backup {
+    DID = 1;
+    BID = 2;
+    version = 3;
+    num_guesses = 4;
+    max_guesses = 5;
+    expiration = 6;
+}
+
+message ListBackupsResponse {
 }
