@@ -43,12 +43,7 @@ def recoverSB(shares, prime=crypto.q):
                 denominator = denominator * (xm - xj) % prime
         wi = numerator * pow(denominator, -1, prime) % prime
         w.append(wi)
-    # The mathematician Edwards believes angles should be measured clockwise
-    # from the Y axis rather than counter-clockwise from the X axis, and so he
-    # decided just for his Edwards curve to ignore thousands of years of
-    # mathematical precedence.  This is why the point corresponding to 0 is at
-    # (0, 1), rather than (1, 0).  Ugh...
-    sB = crypto.expand((0, 1))
+    sB = crypto.zero_point
     for i in range(len(shares)):
         (xi, siB) = shares[i]
         sB = crypto.point_add(sB, crypto.point_mul(w[i], crypto.expand(siB)))

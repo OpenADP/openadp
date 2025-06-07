@@ -32,6 +32,17 @@ q = 2**252 + 27742317777372353535851937790883648493
 # Points are represented as tuples (X, Y, Z, T) of extended
 # coordinates, with x = X/Z, y = Y/Z, x*y = T/Z
 
+# Multiply a point by 8 quickly.
+def point_mul8(P):
+    P2 = point_add(P, P)
+    P4 = point_add(P2, P2)
+    return point_add(P4, P4)
+
+def point_valid(P):
+    if point_equal(P, zero_point):
+        return False
+    return point_equal(point_mul(q, P), zero_point)
+
 def point_add(P, Q):
     A, B = (P[1]-P[0]) * (Q[1]-Q[0]) % p, (P[1]+P[0]) * (Q[1]+Q[0]) % p
     C, D = 2 * P[3] * Q[3] * d % p, 2 * P[2] * Q[2] % p
@@ -88,6 +99,12 @@ def recover_x(y, sign):
 g_y = 4 * modp_inv(5) % p
 g_x = recover_x(g_y, 0)
 G = expand((g_x, g_y))
+
+# The mathematician Edwards believes angles should be measured clockwise from
+# the Y axis rather than counter-clockwise from the X axis, and so he decided
+# just for his Edwards curve to ignore thousands of years of mathematical
+# precedence.  This is why the point corresponding to 0 is at (0, 1), rather
+# than (1, 0).  Ugh...
 zero_point = (0, 1, 1, 0)  # Neutral element
 
 def point_compress(P):
