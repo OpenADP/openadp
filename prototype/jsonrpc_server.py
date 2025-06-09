@@ -38,6 +38,11 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
                 (result, error) = self.recoverSecret(params)
             elif method == 'ListBackups':
                 (result, error) = self.listBackups(params)
+            elif method == 'Echo':
+                if len(params) == 1:
+                    (result, error) = (params[0], None)
+                else:
+                    (None, "Echo expects exactly 1 parameter")
             else:
                 result = None
                 error = {'code': -32601, 'message': 'Method not found'}
