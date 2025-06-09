@@ -14,7 +14,7 @@ import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import database
-import openadp_server
+import server
 
 # There does not appear to be a lightweight JSON-RPC library that results in
 # less work, so just handle it manually.

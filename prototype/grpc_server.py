@@ -11,7 +11,7 @@ import logging
 import database
 import openadp_pb2
 import openadp_pb2_grpc
-import openadp_server
+import server
 
 class OpenADPServicer(openadp_pb2_grpc.OpenADPServicer):
     """Provides methods that implement functionality of OpenADP server."""
