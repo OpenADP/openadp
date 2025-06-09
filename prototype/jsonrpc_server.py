@@ -1,8 +1,8 @@
 # This seems to work as a client call:
 #
-#     $ curl --verbose -H "Content-Type: application/json" -d \
-#     '{"jsonrpc":"2.0","method":"add","params":[3, 11],"id":1}' \
-#     https://openadp.org/servers/xyzzybill
+#     $ curl -H "Content-Type: application/json" -d \
+#       '{"jsonrpc":"2.0","method":"Echo","params":["Hello, World!"],"id":1}' \
+#       https://xyzzybill.openadp.org
 #
 # The response is:
 #
@@ -20,7 +20,7 @@ import server
 # less work, so just handle it manually.
 class RPCRequestHandler(BaseHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
-       self.db = Database("openadp.db")
+       self.db = database.Database("openadp.db")
        super().__init__(*args, **kwargs)
 
     def do_POST(self):
