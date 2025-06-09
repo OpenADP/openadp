@@ -60,12 +60,8 @@ def send_jsonrpc_request(url, method, params, request_id=1):
         print(f"An unexpected error occurred: {e}")
         return None
 
-if __name__ == "__main__":
-    rpc_url = "https://xyzzybill.openadp.org"
-
-    print("\n--- Example: Sending to a hypothetical 'echo' method ---")
-    # This is a hypothetical example assuming a JSON-RPC server with an 'echo' method
-    # For this to work, you'd need a server running at `rpc_url` that implements JSON-RPC.
+def testServerEcho(rpc_url):
+    print("Sending Echo request to", rpc_url)
     method_name = "Echo"
     params_data = ["Hello from Python!"]
     response = send_jsonrpc_request(rpc_url, method_name, params_data, request_id="my_echo_call_123")
@@ -81,3 +77,12 @@ if __name__ == "__main__":
             print("Response does not contain 'result' or 'error' (might not be a JSON-RPC response).")
     else:
         print("Failed to get a response.")
+
+if __name__ == "__main__":
+    servers = [
+        "https://xyzzybill.openadp.org",
+        "https://sky.openadp.org"
+    ]
+
+    for rpc_url in servers:
+        testServerEcho(rpc_url)
