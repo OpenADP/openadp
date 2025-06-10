@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenADP - Open Source Advanced Data Protection for Everyone</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="hero">
+        <nav class="navbar">
+            <div class="nav-container">
+                <div class="logo">
+                    <h1>OpenADP</h1>
+                    <span class="logo-tagline">Advanced Data Protection</span>
+                </div>
+                <ul class="nav-menu">
+                    <li><a href="#about">About</a></li>
+                    <li><a href="#how-it-works">How It Works</a></li>
+                    <li><a href="#benefits">Benefits</a></li>
+                    <li><a href="#implementation">Implementation</a></li>
+                    <li><a href="#contact">Contact</a></li>
+                </ul>
+            </div>
+        </nav>
+        
+        <div class="hero-content">
+            <div class="hero-badge">The Response to Apple's Banned Feature</div>
+            <h1 class="hero-title">Open Source Advanced Data Protection for Everyone</h1>
+            <p class="hero-subtitle">
+                When governments banned Apple's Advanced Data Protection, we built an open source version 
+                that no single country can shut down. Revolutionary distributed cryptography that 
+                eliminates single points of failure while maintaining the simplicity of password-based encryption.
+            </p>
+            <div class="hero-buttons">
+                <a href="#how-it-works" class="btn btn-primary">Learn More</a>
+                <a href="https://github.com/waywardgeek/openadp" class="btn btn-secondary">View on GitHub</a>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <section id="about" class="section">
+            <div class="container">
+                <h2 class="section-title">Why OpenADP Exists: The Encryption Wars Are Real</h2>
+                <div class="context-banner">
+                    <div class="context-content">
+                        <h3>🚨 The Crisis That Sparked OpenADP</h3>
+                        <p>Apple was <strong>forced to remove</strong> end-to-end iCloud encryption ("Advanced Data Protection") from the UK after government orders demanded backdoors for accessing user data. This isn't theoretical - it's happening now.</p>
+                    </div>
+                </div>
+                
+                <div class="problem-grid">
+                    <div class="problem-item">
+                        <div class="problem-icon">🏛️</div>
+                        <h3>Government Backdoor Demands</h3>
+                        <p>Governments worldwide are forcing tech companies to remove encryption or build backdoors. When you control the company, you control everyone's data.</p>
+                    </div>
+                    <div class="problem-item">
+                        <div class="problem-icon">👁️</div>
+                        <h3>Secret Mass Surveillance</h3>
+                        <p>Current systems enable secret, bulk surveillance of user data. Single corporate entities become surveillance chokepoints for entire nations.</p>
+                    </div>
+                    <div class="problem-item">
+                        <div class="problem-icon">⚖️</div>
+                        <h3>Jurisdiction Shopping</h3>
+                        <p>Governments can simply target the weakest jurisdiction where a company operates, compromising users worldwide through a single legal order.</p>
+                    </div>
+                </div>
+
+                <div class="solution-statement">
+                    <h3>OpenADP's Answer: Nation-State Resistance Through Distributed Trust</h3>
+                    <p>Instead of one company that can be forced to comply, OpenADP distributes trust across multiple independent servers in different jurisdictions. Governments must negotiate with operators in multiple countries to access any user's data - ending secret mass surveillance while still allowing legitimate law enforcement when multiple jurisdictions agree.</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="how-it-works" class="section section-alt">
+            <div class="container">
+                <h2 class="section-title">How OpenADP Works</h2>
+                <div class="workflow">
+                    <div class="step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h3>Secret Generation</h3>
+                            <p>A cryptographic secret is generated and split into multiple shares using threshold cryptography.</p>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h3>Distributed Storage</h3>
+                            <p>Each share is stored on a different independent server. No single server can reconstruct your key.</p>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h3>Threshold Recovery</h3>
+                            <p>To decrypt, you need responses from a threshold of servers. Even if some servers fail, your data remains accessible.</p>
+                        </div>
+                    </div>
+                    <div class="step">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h3>Key Reconstruction</h3>
+                            <p>The client automatically reconstructs the encryption key from the recovered shares - completely transparent to you.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="benefits" class="section">
+            <div class="container">
+                <h2 class="section-title">Why OpenADP Succeeds Where Big Tech Failed</h2>
+                <div class="benefits-grid">
+                    <div class="benefit-card">
+                        <div class="benefit-icon">🛡️</div>
+                        <h3>Nation-State Resistance</h3>
+                        <p>Unlike Apple or Google, no single government can force OpenADP to remove encryption. Distributed across multiple jurisdictions and operators.</p>
+                    </div>
+                    <div class="benefit-card">
+                        <div class="benefit-icon">🌍</div>
+                        <h3>Multi-Jurisdiction Protection</h3>
+                        <p>Governments must coordinate across multiple countries to access data. This creates natural checks and balances against abuse.</p>
+                    </div>
+                    <div class="benefit-card">
+                        <div class="benefit-icon">🚫</div>
+                        <h3>No Corporate Control</h3>
+                        <p>No CEO can be threatened, no company can be pressured. OpenADP's decentralized nature makes it impossible to shut down or compromise centrally.</p>
+                    </div>
+                    <div class="benefit-card">
+                        <div class="benefit-icon">🔄</div>
+                        <h3>High Availability</h3>
+                        <p>Server failures or even government seizures don't prevent data recovery. System remains functional with partial server outages.</p>
+                    </div>
+                    <div class="benefit-card">
+                        <div class="benefit-icon">👤</div>
+                        <h3>User Friendly</h3>
+                        <p>Same simple password-based interface as iCloud or Google. All the complexity is hidden - users just enter their password.</p>
+                    </div>
+                    <div class="benefit-card">
+                        <div class="benefit-icon">🔓</div>
+                        <h3>Open Source Transparency</h3>
+                        <p>No secret backdoors possible. Every line of code is auditable. Run your own servers, contribute improvements, verify security.</p>
+                    </div>
+                </div>
+                
+                <div class="quote-section">
+                    <blockquote>
+                        "We need to take action now to protect users... The UK and similarly confused governments will need to negotiate with operators in multiple countries to get access to any given user's keys."
+                    </blockquote>
+                    <cite>- From the original call to action that started OpenADP</cite>
+                </div>
+            </div>
+        </section>
+
+        <section id="implementation" class="section section-alt">
+            <div class="container">
+                <h2 class="section-title">Implementation</h2>
+                <div class="implementation-content">
+                    <div class="code-example">
+                        <h3>Simple Encryption</h3>
+                        <pre><code># Encrypt a file using OpenADP
+python3 encrypt.py sensitive_document.txt
+
+# Decrypt the file
+python3 decrypt.py sensitive_document.txt.enc</code></pre>
+                    </div>
+                    <div class="tech-details">
+                        <h3>Technical Foundation</h3>
+                        <ul>
+                            <li><strong>Elliptic Curve Cryptography:</strong> Based on Curve25519 for security and performance</li>
+                            <li><strong>Threshold Cryptography:</strong> Shamir's Secret Sharing with cryptographic enhancements</li>
+                            <li><strong>JSON-RPC Protocol:</strong> Standardized communication with distributed servers</li>
+                            <li><strong>Automatic Failover:</strong> Client automatically handles server failures and recovery</li>
+                            <li><strong>Cryptographic Identity:</strong> Unique identifiers derived from user, device, and backup contexts</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="architecture" class="section">
+            <div class="container">
+                <h2 class="section-title">System Architecture</h2>
+                <div class="architecture-diagram">
+                    <div class="client-box">
+                        <h4>Client Application</h4>
+                        <p>Handles secret sharing, server communication, and key reconstruction</p>
+                    </div>
+                    <div class="arrows">
+                        <div class="arrow">Share 1</div>
+                        <div class="arrow">Share 2</div>
+                        <div class="arrow">Share N</div>
+                    </div>
+                    <div class="servers-box">
+                        <div class="server">
+                            <h4>Server 1</h4>
+                            <p>Independent database</p>
+                        </div>
+                        <div class="server">
+                            <h4>Server 2</h4>
+                            <p>Independent database</p>
+                        </div>
+                        <div class="server">
+                            <h4>Server N</h4>
+                            <p>Independent database</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer id="contact" class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>OpenADP</h3>
+                    <p>Distributed password-based key derivation for a more secure future.</p>
+                </div>
+                <div class="footer-section">
+                    <h4>Resources</h4>
+                    <ul>
+                        <li><a href="https://github.com/waywardgeek/openadp">GitHub Repository</a></li>
+                        <li><a href="#implementation">Documentation</a></li>
+                        <li><a href="https://servers.openadp.org">Server Network</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Community</h4>
+                    <ul>
+                        <li><a href="#">Contribute</a></li>
+                        <li><a href="#">Security Audits</a></li>
+                        <li><a href="#">Run a Server</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2024 OpenADP Project. Open source under MIT license.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html> 
