@@ -63,16 +63,20 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
 
     def registerSecretadd(self, params):
         try:
-            openadp_server.registerSecret(self.db, request.UID, request.DID, request.BID,
-                request.version, request.x, request.y, request.max_guesses, request.expiration)
+            if len(params) != 8:
+                return (None, "INVALID_ARGUMENT: RegisterSecret expects exactly 8 parameters")
+            uid, did, bid, version, x, y, max_guesses, expiration = params
+            server.registerSecret(self.db, uid, did, bid, version, x, y, max_guesses, expiration)
             return (True, None)
         except Exception as e:
             return (None, "INTERNAL_ERROR: " + str(e))
 
-    def recoverSecret(self, param):
+    def recoverSecret(self, params):
         try:
-            res =  openadp_server.recoverSecret(self.db, request.UID, request.DID,
-                    request.BID, request.B, request.guess_num)
+            if len(params) != 5:
+                return (None, "INVALID_ARGUMENT: RecoverSecret expects exactly 5 parameters")
+            uid, did, bid, b, guess_num = params
+            res = server.recoverSecret(self.db, uid, did, bid, b, guess_num)
             if isinstance(res, BaseException):
                 return (None, "INVALID_ARGUMENT: " + str(res))
             return (res, None)
@@ -81,7 +85,10 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
 
     def listBackups(self, params):
         try:
-            res =  openadp_server.listBackups(self.db, request.UID)
+            if len(params) != 1:
+                return (None, "INVALID_ARGUMENT: ListBackups expects exactly 1 parameter")
+            uid = params[0]
+            res = server.listBackups(self.db, uid)
             if isinstance(res, BaseException):
                 return (None, "INVALID_ARGUMENT: " + str(res))
             return (res, None)
