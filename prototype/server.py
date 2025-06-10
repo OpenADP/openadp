@@ -70,7 +70,7 @@ def recoverSecret(db, UID, DID, BID, B, guess_num):
     return (version, x, siB, num_guesses, max_guesses, expiration)
 
 def listBackups(db, UID):
-    return database.listBackups(UID)
+    return db.listBackups(UID)
     
 if __name__ == '__main__':
 
