@@ -19,6 +19,7 @@ Note: HTTPS is required for production servers.
 
 import json
 import logging
+import base64
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -129,7 +130,7 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
         Handle RegisterSecret RPC method.
         
         Args:
-            params: List containing [uid, did, bid, version, x, y, max_guesses, expiration]
+            params: List containing [uid, did, bid, version, x, y_str, max_guesses, expiration]
             
         Returns:
             Tuple of (result, error_message)
@@ -138,7 +139,22 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             if len(params) != 8:
                 return None, "INVALID_ARGUMENT: RegisterSecret expects exactly 8 parameters"
             
-            uid, did, bid, version, x, y, max_guesses, expiration = params
+            uid, did, bid, version, x, y_str, max_guesses, expiration = params
+            
+            # Convert y from string to bytes (x is already an integer from JSON)
+            try:
+                y_int = int(y_str)
+                # Validate that the integer can fit in 32 bytes before conversion
+                if y_int.bit_length() > 256:
+                    return None, f"INVALID_ARGUMENT: Y integer too large ({y_int.bit_length()} bits, max 256)"
+                
+                y = int.to_bytes(y_int, 32, "little")  # Convert integer to bytes for server
+                logger.info(f"Converted y_str (len={len(y_str)}) to {len(y)} bytes, {y_int.bit_length()} bits")
+                
+            except ValueError as e:
+                return None, f"INVALID_ARGUMENT: Invalid integer conversion for y: {str(e)}"
+            except OverflowError as e:
+                return None, f"INVALID_ARGUMENT: Y integer too large for 32 bytes: {str(e)}"
             
             # Call server function
             result = server.register_secret(self.db, uid, did, bid, version, x, y, max_guesses, expiration)

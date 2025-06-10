@@ -250,6 +250,101 @@ class Client:
         error_msg = f"All {len(self.live_servers)} servers failed. Errors: " + "; ".join(errors)
         return None, error_msg
 
+    def register_secret(self, uid: str, did: str, bid: str, version: int, 
+                       x: int, y: bytes, max_guesses: int, expiration: int) -> Tuple[bool, Optional[str]]:
+        """
+        Register a secret share with live servers.
+        
+        Tries to register with all live servers for redundancy. Returns success
+        if at least one server accepts the registration.
+        
+        Args:
+            uid: User identifier
+            did: Device identifier
+            bid: Backup identifier
+            version: Version number for this backup
+            x: X coordinate for secret sharing
+            y: Y coordinate (encrypted share)
+            max_guesses: Maximum number of recovery attempts allowed
+            expiration: Expiration timestamp (0 for no expiration)
+            
+        Returns:
+            Tuple of (success, error_message). If successful, error_message is None.
+        """
+        if not self.live_servers:
+            return False, "No live servers available"
+        
+        successes = 0
+        errors = []
+        
+        for client in self.live_servers:
+            try:
+                result, error = client.register_secret(uid, did, bid, version, x, y, max_guesses, expiration)
+                
+                if error:
+                    errors.append(f"{client.server_url}: {error}")
+                    continue
+                
+                if result:
+                    successes += 1
+                else:
+                    errors.append(f"{client.server_url}: Registration returned false")
+                    
+            except Exception as e:
+                errors.append(f"{client.server_url}: Exception: {str(e)}")
+                continue
+        
+        if successes > 0:
+            return True, None
+        else:
+            error_msg = f"All {len(self.live_servers)} servers failed. Errors: " + "; ".join(errors)
+            return False, error_msg
+
+    def recover_secret(self, uid: str, did: str, bid: str, b: Any, guess_num: int) -> Tuple[Optional[Any], Optional[str]]:
+        """
+        Recover a secret share from live servers.
+        
+        Tries each live server in order until one succeeds. The servers should
+        have identical data, so only one successful response is needed.
+        
+        Args:
+            uid: User identifier
+            did: Device identifier
+            bid: Backup identifier
+            b: Point B for cryptographic recovery
+            guess_num: Expected current guess number (for idempotency)
+            
+        Returns:
+            Tuple of (recovery_result, error_message). If successful, error_message is None.
+            recovery_result format: (version, x, siB, num_guesses, max_guesses, expiration)
+        """
+        if not self.live_servers:
+            return None, "No live servers available"
+        
+        errors = []
+        
+        for i, client in enumerate(self.live_servers):
+            try:
+                result, error = client.recover_secret(uid, did, bid, b, guess_num)
+                
+                if error:
+                    errors.append(f"{client.server_url}: {error}")
+                    continue
+                
+                # Success! Return the result
+                if i > 0:  # If we had to try multiple servers
+                    print(f"Successfully recovered secret from {client.server_url} (after {i} failed attempts)")
+                
+                return result, None
+                
+            except Exception as e:
+                errors.append(f"{client.server_url}: Exception: {str(e)}")
+                continue
+        
+        # All servers failed
+        error_msg = f"All {len(self.live_servers)} servers failed. Errors: " + "; ".join(errors)
+        return None, error_msg
+
 
 if __name__ == "__main__":
     # Demo/test the client initialization

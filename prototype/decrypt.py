@@ -2,131 +2,112 @@
 """
 OpenADP File Decryption Utility
 
-This module provides file decryption functionality for files encrypted with
-the OpenADP encrypt.py utility. It uses ChaCha20-Poly1305 AEAD cipher with
-Scrypt-based key derivation.
+This module provides file decryption functionality for files encrypted with ChaCha20-Poly1305
+using OpenADP distributed secret sharing for key recovery instead of traditional 
+password-based key derivation.
 
-The encrypted file format is: [salt][nonce][encrypted_data]
-- salt: 16 bytes for Scrypt key derivation
-- nonce: 12 bytes for ChaCha20
-- encrypted_data: Variable length ciphertext + authentication tag
+The decryption process:
+1. Uses OpenADP servers to recover the encryption key used during encryption
+2. Decrypts the file with ChaCha20-Poly1305
+3. Restores the original file format
+
+The key recovery is distributed across multiple servers, providing resilient
+decryption even if some servers are unavailable.
 
 Usage:
-    python3 decrypt.py <filename_to_decrypt.enc>
+    python3 decrypt.py <filename_to_decrypt>
 """
 
 import os
 import sys
 import getpass
 from typing import NoReturn
-from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
-from cryptography.hazmat.backends import default_backend
-from cryptography.exceptions import InvalidTag
+
+import openadp_keygen
 
 # --- Configuration ---
-# These values must match the ones used in the encryption script.
-SALT_SIZE: int = 16
+# These must match the values used during encryption
 NONCE_SIZE: int = 12
-KEY_LENGTH: int = 32
-
-
-def derive_key(password: bytes, salt: bytes) -> bytes:
-    """
-    Derive a 32-byte decryption key from password and salt using Scrypt.
-    
-    The parameters (n, r, p) must be identical to the ones used during
-    encryption for the key derivation to produce the same result.
-    
-    Args:
-        password: User password as bytes
-        salt: Salt bytes extracted from encrypted file
-        
-    Returns:
-        32-byte derived decryption key
-    """
-    kdf = Scrypt(
-        salt=salt,
-        length=KEY_LENGTH,
-        n=2**14,  # CPU/memory cost factor (must match encrypt.py)
-        r=8,      # Block size parameter
-        p=1,      # Parallelization parameter
-        backend=default_backend()
-    )
-    return kdf.derive(password)
 
 
 def decrypt_file(input_filename: str, password: str) -> None:
     """
-    Decrypt the specified file using ChaCha20-Poly1305 AEAD cipher.
+    Decrypt the specified file using ChaCha20-Poly1305 with OpenADP key recovery.
 
-    Assumes the input file has the format: [salt][nonce][encrypted_data]
-    The decrypted file will be saved without the .enc extension.
+    Expected file format: [nonce][encrypted_data]
+    The output file will have the same name but without the .enc extension.
     
     Args:
-        input_filename: Path to the encrypted file (.enc extension expected)
-        password: Password for decryption
+        input_filename: Path to the encrypted file to decrypt
+        password: Password for OpenADP key recovery (must match encryption password)
         
     Raises:
-        SystemExit: If file operations fail, authentication fails, or input validation fails
+        SystemExit: If file operations fail or key recovery fails
     """
     # 1. Sanity checks and file setup
     if not os.path.exists(input_filename):
         print(f"Error: Input file '{input_filename}' not found.")
         sys.exit(1)
 
-    if not input_filename.endswith(".enc"):
-        print(f"Error: Input file '{input_filename}' does not have a '.enc' extension.")
-        sys.exit(1)
-    
-    # Use removesuffix for a clean way to get the original filename (Python 3.9+)
-    if sys.version_info >= (3, 9):
-        output_filename = input_filename.removesuffix(".enc")
+    # Determine output filename (remove .enc extension if present)
+    if input_filename.endswith('.enc'):
+        output_filename = input_filename[:-4]  # Remove '.enc'
     else:
-        output_filename = input_filename[:-4]  # Remove last 4 characters (.enc)
+        output_filename = input_filename + '.dec'
+        print(f"Warning: Input file doesn't end with .enc, using '{output_filename}' for output")
 
-    # 2. Read the encrypted file content
+    # 2. Read the encrypted file
     try:
         with open(input_filename, 'rb') as f_in:
-            encrypted_data = f_in.read()
+            file_data = f_in.read()
     except IOError as e:
         print(f"Error reading from '{input_filename}': {e}")
         sys.exit(1)
-    
+
     # 3. Validate file size and extract components
-    min_file_size = SALT_SIZE + NONCE_SIZE + 16  # +16 for minimum auth tag size
-    if len(encrypted_data) < min_file_size:
-        print(f"Error: File too small to be a valid encrypted file (minimum {min_file_size} bytes)")
+    if len(file_data) < NONCE_SIZE:
+        print(f"Error: File is too small to be a valid encrypted file")
+        print(f"Expected at least {NONCE_SIZE} bytes, got {len(file_data)}")
         sys.exit(1)
+
+    # Extract nonce and ciphertext from file format: [nonce][encrypted_data]
+    nonce = file_data[:NONCE_SIZE]
+    ciphertext = file_data[NONCE_SIZE:]
+
+    # 4. Recover encryption key using OpenADP
+    # Derive original filename for BID (backup identifier)
+    original_filename = output_filename
+    print("Recovering encryption key from OpenADP distributed servers...")
+    enc_key, error = openadp_keygen.recover_encryption_key(original_filename, password)
     
-    # Extract the salt, nonce, and ciphertext from the file
-    # This reverses the process from the encryption script
-    salt = encrypted_data[:SALT_SIZE]
-    nonce = encrypted_data[SALT_SIZE : SALT_SIZE + NONCE_SIZE]
-    ciphertext = encrypted_data[SALT_SIZE + NONCE_SIZE :]
+    if error:
+        print(f"❌ Failed to recover encryption key: {error}")
+        print("Check that:")
+        print("  • OpenADP servers are running and accessible")
+        print("  • The password matches the one used during encryption")
+        print("  • The file was encrypted with the same user/device context")
+        sys.exit(1)
 
-    # 4. Derive the key using the extracted salt
-    key = derive_key(password.encode('utf-8'), salt)
-
-    # 5. Decrypt the data
-    chacha = ChaCha20Poly1305(key)
+    # 5. Decrypt the file
     try:
-        # The decrypt method will automatically verify the authentication tag.
-        # If the key is wrong or the ciphertext was tampered with, it will
-        # raise an InvalidTag exception.
-        plaintext = chacha.decrypt(nonce, ciphertext, None)  # 'None' for no associated data
-    except InvalidTag:
-        print("❌ Decryption failed. The password may be incorrect or the file is corrupted.")
-        sys.exit(1)
+        chacha = ChaCha20Poly1305(enc_key)
+        plaintext = chacha.decrypt(nonce, ciphertext, None)
     except Exception as e:
-        print(f"An unexpected error occurred during decryption: {e}")
+        print(f"❌ Decryption failed: {e}")
+        print("This could mean:")
+        print("  • Wrong password")
+        print("  • File has been corrupted or tampered with")
+        print("  • File was not encrypted with OpenADP encrypt.py")
         sys.exit(1)
-        
-    # 6. Write the decrypted plaintext to the output file
+
+    # 6. Write the decrypted data to the output file
     try:
         with open(output_filename, 'wb') as f_out:
             f_out.write(plaintext)
         print(f"✅ Decryption successful. File saved to '{output_filename}'")
+        print(f"   Encrypted size: {len(file_data)} bytes") 
+        print(f"   Decrypted size: {len(plaintext)} bytes")
     except IOError as e:
         print(f"Error writing to '{output_filename}': {e}")
         sys.exit(1)
@@ -143,7 +124,7 @@ def get_password_securely() -> str:
         SystemExit: If password cannot be read or is empty
     """
     try:
-        user_password = getpass.getpass("Enter password for decryption: ")
+        user_password = getpass.getpass("Enter password for OpenADP key recovery: ")
         if not user_password:
             print("Password cannot be empty.")
             sys.exit(1)
@@ -157,16 +138,18 @@ def main() -> NoReturn:
     """
     Main function for the decryption utility.
     
-    Parses command line arguments and performs file decryption.
+    Parses command line arguments and performs file decryption using OpenADP.
     """
     # Check for correct command-line arguments
     if len(sys.argv) != 2:
-        print(f"Usage: python3 {sys.argv[0]} <filename_to_decrypt.enc>")
+        print(f"Usage: python3 {sys.argv[0]} <filename_to_decrypt>")
+        print("\nThis utility decrypts files that were encrypted using OpenADP")
+        print("distributed secret sharing for enhanced security and recovery.")
         sys.exit(1)
 
     file_to_decrypt = sys.argv[1]
     
-    # Get password securely
+    # Get password securely without echoing it to the terminal
     user_password = get_password_securely()
     
     # Perform decryption
