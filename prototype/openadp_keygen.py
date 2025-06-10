@@ -129,14 +129,23 @@ def generate_encryption_key(filename: str, password: str, max_guesses: int = 10,
         if i >= len(client.live_servers):
             break  # More shares than servers
             
-        # Send x as integer, y as string (since y can be very large)
+        # Register this specific share to this specific server only
+        # Each server has its own database, so same UID/DID/BID is fine
+        server_client = client.live_servers[i]
         y_str = str(y)
-        success, error = client.register_secret(uid, did, bid, version, x, y_str, max_guesses, expiration)
         
-        if not success:
-            registration_errors.append(f"Server {i+1}: {error}")
-        else:
-            print(f"OpenADP: Registered share {x} with server {i+1}")
+        try:
+            result, error = server_client.register_secret(uid, did, bid, version, x, y_str, max_guesses, expiration)
+            
+            if error:
+                registration_errors.append(f"Server {i+1}: {error}")
+            elif not result:
+                registration_errors.append(f"Server {i+1}: Registration returned false")
+            else:
+                print(f"OpenADP: Registered share {x} with server {i+1}")
+                
+        except Exception as e:
+            registration_errors.append(f"Server {i+1}: Exception: {str(e)}")
     
     if len(registration_errors) == len(shares):
         return None, f"Failed to register any shares: {'; '.join(registration_errors)}"
@@ -195,13 +204,13 @@ def recover_encryption_key(filename: str, password: str) -> Tuple[bytes, Optiona
     
     for i, server_client in enumerate(client.live_servers):
         try:
-            # Get current guess number for this share
-            backups, error = client.list_backups(uid)
+            # Get current guess number for this backup from this specific server
+            backups, error = server_client.list_backups(uid)
             if error:
-                print(f"Warning: Could not list backups: {error}")
+                print(f"Warning: Could not list backups from server {i+1}: {error}")
                 guess_num = 0  # Start with 0 if we can't determine current state
             else:
-                # Find our backup in the list
+                # Find our backup in the list from this server
                 guess_num = 0
                 for backup in backups:
                     backup_bid = backup[1] if len(backup) > 1 else ""
@@ -209,8 +218,8 @@ def recover_encryption_key(filename: str, password: str) -> Tuple[bytes, Optiona
                         guess_num = backup[3] if len(backup) > 3 else 0  # num_guesses field
                         break
             
-            # Attempt recovery from this server
-            result, error = client.recover_secret(uid, did, bid, crypto.unexpand(B), guess_num)
+            # Attempt recovery from this specific server
+            result, error = server_client.recover_secret(uid, did, bid, crypto.unexpand(B), guess_num)
             
             if error:
                 print(f"Server {i+1} recovery failed: {error}")
