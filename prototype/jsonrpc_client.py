@@ -1,135 +1,206 @@
+#!/usr/bin/env python3
+"""
+JSON-RPC Client for OpenADP Server
+
+This client provides Python methods to interact with the OpenADP JSON-RPC server.
+It exposes the following methods:
+- register_secret: Register a secret with the server
+- recover_secret: Recover a secret from the server
+- list_backups: List backups for a user
+- echo: Echo a message (for testing)
+"""
+
 import json
-import ssl
-import urllib.parse
-import urllib.request
+import requests
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-import scrape
 
-def send_jsonrpc_request(url, method, params, request_id=1):
-    """
-    Sends a JSON-RPC 2.0 request over HTTPS.
+class OpenADPClient:
+    """Client for communicating with OpenADP JSON-RPC server."""
+    
+    def __init__(self, server_url: str = "http://localhost:8080"):
+        """
+        Initialize the OpenADP client.
+        
+        Args:
+            server_url: URL of the JSON-RPC server (default: http://localhost:8080)
+        """
+        self.server_url = server_url
+        self.request_id = 0
+    
+    def _make_request(self, method: str, params: List[Any]) -> Tuple[Any, Optional[str]]:
+        """
+        Make a JSON-RPC request to the server.
+        
+        Args:
+            method: The RPC method name
+            params: List of parameters for the method
+            
+        Returns:
+            Tuple of (result, error_message). If successful, error_message is None.
+        """
+        self.request_id += 1
+        
+        payload = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params,
+            "id": self.request_id
+        }
+        
+        try:
+            response = requests.post(
+                self.server_url,
+                headers={"Content-Type": "application/json"},
+                data=json.dumps(payload),
+                timeout=30
+            )
+            response.raise_for_status()
+            
+            result = response.json()
+            
+            if "error" in result:
+                error_info = result["error"]
+                if isinstance(error_info, dict):
+                    error_msg = error_info.get("message", str(error_info))
+                else:
+                    error_msg = str(error_info)
+                return None, error_msg
+            
+            return result.get("result"), None
+            
+        except requests.exceptions.RequestException as e:
+            return None, f"Network error: {str(e)}"
+        except json.JSONDecodeError as e:
+            return None, f"JSON decode error: {str(e)}"
+        except Exception as e:
+            return None, f"Unexpected error: {str(e)}"
+    
+    def register_secret(self, uid: str, did: str, bid: str, version: int, 
+                       x: str, y: str, max_guesses: int, expiration: int) -> Tuple[bool, Optional[str]]:
+        """
+        Register a secret with the server.
+        
+        Args:
+            uid: User ID
+            did: Device ID
+            bid: Backup ID
+            version: Version number
+            x: X coordinate
+            y: Y coordinate
+            max_guesses: Maximum number of guesses allowed
+            expiration: Expiration timestamp
+            
+        Returns:
+            Tuple of (success, error_message). If successful, error_message is None.
+        """
+        params = [uid, did, bid, version, x, y, max_guesses, expiration]
+        result, error = self._make_request("RegisterSecret", params)
+        
+        if error:
+            return False, error
+        
+        return bool(result), None
+    
+    def recover_secret(self, uid: str, did: str, bid: str, b: str, guess_num: int) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Recover a secret from the server.
+        
+        Args:
+            uid: User ID
+            did: Device ID
+            bid: Backup ID
+            b: B parameter for recovery
+            guess_num: Guess number
+            
+        Returns:
+            Tuple of (recovered_secret, error_message). If successful, error_message is None.
+        """
+        params = [uid, did, bid, b, guess_num]
+        result, error = self._make_request("RecoverSecret", params)
+        
+        if error:
+            return None, error
+        
+        return result, None
+    
+    def list_backups(self, uid: str) -> Tuple[Optional[List[Dict]], Optional[str]]:
+        """
+        List backups for a user.
+        
+        Args:
+            uid: User ID
+            
+        Returns:
+            Tuple of (backup_list, error_message). If successful, error_message is None.
+        """
+        params = [uid]
+        result, error = self._make_request("ListBackups", params)
+        
+        if error:
+            return None, error
+        
+        return result, None
+    
+    def echo(self, message: str) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Echo a message (for testing connectivity).
+        
+        Args:
+            message: Message to echo
+            
+        Returns:
+            Tuple of (echoed_message, error_message). If successful, error_message is None.
+        """
+        params = [message]
+        result, error = self._make_request("Echo", params)
+        
+        if error:
+            return None, error
+        
+        return result, None
 
-    Args:
-        url (str): The HTTPS URL of the JSON-RPC server.
-        method (str): The JSON-RPC method to call.
-        params (dict or list): The parameters for the method.
-        request_id (int or str, optional): The ID of the request. Defaults to 1.
 
-    Returns:
-        dict: The parsed JSON response from the server, or None on error.
-    """
-    headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-    }
+# Convenience functions for simple usage without creating a client instance
+def create_client(server_url: str = "http://localhost:8080") -> OpenADPClient:
+    """Create and return a new OpenADP client instance."""
+    return OpenADPClient(server_url)
 
-    payload = {
-        'jsonrpc': '2.0',
-        'method': method,
-        'params': params,
-        'id': request_id
-    }
 
-    try:
-        # Encode the payload to JSON
-        json_payload = json.dumps(payload).encode('utf-8')
+def register_secret(uid: str, did: str, bid: str, version: int, 
+                   x: str, y: str, max_guesses: int, expiration: int,
+                   server_url: str = "http://localhost:8080") -> Tuple[bool, Optional[str]]:
+    """Convenience function to register a secret."""
+    client = OpenADPClient(server_url)
+    return client.register_secret(uid, did, bid, version, x, y, max_guesses, expiration)
 
-        # Create a default SSL context. This is generally secure enough
-        # for most common use cases, but for very strict security
-        # requirements, you might want to customize it.
-        # Ubuntu 24.04's default SSL context should be up-to-date.
-        context = ssl.create_default_context()
 
-        # Create a Request object
-        req = urllib.request.Request(url, data=json_payload, headers=headers, method='POST')
+def recover_secret(uid: str, did: str, bid: str, b: str, guess_num: int,
+                  server_url: str = "http://localhost:8080") -> Tuple[Optional[str], Optional[str]]:
+    """Convenience function to recover a secret."""
+    client = OpenADPClient(server_url)
+    return client.recover_secret(uid, did, bid, b, guess_num)
 
-        # Open the URL and send the request
-        with urllib.request.urlopen(req, context=context) as response:
-            # Read the response
-            response_body = response.read().decode('utf-8')
 
-            # Parse the JSON response
-            json_response = json.loads(response_body)
-            return json_response
+def list_backups(uid: str, server_url: str = "http://localhost:8080") -> Tuple[Optional[List[Dict]], Optional[str]]:
+    """Convenience function to list backups."""
+    client = OpenADPClient(server_url)
+    return client.list_backups(uid)
 
-    except urllib.error.URLError as e:
-        print(f"URL Error: {e.reason}")
-        return None
-    except json.JSONDecodeError as e:
-        print(f"JSON Decode Error: {e}")
-        return None
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        return None
 
-def testServerEcho(rpc_url):
-    print("Sending Echo request to", rpc_url)
-    method_name = "Echo"
-    params_data = ["Hello from Python!"]
-    response = send_jsonrpc_request(rpc_url, method_name, params_data, request_id="my_echo_call_123")
+def echo(message: str, server_url: str = "http://localhost:8080") -> Tuple[Optional[str], Optional[str]]:
+    """Convenience function to echo a message."""
+    client = OpenADPClient(server_url)
+    return client.echo(message)
 
-    if response:
-        print("Response received:")
-        print(json.dumps(response, indent=2))
-        if 'error' in response:
-            print(f"JSON-RPC Error: {response['error']}")
-        elif 'result' in response:
-            print(f"JSON-RPC Result: {response['result']}")
-        else:
-            print("Response does not contain 'result' or 'error' (might not be a JSON-RPC response).")
+
+if __name__ == "__main__":
+    # Simple test/demo
+    client = OpenADPClient("https://xyzzybill.openadp.org")
+    
+    print("Testing echo...")
+    result, error = client.echo("Hello, World!")
+    if error:
+        print(f"Error: {error}")
     else:
-        print("Failed to get a response.")
-
-if __name__ == "__main__":
-    servers = [
-        "https://xyzzybill.openadp.org",
-        "https://sky.openadp.org"
-    ]
-    import urllib.request
-import urllib.error # Import urllib.error to catch specific HTTP errors
-
-def scrape_server_urls(url="https://servers.openadp.org"):
-    """
-    Scrapes a URL where server URLs are listed one per line and returns them as a list.
-    Includes a User-Agent header to potentially bypass 403 Forbidden errors.
-
-    Args:
-        url (str): The URL to scrape. Defaults to "https://servers.openadp.org".
-
-    Returns:
-        list: A list of server URLs (strings).
-    """
-    server_urls = []
-    try:
-        # Create a Request object and add a User-Agent header
-        req = urllib.request.Request(
-            url,
-            headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
-        )
-        with urllib.request.urlopen(req) as response:
-            for line in response:
-                decoded_line = line.decode('utf-8').strip()
-                if decoded_line:  # Only add non-empty lines
-                    server_urls.append(decoded_line)
-    except urllib.error.HTTPError as e:
-        print(f"HTTP Error: {e.code} - {e.reason}")
-        print(f"Check if the URL is correct or if the server explicitly blocks automated requests.")
-    except urllib.error.URLError as e:
-        print(f"URL Error: {e.reason}")
-        print(f"This often indicates a network issue or an invalid URL.")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-    return server_urls
-
-if __name__ == "__main__":
-    servers = scrape.scrape_server_urls()
-    if not servers:
-        print("Unable to scrape OpenADP servers, using default servers instead")
-        servers = [
-            "https://xyzzybill.openadp.org",
-            "https://sky.openadp.org"
-        ]
-    for rpc_url in servers:
-        testServerEcho(rpc_url)
+        print(f"Echo result: {result}")
