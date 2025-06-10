@@ -142,39 +142,56 @@ def recover_secret(db: database.Database, uid: str, did: str, bid: str,
         Tuple of (version, x, siB, num_guesses, max_guesses, expiration) if successful,
         Exception with error message otherwise
     """
-    validation_result = check_recover_inputs(uid, did, bid, b)
-    if validation_result is not True:
-        return validation_result
-    
-    # Convert string parameters to bytes for database lookup
-    uid_bytes = uid.encode('utf-8') if isinstance(uid, str) else uid
-    did_bytes = did.encode('utf-8') if isinstance(did, str) else did
-    bid_bytes = bid.encode('utf-8') if isinstance(bid, str) else bid
-    
-    # Look up the stored share
-    result = db.lookup(uid_bytes, did_bytes, bid_bytes)
-    if result is None:
-        return Exception("Share not found")
-    
-    version, x, y, num_guesses, max_guesses, expiration = result
-    
-    # Verify expected guess number (for idempotency)
-    if guess_num != num_guesses:
-        return Exception(f"Expecting guess_num = {num_guesses}")
-    
-    # Check if too many guesses have been made
-    if num_guesses >= max_guesses:
-        return Exception("Too many guesses")
-    
-    # Increment guess counter
-    num_guesses += 1
-    db.insert(uid_bytes, did_bytes, bid_bytes, version, x, y, num_guesses, max_guesses, expiration)
-    
-    # Perform cryptographic recovery calculation
-    y_int = int.from_bytes(y, "little")
-    si_b = crypto.unexpand(crypto.point_mul(y_int, b))
-    
-    return (version, x, si_b, num_guesses, max_guesses, expiration)
+    try:
+        validation_result = check_recover_inputs(uid, did, bid, b)
+        if validation_result is not True:
+            return validation_result
+        
+        # Convert string parameters to bytes for database lookup
+        uid_bytes = uid.encode('utf-8') if isinstance(uid, str) else uid
+        did_bytes = did.encode('utf-8') if isinstance(did, str) else did
+        bid_bytes = bid.encode('utf-8') if isinstance(bid, str) else bid
+        
+        # Look up the stored share
+        result = db.lookup(uid_bytes, did_bytes, bid_bytes)
+        if result is None:
+            return Exception("Share not found")
+        
+        # Debug: check result format
+        print(f"DEBUG: Database lookup result: {result}, type: {type(result)}, length: {len(result)}")
+        
+        # Safely unpack the result
+        if len(result) != 6:
+            return Exception(f"Invalid database result format: expected 6 fields, got {len(result)}")
+        
+        version, x, y, num_guesses, max_guesses, expiration = result
+        
+        # Debug: check field types
+        print(f"DEBUG: version={version}, x={x}, y type={type(y)}, num_guesses={num_guesses}")
+        
+        # Verify expected guess number (for idempotency)
+        if guess_num != num_guesses:
+            return Exception(f"Expecting guess_num = {num_guesses}")
+        
+        # Check if too many guesses have been made
+        if num_guesses >= max_guesses:
+            return Exception("Too many guesses")
+        
+        # Increment guess counter
+        num_guesses += 1
+        db.insert(uid_bytes, did_bytes, bid_bytes, version, x, y, num_guesses, max_guesses, expiration)
+        
+        # Perform cryptographic recovery calculation
+        y_int = int.from_bytes(y, "little")
+        si_b = crypto.unexpand(crypto.point_mul(y_int, b))
+        
+        return (version, x, si_b, num_guesses, max_guesses, expiration)
+        
+    except Exception as e:
+        print(f"DEBUG: Exception in recover_secret: {e}")
+        import traceback
+        traceback.print_exc()
+        return Exception(f"Recovery failed: {str(e)}")
 
 
 def list_backups(db: database.Database, uid: str) -> List[Tuple]:

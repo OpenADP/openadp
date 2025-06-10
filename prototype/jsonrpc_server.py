@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import database
 import server
+import crypto
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -173,7 +174,7 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
         Handle RecoverSecret RPC method.
         
         Args:
-            params: List containing [uid, did, bid, b, guess_num]
+            params: List containing [uid, did, bid, b_unexpanded, guess_num]
             
         Returns:
             Tuple of (result, error_message)
@@ -182,7 +183,14 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             if len(params) != 5:
                 return None, "INVALID_ARGUMENT: RecoverSecret expects exactly 5 parameters"
             
-            uid, did, bid, b, guess_num = params
+            uid, did, bid, b_unexpanded, guess_num = params
+            
+            # Convert b from JSON representation back to cryptographic point
+            try:
+                b = crypto.expand(b_unexpanded)
+                logger.info(f"Converted b_unexpanded to cryptographic point")
+            except Exception as e:
+                return None, f"INVALID_ARGUMENT: Invalid point b: {str(e)}"
             
             # Call server function
             result = server.recover_secret(self.db, uid, did, bid, b, guess_num)
