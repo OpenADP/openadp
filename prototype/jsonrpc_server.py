@@ -1,102 +1,248 @@
-# This seems to work as a client call:
-#
-#     $ curl -H "Content-Type: application/json" -d \
-#       '{"jsonrpc":"2.0","method":"Echo","params":["Hello, World!"],"id":1}' \
-#       https://xyzzybill.openadp.org
-#
-# The response is:
-#
-#    {"jsonrpc": "2.0", "result": 14, "id": 1}
-#
-# Note that https is required!
+#!/usr/bin/env python3
+"""
+OpenADP JSON-RPC Server
+
+This module implements a JSON-RPC server for the OpenADP (Open Asynchronous 
+Distributed Password) system. It provides endpoints for:
+- RegisterSecret: Register a secret share with the server
+- RecoverSecret: Recover a secret share from the server
+- ListBackups: List all backups for a user
+- Echo: Test connectivity
+
+Example curl command to test:
+    $ curl -H "Content-Type: application/json" -d \
+      '{"jsonrpc":"2.0","method":"Echo","params":["Hello, World!"],"id":1}' \
+      https://xyzzybill.openadp.org
+
+Note: HTTPS is required for production servers.
+"""
 
 import json
+import logging
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import database
 import server
 
-# There does not appear to be a lightweight JSON-RPC library that results in
-# less work, so just handle it manually.
-class RPCRequestHandler(BaseHTTPRequestHandler):
-    def __init__(self, *args, **kwargs):
-       self.db = database.Database("openadp.db")
-       super().__init__(*args, **kwargs)
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-    def do_POST(self):
-        content_length = int(self.headers['Content-Length'])
-        post_data = self.rfile.read(content_length)
+
+class RPCRequestHandler(BaseHTTPRequestHandler):
+    """
+    HTTP request handler for JSON-RPC 2.0 requests.
+    
+    Handles POST requests containing JSON-RPC method calls and routes them
+    to appropriate server functions.
+    """
+    
+    def __init__(self, *args, **kwargs):
+        """Initialize the request handler with a database connection."""
+        self.db = database.Database("openadp.db")
+        super().__init__(*args, **kwargs)
+
+    def do_POST(self) -> None:
+        """
+        Handle POST requests containing JSON-RPC calls.
+        
+        Parses the JSON-RPC request, routes it to the appropriate method,
+        and returns a JSON-RPC response.
+        """
         try:
+            # Read request data
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            
+            # Parse JSON-RPC request
             request = json.loads(post_data.decode('utf-8'))
             method = request.get('method')
             params = request.get('params', [])
             request_id = request.get('id')
-
-            if method == 'RegisterSecret':
-                (result, error) = self.registerSecretadd(params)
-            elif method == 'RecoverSecret':
-                (result, error) = self.recoverSecret(params)
-            elif method == 'ListBackups':
-                (result, error) = self.listBackups(params)
-            elif method == 'Echo':
-                if len(params) == 1:
-                    (result, error) = (params[0], None)
-                else:
-                    (None, "Echo expects exactly 1 parameter")
-            else:
-                result = None
-                error = {'code': -32601, 'message': 'Method not found'}
-
-            if result is not None:
+            
+            # Route to appropriate method
+            result, error = self._route_method(method, params)
+            
+            # Build response
+            if error is None:
                 response = {'jsonrpc': '2.0', 'result': result, 'id': request_id}
             else:
-                 response = {'jsonrpc': '2.0', 'error': error, 'id': request_id}
+                response = {'jsonrpc': '2.0', 'error': error, 'id': request_id}
 
-        except json.JSONDecodeError:
-            response = {'jsonrpc': '2.0', 'error': {'code': -32700, 'message':
-                    'Parse error'}, 'id': None}
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error: {e}")
+            response = {
+                'jsonrpc': '2.0', 
+                'error': {'code': -32700, 'message': 'Parse error'}, 
+                'id': None
+            }
+        except Exception as e:
+            logger.error(f"Unexpected error in POST handler: {e}")
+            response = {
+                'jsonrpc': '2.0',
+                'error': {'code': -32603, 'message': 'Internal error'},
+                'id': None
+            }
 
+        # Send response
+        self._send_json_response(response)
+
+    def _route_method(self, method: str, params: List[Any]) -> Tuple[Any, Optional[Dict]]:
+        """
+        Route a JSON-RPC method call to the appropriate handler.
+        
+        Args:
+            method: The RPC method name
+            params: List of parameters for the method
+            
+        Returns:
+            Tuple of (result, error_dict). If successful, error_dict is None.
+        """
+        if method == 'RegisterSecret':
+            return self._register_secret(params)
+        elif method == 'RecoverSecret':
+            return self._recover_secret(params)
+        elif method == 'ListBackups':
+            return self._list_backups(params)
+        elif method == 'Echo':
+            return self._echo(params)
+        else:
+            error = {'code': -32601, 'message': 'Method not found'}
+            return None, error
+
+    def _send_json_response(self, response: Dict) -> None:
+        """
+        Send a JSON response back to the client.
+        
+        Args:
+            response: Dictionary containing the JSON-RPC response
+        """
         self.send_response(200)
-        self.send_header('Content-type', 'application/json')
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')  # CORS support
         self.end_headers()
         self.wfile.write(json.dumps(response).encode('utf-8'))
 
-    def registerSecretadd(self, params):
+    def _register_secret(self, params: List[Any]) -> Tuple[Any, Optional[str]]:
+        """
+        Handle RegisterSecret RPC method.
+        
+        Args:
+            params: List containing [uid, did, bid, version, x, y, max_guesses, expiration]
+            
+        Returns:
+            Tuple of (result, error_message)
+        """
         try:
             if len(params) != 8:
-                return (None, "INVALID_ARGUMENT: RegisterSecret expects exactly 8 parameters")
+                return None, "INVALID_ARGUMENT: RegisterSecret expects exactly 8 parameters"
+            
             uid, did, bid, version, x, y, max_guesses, expiration = params
-            server.registerSecret(self.db, uid, did, bid, version, x, y, max_guesses, expiration)
-            return (True, None)
+            
+            # Call server function
+            result = server.register_secret(self.db, uid, did, bid, version, x, y, max_guesses, expiration)
+            
+            if isinstance(result, Exception):
+                return None, f"INVALID_ARGUMENT: {str(result)}"
+            
+            return True, None
+            
         except Exception as e:
-            return (None, "INTERNAL_ERROR: " + str(e))
+            logger.error(f"Error in register_secret: {e}")
+            return None, f"INTERNAL_ERROR: {str(e)}"
 
-    def recoverSecret(self, params):
+    def _recover_secret(self, params: List[Any]) -> Tuple[Any, Optional[str]]:
+        """
+        Handle RecoverSecret RPC method.
+        
+        Args:
+            params: List containing [uid, did, bid, b, guess_num]
+            
+        Returns:
+            Tuple of (result, error_message)
+        """
         try:
             if len(params) != 5:
-                return (None, "INVALID_ARGUMENT: RecoverSecret expects exactly 5 parameters")
+                return None, "INVALID_ARGUMENT: RecoverSecret expects exactly 5 parameters"
+            
             uid, did, bid, b, guess_num = params
-            res = server.recoverSecret(self.db, uid, did, bid, b, guess_num)
-            if isinstance(res, BaseException):
-                return (None, "INVALID_ARGUMENT: " + str(res))
-            return (res, None)
+            
+            # Call server function
+            result = server.recover_secret(self.db, uid, did, bid, b, guess_num)
+            
+            if isinstance(result, Exception):
+                return None, f"INVALID_ARGUMENT: {str(result)}"
+            
+            return result, None
+            
         except Exception as e:
-            return (None, "INTERNAL_ERROR: " + str(e))
+            logger.error(f"Error in recover_secret: {e}")
+            return None, f"INTERNAL_ERROR: {str(e)}"
 
-    def listBackups(self, params):
+    def _list_backups(self, params: List[Any]) -> Tuple[Any, Optional[str]]:
+        """
+        Handle ListBackups RPC method.
+        
+        Args:
+            params: List containing [uid]
+            
+        Returns:
+            Tuple of (result, error_message)
+        """
         try:
             if len(params) != 1:
-                return (None, "INVALID_ARGUMENT: ListBackups expects exactly 1 parameter")
+                return None, "INVALID_ARGUMENT: ListBackups expects exactly 1 parameter"
+            
             uid = params[0]
-            res = server.listBackups(self.db, uid)
-            if isinstance(res, BaseException):
-                return (None, "INVALID_ARGUMENT: " + str(res))
-            return (res, None)
+            
+            # Call server function
+            result = server.list_backups(self.db, uid)
+            
+            if isinstance(result, Exception):
+                return None, f"INVALID_ARGUMENT: {str(result)}"
+            
+            return result, None
+            
         except Exception as e:
-            return (None, "INTERNAL_ERROR: " + str(e))
+            logger.error(f"Error in list_backups: {e}")
+            return None, f"INTERNAL_ERROR: {str(e)}"
 
-port = 8080
-server_address = ('', port)
-httpd = HTTPServer(server_address, RPCRequestHandler)
-print(f"Starting server on port {port}")
-httpd.serve_forever()
+    def _echo(self, params: List[Any]) -> Tuple[Any, Optional[str]]:
+        """
+        Handle Echo RPC method for connectivity testing.
+        
+        Args:
+            params: List containing [message]
+            
+        Returns:
+            Tuple of (echoed_message, error_message)
+        """
+        if len(params) != 1:
+            return None, "INVALID_ARGUMENT: Echo expects exactly 1 parameter"
+        
+        return params[0], None
+
+    def log_message(self, format: str, *args) -> None:
+        """Override to use proper logging instead of printing to stderr."""
+        logger.info(f"{self.address_string()} - {format % args}")
+
+
+def main():
+    """Main function to start the JSON-RPC server."""
+    port = 8080
+    server_address = ('', port)
+    
+    try:
+        httpd = HTTPServer(server_address, RPCRequestHandler)
+        logger.info(f"Starting OpenADP JSON-RPC server on port {port}")
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        logger.info("Server interrupted by user")
+    except Exception as e:
+        logger.error(f"Server error: {e}")
+        raise
+
+
+if __name__ == "__main__":
+    main()

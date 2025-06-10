@@ -43,10 +43,7 @@ class Client:
         
         # Set default fallback servers if none provided
         if fallback_servers is None:
-            fallback_servers = [
-                "https://xyzzybill.openadp.org",
-                "https://sky.openadp.org"
-            ]
+            fallback_servers = scrape.get_fallback_servers()
         self.fallback_servers = fallback_servers
         
         # Initialize live servers list

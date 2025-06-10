@@ -1,59 +1,88 @@
-# Copyright 2025 OpenADP Authors.  This work is licensed under the Apache 2.0 license.
-# See https://datatracker.ietf.org/doc/html/rfc8032
+#!/usr/bin/env python3
+"""
+OpenADP Cryptographic Functions
+
+This module implements Ed25519-based cryptographic operations for the OpenADP
+system, including point arithmetic, compression/decompression, and key derivation.
+
+Based on RFC 8032: https://datatracker.ietf.org/doc/html/rfc8032
+"""
 
 import hashlib
+from typing import Tuple, Optional, Union
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 
+# Type definitions for clarity
+Point2D = Tuple[int, int]  # (x, y) coordinates
+Point4D = Tuple[int, int, int, int]  # Extended coordinates (X, Y, Z, T)
+PointAny = Union[Point2D, Point4D]
+
 # Convert (x, y) to the expanded form (x, y, 1, x*y)
-def expand(point):
-    (x, y) = point
-    return (x, y, 1, x*y % p)
+def expand(point: Point2D) -> Point4D:
+    """Convert a 2D point to extended 4D coordinates."""
+    x, y = point
+    return (x, y, 1, x * y % p)
 
-def unexpand(point):
-    (X, Y, Z, T) = point
-    z_inv = modp_inv(Z)
-    return (X*z_inv % p, Y*z_inv % p)
 
-def sha256(s):
+def unexpand(point: Point4D) -> Point2D:
+    """Convert extended 4D coordinates back to 2D point."""
+    x, y, z, t = point
+    z_inv = modp_inv(z)
+    return (x * z_inv % p, y * z_inv % p)
+
+
+def sha256(s: bytes) -> bytes:
+    """Compute SHA-256 hash of input bytes."""
     return hashlib.sha256(s).digest()
 
-# Base field Z_p
-p = 2**255 - 19
 
-def modp_inv(x, prime=p):
-    return pow(x, prime-2, prime)
+# Base field Z_p
+p: int = 2**255 - 19
+
+
+def modp_inv(x: int, prime: int = p) -> int:
+    """Compute modular inverse of x modulo prime using Fermat's little theorem."""
+    return pow(x, prime - 2, prime)
+
 
 # Curve constant
-d = -121665 * modp_inv(121666) % p
+d: int = -121665 * modp_inv(121666) % p
 
 # Group order
-q = 2**252 + 27742317777372353535851937790883648493
+q: int = 2**252 + 27742317777372353535851937790883648493
 
-## Then follows functions to perform point operations.
+## Point operations
 
 # Points are represented as tuples (X, Y, Z, T) of extended
 # coordinates, with x = X/Z, y = Y/Z, x*y = T/Z
 
-# Multiply a point by 8 quickly.
-def point_mul8(P):
+def point_mul8(P: Point4D) -> Point4D:
+    """Multiply a point by 8 quickly using repeated doubling."""
     P2 = point_add(P, P)
     P4 = point_add(P2, P2)
     return point_add(P4, P4)
 
-def point_valid(P):
+
+def point_valid(P: Point4D) -> bool:
+    """Check if a point is valid (non-zero and has correct order)."""
     if point_equal(P, zero_point):
         return False
     return point_equal(point_mul(q, P), zero_point)
 
-def point_add(P, Q):
-    A, B = (P[1]-P[0]) * (Q[1]-Q[0]) % p, (P[1]+P[0]) * (Q[1]+Q[0]) % p
-    C, D = 2 * P[3] * Q[3] * d % p, 2 * P[2] * Q[2] % p
-    E, F, G, H = B-A, D-C, D+C, B+A
-    return (E*F % p, G*H % p, F*G % p, E*H % p)
 
-# Computes Q = s * Q
-def point_mul(s, P):
+def point_add(P: Point4D, Q: Point4D) -> Point4D:
+    """Add two points in extended coordinates."""
+    A = (P[1] - P[0]) * (Q[1] - Q[0]) % p
+    B = (P[1] + P[0]) * (Q[1] + Q[0]) % p
+    C = 2 * P[3] * Q[3] * d % p
+    D = 2 * P[2] * Q[2] % p
+    E, F, G, H = B - A, D - C, D + C, B + A
+    return (E * F % p, G * H % p, F * G % p, E * H % p)
+
+
+def point_mul(s: int, P: Point4D) -> Point4D:
+    """Compute scalar multiplication: Q = s * P using double-and-add."""
     Q = zero_point
     while s > 0:
         if s & 1:
@@ -62,7 +91,9 @@ def point_mul(s, P):
         s >>= 1
     return Q
 
-def point_equal(P, Q):
+
+def point_equal(P: Point4D, Q: Point4D) -> bool:
+    """Check if two points are equal in projective coordinates."""
     # x1 / z1 == x2 / z2  <==>  x1 * z2 == x2 * z1
     if (P[0] * Q[2] - Q[0] * P[2]) % p != 0:
         return False
@@ -70,17 +101,27 @@ def point_equal(P, Q):
         return False
     return True
 
-## Now follows functions for point compression.
+## Point compression functions
 
 # Square root of -1
-modp_sqrt_m1 = pow(2, (p-1) // 4, p)
+modp_sqrt_m1: int = pow(2, (p - 1) // 4, p)
 
-# Compute corresponding x-coordinate, with low bit corresponding to
-# sign, or return None on failure
-def recover_x(y, sign):
+
+def recover_x(y: int, sign: int) -> Optional[int]:
+    """
+    Compute corresponding x-coordinate from y and sign bit.
+    
+    Args:
+        y: Y coordinate
+        sign: Sign bit (0 or 1)
+        
+    Returns:
+        X coordinate if valid, None if no valid x exists
+    """
     if y >= p:
         return None
-    x2 = (y*y-1) * modp_inv(d*y*y+1)
+    
+    x2 = (y * y - 1) * modp_inv(d * y * y + 1)
     if x2 == 0:
         if sign:
             return None
@@ -88,37 +129,43 @@ def recover_x(y, sign):
             return 0
 
     # Compute square root of x2
-    x = pow(x2, (p+3) // 8, p)
-    if (x*x - x2) % p != 0:
+    x = pow(x2, (p + 3) // 8, p)
+    if (x * x - x2) % p != 0:
         x = x * modp_sqrt_m1 % p
-    if (x*x - x2) % p != 0:
+    if (x * x - x2) % p != 0:
         return None
 
     if (x & 1) != sign:
         x = p - x
     return x
 
+
 # Base point
-g_y = 4 * modp_inv(5) % p
-g_x = recover_x(g_y, 0)
-G = expand((g_x, g_y))
+g_y: int = 4 * modp_inv(5) % p
+g_x: int = recover_x(g_y, 0)
+G: Point4D = expand((g_x, g_y))
 
 # The mathematician Edwards believes angles should be measured clockwise from
 # the Y axis rather than counter-clockwise from the X axis, and so he decided
 # just for his Edwards curve to ignore thousands of years of mathematical
 # precedence.  This is why the point corresponding to 0 is at (0, 1), rather
 # than (1, 0).  Ugh...
-zero_point = (0, 1, 1, 0)  # Neutral element
+zero_point: Point4D = (0, 1, 1, 0)  # Neutral element
 
-def point_compress(P):
+
+def point_compress(P: Point4D) -> bytes:
+    """Compress a point to 32 bytes."""
     zinv = modp_inv(P[2])
     x = P[0] * zinv % p
     y = P[1] * zinv % p
     return int.to_bytes(y | ((x & 1) << 255), 32, "little")
 
-def point_decompress(s):
+
+def point_decompress(s: bytes) -> Optional[Point4D]:
+    """Decompress 32 bytes to a point, or None if invalid."""
     if len(s) != 32:
         raise Exception("Invalid input length for decompression")
+    
     y = int.from_bytes(s, "little")
     sign = y >> 255
     y &= (1 << 255) - 1
@@ -127,11 +174,12 @@ def point_decompress(s):
     if x is None:
         return None
     else:
-        return (x, y, 1, x*y % p)
+        return (x, y, 1, x * y % p)
 
-## These are functions for manipulating the private key.
+## Private key functions
 
-def secret_expand(secret):
+def secret_expand(secret: bytes) -> int:
+    """Expand a 32-byte secret key to a scalar."""
     if len(secret) != 32:
         raise Exception("Bad size of private key")
     h = sha256(secret)
@@ -140,52 +188,77 @@ def secret_expand(secret):
     a |= (1 << 254)
     return a
 
-def secret_to_public(secret):
+
+def secret_to_public(secret: bytes) -> bytes:
+    """Convert a private key to its corresponding public key."""
     a = secret_expand(secret)
     return point_compress(point_mul(a, G))
 
-#Compute candidate square root of x modulo p, with p = 3 (mod 4).
-def sqrt4k3(x,p): return pow(x,(p + 1)//4,p)
+# Compute candidate square root of x modulo p, with p = 3 (mod 4).
+def sqrt4k3(x: int, p: int) -> int:
+    """Compute square root mod p where p ≡ 3 (mod 4)."""
+    return pow(x, (p + 1) // 4, p)
 
-#Compute candidate square root of x modulo p, with p = 5 (mod 8).
-def sqrt8k5(x,p):
-    y = pow(x,(p+3)//8,p)
-    #If the square root exists, it is either y or y*2^(p-1)/4.
-    if (y * y) % p == x % p: return y
+# Compute candidate square root of x modulo p, with p = 5 (mod 8).
+def sqrt8k5(x: int, p: int) -> int:
+    """Compute square root mod p where p ≡ 5 (mod 8)."""
+    y = pow(x, (p + 3) // 8, p)
+    # If the square root exists, it is either y or y*2^(p-1)/4.
+    if (y * y) % p == x % p:
+        return y
     else:
-        z = pow(2,(p - 1)//4,p)
+        z = pow(2, (p - 1) // 4, p)
         return (y * z) % p
 
-#Decode a hexadecimal string representation of the integer.
-def hexi(s): return int.from_bytes(bytes.fromhex(s),byteorder="big")
+# Decode a hexadecimal string representation of the integer.
+def hexi(s: str) -> int:
+    """Decode hexadecimal string to integer."""
+    return int.from_bytes(bytes.fromhex(s), byteorder="big")
 
-#Rotate a word x by b places to the left.
-def rol(x,b): return ((x << b) | (x >> (64 - b))) & (2**64-1)
+# Rotate a word x by b places to the left.
+def rol(x: int, b: int) -> int:
+    """Rotate a 64-bit word left by b bits."""
+    return ((x << b) | (x >> (64 - b))) & (2**64 - 1)
 
-#From little endian.
-def from_le(s): return int.from_bytes(s, byteorder="little")
+# From little endian.
+def from_le(s: bytes) -> int:
+    """Convert little-endian bytes to integer."""
+    return int.from_bytes(s, byteorder="little")
 
 # Some low-ish level crypto specific to OpenADP.
 
-# Return a 16-bit length prefixed (little-endian) string.
-def prefixed(a):
+def prefixed(a: bytes) -> bytes:
+    """Return a 16-bit length prefixed (little-endian) byte string."""
     l = len(a)
     if len(a) >= 1 << 16:
         raise Exception("Input string too long")
     prefix = int.to_bytes(l, 2, "little")
     return prefix + a
 
-# Hash function mapping input parameters (with length prefixes) to a point.
-def H(UID, DID, BID, pin):
+
+def H(UID: bytes, DID: bytes, BID: bytes, pin: bytes) -> Point4D:
+    """
+    Hash function mapping input parameters to a valid curve point.
+    
+    Args:
+        UID: User identifier
+        DID: Device identifier  
+        BID: Backup identifier
+        pin: PIN value
+        
+    Returns:
+        A valid point on the curve with correct order
+    """
     s = sha256(prefixed(UID) + prefixed(DID) + prefixed(BID) + pin)
-    yBase = int.from_bytes(s, "little")
-    sign = yBase >> 255
-    yBase &= ((1 << 255) - 1)
+    y_base = int.from_bytes(s, "little")
+    sign = y_base >> 255
+    y_base &= ((1 << 255) - 1)
     counter = 0
+    
     while True:
-        y = yBase ^ counter
+        y = y_base ^ counter
         x = recover_x(y, sign)
-        if x != None:
+        if x is not None:
             # Force the point to be in a group of order q
             P = expand((x, y))
             P = point_mul8(P)
@@ -193,11 +266,20 @@ def H(UID, DID, BID, pin):
                 return P
         counter += 1
 
-# P a point in expanded format.
-def deriveEncKey(P):
-    p = point_compress(P)
-    hkdf = HKDF(hashes.SHA256(), 32, b"", b"OpenADP enc_key derivation");
-    return hkdf.derive(p)
+
+def deriveEncKey(P: Point4D) -> bytes:
+    """
+    Derive an encryption key from a curve point.
+    
+    Args:
+        P: Point in expanded format
+        
+    Returns:
+        32-byte encryption key
+    """
+    p_compressed = point_compress(P)
+    hkdf = HKDF(hashes.SHA256(), 32, b"", b"OpenADP enc_key derivation")
+    return hkdf.derive(p_compressed)
 
 if __name__ == '__main__':
 

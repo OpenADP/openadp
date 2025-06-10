@@ -1,23 +1,51 @@
-# Copyright 2025 OpenADP Authors.  This work is licensed under the Apache 2.0 license.
-#
-# This is a prototype of the server for OpenADP.  Currently (June 1, 2025), the
-# design is only lightly documented in the root level README.md.  This
-# prototype is meant to clarify that design and should work with both prototype
-# and real clients.
+#!/usr/bin/env python3
+"""
+OpenADP Server Business Logic
+
+This module contains the core business logic for the OpenADP (Open Asynchronous 
+Distributed Password) system. It provides functions for:
+- Registering secret shares
+- Recovering secret shares 
+- Listing user backups
+- Input validation and security checks
+
+This is a prototype implementation designed to clarify the system design
+and work with both prototype and production clients.
+"""
+
+import time
+from typing import Union, Tuple, List, Any
 
 import crypto
 import database
 import secrets
 import sharing
-import time
 
-def checkRegisterInputs(UID, DID, BID, x, y, max_guesses, expiration):
+
+def check_register_inputs(uid: str, did: str, bid: str, x: int, y: bytes, 
+                         max_guesses: int, expiration: int) -> Union[bool, Exception]:
+    """
+    Validate inputs for secret registration.
+    
+    Args:
+        uid: User identifier
+        did: Device identifier 
+        bid: Backup identifier
+        x: X coordinate for secret sharing
+        y: Y coordinate (encrypted share) 
+        max_guesses: Maximum number of recovery attempts allowed
+        expiration: Expiration timestamp (0 for no expiration)
+        
+    Returns:
+        True if inputs are valid, Exception with error message otherwise
+    """
     MAX_LEN = 512
-    if len(UID) > MAX_LEN:
+    
+    if len(uid) > MAX_LEN:
         return Exception("UID too long")
-    if len(DID) > MAX_LEN:
+    if len(did) > MAX_LEN:
         return Exception("DID too long")
-    if len(BID) > MAX_LEN:
+    if len(bid) > MAX_LEN:
         return Exception("BID too long")
     if x > 1000:
         return Exception("Too many shares")
@@ -25,100 +53,232 @@ def checkRegisterInputs(UID, DID, BID, x, y, max_guesses, expiration):
         return Exception("Y share too large")
     if max_guesses > 1000:
         return Exception("Max guesses too high")
+    
     seconds_since_epoch = int(time.time())
-    # I guess we'll let 0 represent no expiration.
+    # Allow 0 to represent no expiration
     if expiration < seconds_since_epoch and expiration != 0:
         return Exception("Expiration is in the past")
+    
     return True
 
-def registerSecret(db, UID, DID, BID, version, x, y, max_guesses, expiration):
-    res = checkRegisterInputs(UID, DID, BID, x, y, max_guesses, expiration)
-    if res != True:
-        return res
-    db.insert(UID, DID, BID, version, x, y, 0, max_guesses, expiration)
 
-def checkRecoverInputs(UID, DID, BID, B):
+def register_secret(db: database.Database, uid: str, did: str, bid: str, 
+                   version: int, x: int, y: bytes, max_guesses: int, 
+                   expiration: int) -> Union[bool, Exception]:
+    """
+    Register a secret share with the server.
+    
+    Args:
+        db: Database connection
+        uid: User identifier
+        did: Device identifier
+        bid: Backup identifier
+        version: Version number for this backup
+        x: X coordinate for secret sharing
+        y: Y coordinate (encrypted share)
+        max_guesses: Maximum number of recovery attempts allowed
+        expiration: Expiration timestamp (0 for no expiration)
+        
+    Returns:
+        True if successful, Exception with error message otherwise
+    """
+    validation_result = check_register_inputs(uid, did, bid, x, y, max_guesses, expiration)
+    if validation_result is not True:
+        return validation_result
+    
+    # Convert string parameters to bytes for database storage
+    uid_bytes = uid.encode('utf-8') if isinstance(uid, str) else uid
+    did_bytes = did.encode('utf-8') if isinstance(did, str) else did
+    bid_bytes = bid.encode('utf-8') if isinstance(bid, str) else bid
+    
+    db.insert(uid_bytes, did_bytes, bid_bytes, version, x, y, 0, max_guesses, expiration)
+    return True
+
+
+def check_recover_inputs(uid: str, did: str, bid: str, b: Any) -> Union[bool, Exception]:
+    """
+    Validate inputs for secret recovery.
+    
+    Args:
+        uid: User identifier
+        did: Device identifier
+        bid: Backup identifier
+        b: Point B for cryptographic recovery
+        
+    Returns:
+        True if inputs are valid, Exception with error message otherwise
+    """
     MAX_LEN = 512
-    if len(UID) > MAX_LEN:
+    
+    if len(uid) > MAX_LEN:
         return Exception("UID too long")
-    if len(DID) > MAX_LEN:
+    if len(did) > MAX_LEN:
         return Exception("DID too long")
-    if len(BID) > MAX_LEN:
+    if len(bid) > MAX_LEN:
         return Exception("BID too long")
-    if not crypto.point_valid(B):
+    if not crypto.point_valid(b):
         return Exception("Invalid point")
+    
     return True
 
-# The guess_num parameter prevents accidental replay causing counters to
-# increment more than once.  This makes the recoverSecret RPC idempotent.
-def recoverSecret(db, UID, DID, BID, B, guess_num):
-    res = checkRecoverInputs(UID, DID, BID, B)
-    if res != True:
-        return res
-    res = db.lookup(UID, DID, BID)
-    if res == None:
-        return Exception("Not found")
-    (version, x, y, num_guesses, max_guesses, expiration) = res
+
+def recover_secret(db: database.Database, uid: str, did: str, bid: str, 
+                  b: Any, guess_num: int) -> Union[Tuple[int, int, Any, int, int, int], Exception]:
+    """
+    Recover a secret share from the server.
+    
+    The guess_num parameter prevents accidental replay attacks by ensuring
+    the counter only increments once per recovery attempt, making this RPC idempotent.
+    
+    Args:
+        db: Database connection
+        uid: User identifier
+        did: Device identifier
+        bid: Backup identifier
+        b: Point B for cryptographic recovery
+        guess_num: Expected current guess number (for idempotency)
+        
+    Returns:
+        Tuple of (version, x, siB, num_guesses, max_guesses, expiration) if successful,
+        Exception with error message otherwise
+    """
+    validation_result = check_recover_inputs(uid, did, bid, b)
+    if validation_result is not True:
+        return validation_result
+    
+    # Convert string parameters to bytes for database lookup
+    uid_bytes = uid.encode('utf-8') if isinstance(uid, str) else uid
+    did_bytes = did.encode('utf-8') if isinstance(did, str) else did
+    bid_bytes = bid.encode('utf-8') if isinstance(bid, str) else bid
+    
+    # Look up the stored share
+    result = db.lookup(uid_bytes, did_bytes, bid_bytes)
+    if result is None:
+        return Exception("Share not found")
+    
+    version, x, y, num_guesses, max_guesses, expiration = result
+    
+    # Verify expected guess number (for idempotency)
     if guess_num != num_guesses:
-        return Exception("Expecting guess_num = %d" % num_guesses)
+        return Exception(f"Expecting guess_num = {num_guesses}")
+    
+    # Check if too many guesses have been made
     if num_guesses >= max_guesses:
         return Exception("Too many guesses")
-    num_guesses += 1
-    db.insert(UID, DID, BID, version, x, y, num_guesses, max_guesses, expiration)
-    y = int.from_bytes(y, "little")
-    siB = crypto.unexpand(crypto.point_mul(y, B))
-    return (version, x, siB, num_guesses, max_guesses, expiration)
-
-def listBackups(db, UID):
-    return db.listBackups(UID)
     
-if __name__ == '__main__':
+    # Increment guess counter
+    num_guesses += 1
+    db.insert(uid_bytes, did_bytes, bid_bytes, version, x, y, num_guesses, max_guesses, expiration)
+    
+    # Perform cryptographic recovery calculation
+    y_int = int.from_bytes(y, "little")
+    si_b = crypto.unexpand(crypto.point_mul(y_int, b))
+    
+    return (version, x, si_b, num_guesses, max_guesses, expiration)
 
-    UID = b"waywardgeek@gmail.com"
-    DID = b"Ubuntu beast Alienware laptop"
-    BID = b"file://archive.tgz"
-    pinVal = secrets.randbelow(10000)
-    print("pin =", pinVal)
-    pin = int.to_bytes(pinVal, 2, "little")
-    U = crypto.H(UID, DID, BID, pin)
-    print("U =", crypto.unexpand(U))
+
+def list_backups(db: database.Database, uid: str) -> List[Tuple]:
+    """
+    List all backups for a user.
+    
+    Args:
+        db: Database connection
+        uid: User identifier
+        
+    Returns:
+        List of tuples containing backup information:
+        (did, bid, version, num_guesses, max_guesses, expiration)
+    """
+    # Convert string to bytes if needed for database query
+    uid_bytes = uid.encode('utf-8') if isinstance(uid, str) else uid
+    return db.list_backups(uid_bytes)
+
+
+def main():
+    """
+    Test/demo function for the server functionality.
+    
+    This creates test data and demonstrates the complete flow of:
+    1. Creating shares using secret sharing
+    2. Registering shares with multiple servers
+    3. Recovering shares from servers
+    4. Reconstructing the original secret
+    """
+    # Test parameters
+    uid = b"waywardgeek@gmail.com"
+    did = b"Ubuntu beast Alienware laptop"
+    bid = b"file://archive.tgz"
+    
+    # Generate random PIN
+    pin_val = secrets.randbelow(10000)
+    print("pin =", pin_val)
+    pin = int.to_bytes(pin_val, 2, "little")
+    
+    # Cryptographic setup
+    u = crypto.H(uid, did, bid, pin)
+    print("U =", crypto.unexpand(u))
+    
     p = crypto.q
     r = secrets.randbelow(p - 1) + 1
     r_inv = pow(r, -1, p)
-    B = crypto.point_mul(r, U)
+    b = crypto.point_mul(r, u)
     s = secrets.randbelow(p)
-    S = crypto.point_mul(s, U)
-    print("S =", crypto.unexpand(S))
-    enc_key = crypto.deriveEncKey(S)
+    s_point = crypto.point_mul(s, u)
+    print("S =", crypto.unexpand(s_point))
+    
+    enc_key = crypto.deriveEncKey(s_point)
     print("enc_key =", enc_key)
-    T = 2
-    N = 3
-    shares = sharing.makeRandomShares(s, T, N)
+    
+    # Create secret shares
+    threshold = 2
+    num_shares = 3
+    shares = sharing.make_random_shares(s, threshold, num_shares)
     print("s =", s)
     print("shares =", shares)
+    
+    # Register shares with multiple servers
     for (x, y) in shares:
-        yEnc = int.to_bytes(y, 32, "little")
-        dbName = "openadp_test%d.db" % x
-        db = database.Database(dbName)
-        registerSecret(db, UID, DID, BID, 1, x, yEnc, 10, 10000000000)
+        y_enc = int.to_bytes(y, 32, "little")
+        db_name = f"openadp_test{x}.db"
+        db = database.Database(db_name)
+        register_secret(db, uid.decode(), did.decode(), bid.decode(), 1, x, y_enc, 10, 10000000000)
+        
+        # Simulate some random failed recovery attempts
         for guess_num in range(secrets.randbelow(10)):
-            res = recoverSecret(db, UID, DID, BID, B, guess_num)
-    assert crypto.point_equal(U, crypto.point_mul(r_inv, B))
-    print("B =", crypto.unexpand(B))
-    recShares = []
+            result = recover_secret(db, uid.decode(), did.decode(), bid.decode(), b, guess_num)
+    
+    # Verify cryptographic relationship
+    assert crypto.point_equal(u, crypto.point_mul(r_inv, b))
+    print("B =", crypto.unexpand(b))
+    
+    # Recover shares from servers
+    recovered_shares = []
     for x, _ in shares:
-        dbName = "openadp_test%d.db" % x
-        db = database.Database(dbName)
-        guess_num = db.findGuessNum(UID, DID, BID)
-        res = recoverSecret(db, UID, DID, BID, B, guess_num)
-        assert not isinstance(res, BaseException)
-        (version, x, siB, num_guesses, max_guesses, expiration) = res
-        print("siB =", siB)
-        recShares.append((x, siB))
-    print("recShares =", recShares)
-    recSB = sharing.recoverSB([recShares[0], recShares[2]])
-    recS = crypto.point_mul(r_inv, crypto.expand(recSB))
-    print("recS =", crypto.unexpand(recS))
-    assert crypto.point_equal(recS, S)
-    rec_enc_key = crypto.deriveEncKey(recS)
+        db_name = f"openadp_test{x}.db"
+        db = database.Database(db_name)
+        guess_num = db.find_guess_number(uid, did, bid)
+        result = recover_secret(db, uid.decode(), did.decode(), bid.decode(), b, guess_num)
+        
+        assert not isinstance(result, Exception), f"Recovery failed: {result}"
+        
+        version, x, si_b, num_guesses, max_guesses, expiration = result
+        print("siB =", si_b)
+        recovered_shares.append((x, si_b))
+    
+    print("recovered_shares =", recovered_shares)
+    
+    # Reconstruct original secret using threshold of shares
+    rec_sb = sharing.recover_sb([recovered_shares[0], recovered_shares[2]])
+    rec_s = crypto.point_mul(r_inv, crypto.expand(rec_sb))
+    print("recovered S =", crypto.unexpand(rec_s))
+    
+    # Verify reconstruction was successful
+    assert crypto.point_equal(rec_s, s_point)
+    rec_enc_key = crypto.deriveEncKey(rec_s)
     assert enc_key == rec_enc_key
+    
+    print("✅ All tests passed!")
+
+
+if __name__ == '__main__':
+    main()
