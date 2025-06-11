@@ -344,16 +344,13 @@ def recover_encryption_key(filename: str, password: str, server_urls: Optional[L
             
             for i, url in enumerate(server_urls):
                 try:
-                    # Import here to handle missing Noise-KK gracefully
-                    from client.noise_jsonrpc_client import NoiseKKJSONRPCClient
-                    
                     # Create client for this specific server
-                    client_instance = NoiseKKJSONRPCClient(url)
+                    client_instance = NoiseKKJSONRPCClient(url, "placeholder_key")
                     
                     # Quick test to see if server is still alive
                     test_message = f"recovery_test_{int(time.time())}"
-                    result = client_instance.echo(test_message)
-                    if result == test_message:
+                    result, error = client_instance.echo(test_message)
+                    if not error and result == test_message:
                         live_clients.append(client_instance)
                         print(f"  ✅ Server {i+1}: {url}")
                     else:

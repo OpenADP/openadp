@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Noise-KK Enabled JSON-RPC Server for OpenADP
+Noise-KK Enabled JSON-RPC Server for OpenADP (HTTP Version)
 
-This server extends the standard JSON-RPC server with Noise-KK encryption support.
-It accepts both regular JSON-RPC requests and Noise-KK encrypted requests.
+This server provides JSON-RPC over HTTP with optional Noise-KK encryption.
+It's designed to work with Cloudflare reverse proxy setups.
 
-The server detects Noise-KK clients by looking for the Noise handshake pattern
-in the initial bytes of the connection.
+The server accepts HTTP POST requests with JSON-RPC payloads and handles:
+- noise-handshake: Noise-KK handshake initiation
+- noise-data: Encrypted JSON-RPC requests (inner layer)
 """
 
 import json
@@ -26,9 +27,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from openadp import database
 from openadp import crypto
-from openadp.noise_kk import (
-    NoiseKKSession, NoiseKKTransport,
-    generate_client_keypair, create_server_session
+from openadp.noise_kk_simple import (
+    SimplifiedNoiseKK, generate_client_keypair, create_server_session
 )
 from cryptography.hazmat.primitives.asymmetric import x25519
 from cryptography.hazmat.primitives import serialization
@@ -39,152 +39,209 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+@dataclass
 class ServerConfig:
-    """Configuration for the Noise-KK server"""
+    """Server configuration with persistent key storage"""
+    
     def __init__(self):
         # Database
         self.db = database.Database("openadp.db")
         
-        # Load or generate server keypair
-        self._load_or_generate_keypair()
+        # Load or generate server keypair (persistent)
+        self.server_private_key = self._load_or_generate_keypair()
         
-        # For now, accept any client key (dummy mode as requested)
-        self.accept_any_client = True
+        # Compute public key from private key
+        self.server_public_key = self.server_private_key.public_key()
     
     def _load_or_generate_keypair(self):
-        """Load server keypair from database or generate new one if not found."""
-        from cryptography.hazmat.primitives import serialization
-        import logging
-        
-        logger = logging.getLogger(__name__)
+        """Load persistent server keypair from database or generate new one"""
+        key_id = "noise_kk_server_key"
         
         # Try to load existing key from database
-        key_id = "noise_kk_server"
-        private_key_bytes = self.db.get_server_key(key_id)
-        
-        if private_key_bytes is not None:
-            # Load existing key
+        stored_key = self.db.get_server_key(key_id)
+        if stored_key:
             try:
-                self.server_private_key = serialization.load_der_private_key(
-                    private_key_bytes, 
-                    password=None
-                )
-                self.server_public_key = self.server_private_key.public_key()
-                logger.info("✅ Loaded existing server keypair from database")
+                # Deserialize private key from stored bytes
+                private_key = x25519.X25519PrivateKey.from_private_bytes(stored_key)
+                logger.info(f"Loaded persistent server key from database")
+                return private_key
             except Exception as e:
-                logger.error(f"Failed to load stored key, generating new one: {e}")
-                self._generate_and_store_new_key(key_id)
-        else:
-            # Generate new key
-            logger.info("🔑 No existing server key found, generating new keypair")
-            self._generate_and_store_new_key(key_id)
+                logger.warning(f"Failed to load stored key: {e}")
+                # Fall through to generate new key
         
-        # Log the public key for servers.json
-        pub_key_str = self.get_server_public_key_string()
-        logger.info("=" * 80)
-        logger.info("🔑 SERVER PUBLIC KEY FOR servers.json:")
-        logger.info(f"    {pub_key_str}")
-        logger.info("=" * 80)
+        # Generate new keypair and store it
+        logger.info("Generating new server keypair...")
+        return self._generate_and_store_new_key(key_id)
     
     def _generate_and_store_new_key(self, key_id: str):
-        """Generate a new keypair and store it in the database."""
-        from cryptography.hazmat.primitives import serialization
+        """Generate new keypair and store in database"""
+        # Generate new X25519 private key
+        private_key = x25519.X25519PrivateKey.generate()
         
-        # Generate server keypair
-        self.server_private_key = x25519.X25519PrivateKey.generate()
-        self.server_public_key = self.server_private_key.public_key()
-        
-        # Serialize and store the private key
-        private_key_bytes = self.server_private_key.private_bytes(
-            encoding=serialization.Encoding.DER,
-            format=serialization.PrivateFormat.PKCS8,
+        # Serialize to bytes for storage
+        private_bytes = private_key.private_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PrivateFormat.Raw,
             encryption_algorithm=serialization.NoEncryption()
         )
         
-        self.db.store_server_key(key_id, private_key_bytes)
+        # Store in database
+        self.db.store_server_key(key_id, private_bytes)
+        
+        logger.info(f"Generated and stored new server keypair")
+        return private_key
     
     def get_server_public_key_string(self) -> str:
-        """Get server public key in the expected format for servers.json"""
+        """Get public key in servers.json format"""
         pub_bytes = self.server_public_key.public_bytes(
             encoding=serialization.Encoding.Raw,
             format=serialization.PublicFormat.Raw
         )
-        # Convert to ed25519 format for compatibility 
         pub_b64 = base64.b64encode(pub_bytes).decode('ascii')
         return f"ed25519:{pub_b64}"
 
 
-class NoiseKKHandler:
-    """Handles Noise-KK encrypted connections"""
+class NoiseKKHTTPHandler(BaseHTTPRequestHandler):
+    """HTTP request handler with Noise-KK support"""
     
-    def __init__(self, config: ServerConfig):
+    def __init__(self, config: ServerConfig, *args, **kwargs):
         self.config = config
+        self.noise_sessions = {}  # Track noise sessions by client
+        super().__init__(*args, **kwargs)
     
-    def handle_noise_connection(self, client_socket: socket.socket, client_addr: Tuple[str, int]):
-        """Handle a Noise-KK encrypted connection over HTTP"""
-        logger.info(f"Handling Noise-KK connection from {client_addr}")
-        
+    def log_message(self, format, *args):
+        """Override to use our logger"""
+        logger.info(f"{self.address_string()} - {format % args}")
+    
+    def do_POST(self):
+        """Handle POST requests with JSON-RPC"""
         try:
+            # Read request body
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.send_error(400, "Empty request body")
+                return
+            
+            request_body = self.rfile.read(content_length)
+            
+            # Parse JSON-RPC request
+            try:
+                jsonrpc_request = json.loads(request_body.decode('utf-8'))
+            except json.JSONDecodeError as e:
+                self.send_error(400, f"Invalid JSON: {e}")
+                return
+            
+            # Validate JSON-RPC format
+            if not isinstance(jsonrpc_request, dict) or jsonrpc_request.get("jsonrpc") != "2.0":
+                self.send_error(400, "Invalid JSON-RPC format")
+                return
+            
+            # Route based on method
+            method = jsonrpc_request.get("method")
+            if method == "noise-handshake":
+                response = self._handle_noise_handshake(jsonrpc_request)
+            elif method == "noise-data":
+                response = self._handle_noise_data(jsonrpc_request)
+            else:
+                response = {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32601, "message": f"Method not found: {method}"},
+                    "id": jsonrpc_request.get("id")
+                }
+            
+            # Send JSON-RPC response
+            self._send_jsonrpc_response(response)
+            
+        except Exception as e:
+            logger.error(f"Error handling POST request: {e}")
+            self.send_error(500, str(e))
+    
+    def _handle_noise_handshake(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle Noise-KK handshake initiation"""
+        try:
+            params = request.get("params", [])
+            if len(params) != 1:
+                return self._error_response(request.get("id"), -32602, "Invalid params for noise-handshake")
+            
+            # Decode client handshake message
+            client_msg_b64 = params[0]
+            client_msg = base64.b64decode(client_msg_b64)
+            
             # For dummy mode: generate a dummy client public key
             dummy_client_private, dummy_client_public = generate_client_keypair()
             
             # Create server-side Noise session
             noise_session = create_server_session(
                 self.config.server_private_key,
-                dummy_client_public  # In production, this would come from client auth
+                dummy_client_public
             )
             
-            # Create transport with HTTP tunneling (server mode)
-            transport = NoiseKKTransport(
-                client_socket, 
-                noise_session, 
-                is_client=False,
-                http_host="localhost"  # Server doesn't need specific host
-            )
-            transport.perform_handshake()
+            # Process client handshake message
+            server_msg, handshake_complete = noise_session.process_handshake_message(client_msg)
             
-            logger.info(f"Noise-KK handshake completed with {client_addr}")
+            if not server_msg:
+                return self._error_response(request.get("id"), -32603, "Handshake failed")
             
-            # Handle encrypted JSON-RPC requests over HTTP
-            while True:
-                try:
-                    # Receive JSON-RPC request containing encrypted data
-                    jsonrpc_request = transport._jsonrpc_receive_request()
-                    
-                    if jsonrpc_request['method'] == 'noise-data':
-                        # Extract encrypted data (first parameter, already as bytes)
-                        ciphertext = jsonrpc_request['params'][0]
-                        
-                        # Decrypt to get inner JSON-RPC request
-                        encrypted_request = transport.noise_session.decrypt(ciphertext)
-                        
-                        # Parse inner JSON-RPC request
-                        request_data = json.loads(encrypted_request.decode('utf-8'))
-                        
-                        # Process the inner request
-                        response_data = self._process_jsonrpc_request(request_data)
-                        
-                        # Encrypt inner JSON-RPC response
-                        response_json = json.dumps(response_data).encode('utf-8')
-                        response_ciphertext = transport.noise_session.encrypt(response_json)
-                        
-                        # Send encrypted response via outer JSON-RPC
-                        transport._jsonrpc_send_response(jsonrpc_request['id'], response_ciphertext)
-                    else:
-                        # Unknown method
-                        transport._jsonrpc_send_error(jsonrpc_request['id'], f"Unknown method: {jsonrpc_request['method']}")
-                    
-                except Exception as e:
-                    logger.error(f"Error handling Noise-KK request: {e}")
-                    break
-        
+            # Store session for this client (use client address as key)
+            client_key = f"{self.client_address[0]}:{self.client_address[1]}"
+            self.noise_sessions[client_key] = noise_session
+            
+            logger.info(f"Noise-KK handshake completed with {self.client_address}")
+            
+            # Return server response
+            server_msg_b64 = base64.b64encode(server_msg).decode('ascii')
+            return {
+                "jsonrpc": "2.0",
+                "result": server_msg_b64,
+                "id": request.get("id")
+            }
+            
         except Exception as e:
-            logger.error(f"Noise-KK connection error: {e}")
-        finally:
-            client_socket.close()
+            logger.error(f"Noise handshake error: {e}")
+            return self._error_response(request.get("id"), -32603, f"Handshake failed: {e}")
     
-    def _process_jsonrpc_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
-        """Process a JSON-RPC request and return response"""
+    def _handle_noise_data(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle encrypted JSON-RPC request"""
+        try:
+            # Get noise session for this client
+            client_key = f"{self.client_address[0]}:{self.client_address[1]}"
+            noise_session = self.noise_sessions.get(client_key)
+            
+            if not noise_session:
+                return self._error_response(request.get("id"), -32603, "No handshake session found")
+            
+            params = request.get("params", [])
+            if len(params) != 1:
+                return self._error_response(request.get("id"), -32602, "Invalid params for noise-data")
+            
+            # Decode and decrypt inner request
+            encrypted_b64 = params[0]
+            encrypted_data = base64.b64decode(encrypted_b64)
+            decrypted_data = noise_session.decrypt(encrypted_data)
+            
+            # Parse inner JSON-RPC request
+            inner_request = json.loads(decrypted_data.decode('utf-8'))
+            
+            # Process inner request
+            inner_response = self._process_inner_jsonrpc(inner_request)
+            
+            # Encrypt inner response
+            response_data = json.dumps(inner_response).encode('utf-8')
+            encrypted_response = noise_session.encrypt(response_data)
+            encrypted_response_b64 = base64.b64encode(encrypted_response).decode('ascii')
+            
+            return {
+                "jsonrpc": "2.0",
+                "result": encrypted_response_b64,
+                "id": request.get("id")
+            }
+            
+        except Exception as e:
+            logger.error(f"Noise data error: {e}")
+            return self._error_response(request.get("id"), -32603, f"Encrypted request failed: {e}")
+    
+    def _process_inner_jsonrpc(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        """Process the inner (decrypted) JSON-RPC request"""
         try:
             method = request.get("method")
             params = request.get("params", [])
@@ -213,7 +270,7 @@ class NoiseKKHandler:
             }
             
         except Exception as e:
-            logger.error(f"Error processing JSON-RPC request: {e}")
+            logger.error(f"Error processing inner JSON-RPC request: {e}")
             return {
                 "jsonrpc": "2.0",
                 "error": {"code": -32603, "message": str(e)},
@@ -231,13 +288,16 @@ class NoiseKKHandler:
         y = base64.b64decode(y_b64)
         
         # Call the server logic
-        server.register_secret(
+        result = server.register_secret(
             self.config.db, uid, did, bid, version, x, y, max_guesses, expiration
         )
         
+        if isinstance(result, Exception):
+            raise result
+        
         return True
     
-    def _handle_recover_secret(self, params: List[Any]) -> Tuple[int, int, str, int, int, int]:
+    def _handle_recover_secret(self, params: List[Any]) -> List[Any]:
         """Handle RecoverSecret request"""
         if len(params) != 5:
             raise ValueError("RecoverSecret requires 5 parameters")
@@ -281,108 +341,70 @@ class NoiseKKHandler:
             raise ValueError("Echo requires 1 parameter")
         
         return params[0]
-
-
-class NoiseKKTCPServer:
-    """TCP server that handles both regular TLS and Noise-KK connections"""
     
-    def __init__(self, host: str = "0.0.0.0", port: int = 8080, config: Optional[ServerConfig] = None, use_tls: bool = False):
+    def _error_response(self, request_id: Any, code: int, message: str) -> Dict[str, Any]:
+        """Create JSON-RPC error response"""
+        return {
+            "jsonrpc": "2.0",
+            "error": {"code": code, "message": message},
+            "id": request_id
+        }
+    
+    def _send_jsonrpc_response(self, response: Dict[str, Any]):
+        """Send JSON-RPC response over HTTP"""
+        response_data = json.dumps(response).encode('utf-8')
+        
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(response_data)))
+        self.send_header('Connection', 'keep-alive')
+        self.end_headers()
+        
+        self.wfile.write(response_data)
+
+
+class NoiseKKHTTPServer:
+    """HTTP server with Noise-KK support"""
+    
+    def __init__(self, host: str = "0.0.0.0", port: int = 8080, config: Optional[ServerConfig] = None):
         self.host = host
         self.port = port
         self.config = config or ServerConfig()
-        self.noise_handler = NoiseKKHandler(self.config)
-        self.running = False
-        self.use_tls = use_tls
+        self.server = None
     
     def start(self):
-        """Start the server"""
-        self.running = True
+        """Start the HTTP server"""
+        # Create handler class with config
+        def handler_factory(*args, **kwargs):
+            return NoiseKKHTTPHandler(self.config, *args, **kwargs)
         
-        # Set up SSL context if TLS is enabled
-        context = None
-        if self.use_tls:
-            context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
-            
-            # For demo purposes, create a self-signed certificate
-            # In production, use proper certificates
-            try:
-                context.load_cert_chain('server.pem', 'server.key')
-            except FileNotFoundError:
-                logger.warning("No SSL certificate found. Server will not start.")
-                logger.warning("Generate certificates with: openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.pem -days 365 -nodes")
-                return
+        # Create HTTP server
+        self.server = HTTPServer((self.host, self.port), handler_factory)
         
-        # Create and bind socket
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind((self.host, self.port))
-        sock.listen(5)
-        
-        protocol = "HTTPS" if self.use_tls else "HTTP"
-        logger.info(f"Noise-KK server listening on {self.host}:{self.port} ({protocol})")
+        logger.info(f"Noise-KK HTTP server listening on {self.host}:{self.port}")
         logger.info(f"Server public key: {self.config.get_server_public_key_string()}")
         
         try:
-            while self.running:
-                client_sock, client_addr = sock.accept()
-                
-                if self.use_tls:
-                    # Wrap with TLS
-                    try:
-                        ssl_sock = context.wrap_socket(client_sock, server_side=True)
-                        
-                        # Handle connection in a new thread
-                        thread = threading.Thread(
-                            target=self._handle_client,
-                            args=(ssl_sock, client_addr)
-                        )
-                        thread.daemon = True
-                        thread.start()
-                        
-                    except Exception as e:
-                        logger.error(f"SSL handshake failed: {e}")
-                        client_sock.close()
-                else:
-                    # Handle plain TCP connection
-                    thread = threading.Thread(
-                        target=self._handle_client,
-                        args=(client_sock, client_addr)
-                    )
-                    thread.daemon = True
-                    thread.start()
-                    
+            self.server.serve_forever()
         except KeyboardInterrupt:
             logger.info("Server shutting down...")
         finally:
-            sock.close()
-    
-    def _handle_client(self, client_sock: socket.socket, client_addr: Tuple[str, int]):
-        """Handle a client connection"""
-        try:
-            # For this implementation, we assume all connections are Noise-KK
-            # In a real implementation, you'd detect the protocol
-            self.noise_handler.handle_noise_connection(client_sock, client_addr)
-            
-        except Exception as e:
-            logger.error(f"Error handling client {client_addr}: {e}")
-        finally:
-            client_sock.close()
+            if self.server:
+                self.server.shutdown()
     
     def stop(self):
         """Stop the server"""
-        self.running = False
+        if self.server:
+            self.server.shutdown()
 
 
 def main():
-    """Main function to run the Noise-KK server"""
+    """Main function to run the Noise-KK HTTP server"""
     import argparse
     
-    parser = argparse.ArgumentParser(description="OpenADP Noise-KK JSON-RPC Server")
+    parser = argparse.ArgumentParser(description="OpenADP Noise-KK JSON-RPC HTTP Server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8080, help="Port to bind to")
-    parser.add_argument("--tls", action="store_true", help="Enable TLS (default: disabled for Cloudflare setups)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
     
     args = parser.parse_args()
@@ -394,13 +416,13 @@ def main():
     config = ServerConfig()
     
     # Create and start server
-    server = NoiseKKTCPServer(args.host, args.port, config, use_tls=args.tls)
+    server = NoiseKKHTTPServer(args.host, args.port, config)
     
     try:
         server.start()
     except KeyboardInterrupt:
         print("\nShutting down server...")
-    
+
 
 if __name__ == "__main__":
     main() 
