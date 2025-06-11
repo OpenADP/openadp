@@ -4,12 +4,12 @@
   "servers": [
     {
       "url": "https://xyzzybill.openadp.org",
-      "public_key": "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder1XyZzyBillServer12345TestKey",
+      "public_key": "ed25519:jU6FewinLEHm8OTti9oWVRY0f/ZWDZP77mujPdm36wE=",
       "country": "US"
     },
     {
       "url": "https://sky.openadp.org",
-      "public_key": "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder2SkyServerTestKey67890Demo",
+      "public_key": "ed25519:7M53UvWgVPzEDMy+60I51iEqm0YW8bDFM+TYmzkegjc=",
       "country": "US"
     },
     {
