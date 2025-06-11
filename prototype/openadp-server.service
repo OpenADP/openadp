@@ -1,0 +1,33 @@
+[Unit]
+Description=OpenADP JSON-RPC Server
+Documentation=https://github.com/waywardgeek/openadp
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=openadp
+Group=openadp
+WorkingDirectory=/opt/openadp
+ExecStart=/usr/bin/python3 /opt/openadp/jsonrpc_server.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/openadp
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# Resource limits
+LimitNOFILE=65536
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target 
