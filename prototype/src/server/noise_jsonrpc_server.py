@@ -69,7 +69,7 @@ class NoiseKKHandler:
     def __init__(self, config: ServerConfig):
         self.config = config
     
-    def handle_noise_connection(self, client_socket: ssl.SSLSocket, client_addr: Tuple[str, int]):
+    def handle_noise_connection(self, client_socket: socket.socket, client_addr: Tuple[str, int]):
         """Handle a Noise-KK encrypted connection"""
         logger.info(f"Handling Noise-KK connection from {client_addr}")
         
@@ -217,30 +217,33 @@ class NoiseKKHandler:
 class NoiseKKTCPServer:
     """TCP server that handles both regular TLS and Noise-KK connections"""
     
-    def __init__(self, host: str = "0.0.0.0", port: int = 8443, config: Optional[ServerConfig] = None):
+    def __init__(self, host: str = "0.0.0.0", port: int = 8080, config: Optional[ServerConfig] = None, use_tls: bool = False):
         self.host = host
         self.port = port
         self.config = config or ServerConfig()
         self.noise_handler = NoiseKKHandler(self.config)
         self.running = False
+        self.use_tls = use_tls
     
     def start(self):
         """Start the server"""
         self.running = True
         
-        # Create SSL context
-        context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        
-        # For demo purposes, create a self-signed certificate
-        # In production, use proper certificates
-        try:
-            context.load_cert_chain('server.pem', 'server.key')
-        except FileNotFoundError:
-            logger.warning("No SSL certificate found. Server will not start.")
-            logger.warning("Generate certificates with: openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.pem -days 365 -nodes")
-            return
+        # Set up SSL context if TLS is enabled
+        context = None
+        if self.use_tls:
+            context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            
+            # For demo purposes, create a self-signed certificate
+            # In production, use proper certificates
+            try:
+                context.load_cert_chain('server.pem', 'server.key')
+            except FileNotFoundError:
+                logger.warning("No SSL certificate found. Server will not start.")
+                logger.warning("Generate certificates with: openssl req -x509 -newkey rsa:4096 -keyout server.key -out server.pem -days 365 -nodes")
+                return
         
         # Create and bind socket
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -248,45 +251,55 @@ class NoiseKKTCPServer:
         sock.bind((self.host, self.port))
         sock.listen(5)
         
-        logger.info(f"Noise-KK server listening on {self.host}:{self.port}")
+        protocol = "HTTPS" if self.use_tls else "HTTP"
+        logger.info(f"Noise-KK server listening on {self.host}:{self.port} ({protocol})")
         logger.info(f"Server public key: {self.config.get_server_public_key_string()}")
         
         try:
             while self.running:
                 client_sock, client_addr = sock.accept()
                 
-                # Wrap with TLS
-                try:
-                    ssl_sock = context.wrap_socket(client_sock, server_side=True)
-                    
-                    # Handle connection in a new thread
+                if self.use_tls:
+                    # Wrap with TLS
+                    try:
+                        ssl_sock = context.wrap_socket(client_sock, server_side=True)
+                        
+                        # Handle connection in a new thread
+                        thread = threading.Thread(
+                            target=self._handle_client,
+                            args=(ssl_sock, client_addr)
+                        )
+                        thread.daemon = True
+                        thread.start()
+                        
+                    except Exception as e:
+                        logger.error(f"SSL handshake failed: {e}")
+                        client_sock.close()
+                else:
+                    # Handle plain TCP connection
                     thread = threading.Thread(
                         target=self._handle_client,
-                        args=(ssl_sock, client_addr)
+                        args=(client_sock, client_addr)
                     )
                     thread.daemon = True
                     thread.start()
-                    
-                except Exception as e:
-                    logger.error(f"SSL handshake failed: {e}")
-                    client_sock.close()
                     
         except KeyboardInterrupt:
             logger.info("Server shutting down...")
         finally:
             sock.close()
     
-    def _handle_client(self, ssl_sock: ssl.SSLSocket, client_addr: Tuple[str, int]):
+    def _handle_client(self, client_sock: socket.socket, client_addr: Tuple[str, int]):
         """Handle a client connection"""
         try:
             # For this implementation, we assume all connections are Noise-KK
             # In a real implementation, you'd detect the protocol
-            self.noise_handler.handle_noise_connection(ssl_sock, client_addr)
+            self.noise_handler.handle_noise_connection(client_sock, client_addr)
             
         except Exception as e:
             logger.error(f"Error handling client {client_addr}: {e}")
         finally:
-            ssl_sock.close()
+            client_sock.close()
     
     def stop(self):
         """Stop the server"""
@@ -299,7 +312,8 @@ def main():
     
     parser = argparse.ArgumentParser(description="OpenADP Noise-KK JSON-RPC Server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=8443, help="Port to bind to")
+    parser.add_argument("--port", type=int, default=8080, help="Port to bind to")
+    parser.add_argument("--tls", action="store_true", help="Enable TLS (default: disabled for Cloudflare setups)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
     
     args = parser.parse_args()
@@ -311,7 +325,7 @@ def main():
     config = ServerConfig()
     
     # Create and start server
-    server = NoiseKKTCPServer(args.host, args.port, config)
+    server = NoiseKKTCPServer(args.host, args.port, config, use_tls=args.tls)
     
     try:
         server.start()
