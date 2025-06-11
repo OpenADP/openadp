@@ -121,7 +121,7 @@ class NoiseKKHandler:
         self.config = config
     
     def handle_noise_connection(self, client_socket: socket.socket, client_addr: Tuple[str, int]):
-        """Handle a Noise-KK encrypted connection"""
+        """Handle a Noise-KK encrypted connection over HTTP"""
         logger.info(f"Handling Noise-KK connection from {client_addr}")
         
         try:
@@ -134,27 +134,45 @@ class NoiseKKHandler:
                 dummy_client_public  # In production, this would come from client auth
             )
             
-            # Create transport and perform handshake
-            transport = NoiseKKTransport(client_socket, noise_session)
+            # Create transport with HTTP tunneling (server mode)
+            transport = NoiseKKTransport(
+                client_socket, 
+                noise_session, 
+                is_client=False,
+                http_host="localhost"  # Server doesn't need specific host
+            )
             transport.perform_handshake()
             
             logger.info(f"Noise-KK handshake completed with {client_addr}")
             
-            # Handle encrypted JSON-RPC requests
+            # Handle encrypted JSON-RPC requests over HTTP
             while True:
                 try:
-                    # Receive encrypted request
-                    encrypted_request = transport.recv_encrypted()
+                    # Receive JSON-RPC request containing encrypted data
+                    jsonrpc_request = transport._jsonrpc_receive_request()
                     
-                    # Parse JSON-RPC request
-                    request_data = json.loads(encrypted_request.decode('utf-8'))
-                    
-                    # Process the request
-                    response_data = self._process_jsonrpc_request(request_data)
-                    
-                    # Send encrypted response
-                    response_json = json.dumps(response_data).encode('utf-8')
-                    transport.send_encrypted(response_json)
+                    if jsonrpc_request['method'] == 'noise-data':
+                        # Extract encrypted data (first parameter, already as bytes)
+                        ciphertext = jsonrpc_request['params'][0]
+                        
+                        # Decrypt to get inner JSON-RPC request
+                        encrypted_request = transport.noise_session.decrypt(ciphertext)
+                        
+                        # Parse inner JSON-RPC request
+                        request_data = json.loads(encrypted_request.decode('utf-8'))
+                        
+                        # Process the inner request
+                        response_data = self._process_jsonrpc_request(request_data)
+                        
+                        # Encrypt inner JSON-RPC response
+                        response_json = json.dumps(response_data).encode('utf-8')
+                        response_ciphertext = transport.noise_session.encrypt(response_json)
+                        
+                        # Send encrypted response via outer JSON-RPC
+                        transport._jsonrpc_send_response(jsonrpc_request['id'], response_ciphertext)
+                    else:
+                        # Unknown method
+                        transport._jsonrpc_send_error(jsonrpc_request['id'], f"Unknown method: {jsonrpc_request['method']}")
                     
                 except Exception as e:
                     logger.error(f"Error handling Noise-KK request: {e}")

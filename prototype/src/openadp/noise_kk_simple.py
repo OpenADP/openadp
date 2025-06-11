@@ -329,65 +329,281 @@ class SimplifiedNoiseKK:
 
 
 class NoiseKKTransport:
-    """Transport layer for Noise-KK over a socket"""
+    """Transport layer for Noise-KK over JSON-RPC/HTTP (for Cloudflare compatibility)"""
     
-    def __init__(self, socket_obj: socket.socket, noise_session: SimplifiedNoiseKK):
+    def __init__(self, socket_obj: socket.socket, noise_session: SimplifiedNoiseKK, is_client: bool = True, http_host: str = "localhost"):
         self.socket = socket_obj
         self.noise_session = noise_session
+        self.is_client = is_client
+        self.http_host = http_host
         self._handshake_done = False
+        self._request_id = 0
+    
+    def _next_request_id(self):
+        """Get next JSON-RPC request ID"""
+        self._request_id += 1
+        return self._request_id
     
     def perform_handshake(self):
-        """Perform the Noise-KK handshake"""
+        """Perform Noise-KK handshake over JSON-RPC/HTTP"""
         if self._handshake_done:
             return
         
         try:
             if self.noise_session.is_initiator:
-                # Client: send initial message
+                # Client: start handshake and send via JSON-RPC
                 msg1 = self.noise_session.start_handshake()
-                self._send_message(msg1)
+                response_data = self._jsonrpc_call("noise-handshake", [msg1])
                 
-                # Client: receive and process response
-                msg2 = self._recv_message()
-                _, complete = self.noise_session.process_handshake_message(msg2)
+                # Client: process server response
+                _, complete = self.noise_session.process_handshake_message(response_data)
                 
                 if not complete:
                     raise RuntimeError("Handshake failed to complete")
             else:
-                # Server: receive and process initial message
-                msg1 = self._recv_message()
+                # Server: receive JSON-RPC request and extract handshake data
+                request = self._jsonrpc_receive_request()
+                
+                if request['method'] != 'noise-handshake':
+                    raise RuntimeError(f"Expected noise-handshake, got {request['method']}")
+                
+                # Extract handshake data (first parameter, already as bytes)
+                msg1 = request['params'][0]
+                
+                # Server: process handshake and generate response
                 msg2, complete = self.noise_session.process_handshake_message(msg1)
                 
-                # Server: send response
+                # Server: send response via JSON-RPC
                 if msg2:
-                    self._send_message(msg2)
+                    self._jsonrpc_send_response(request['id'], msg2)
+                else:
+                    self._jsonrpc_send_error(request['id'], "Handshake failed")
                 
                 if not complete:
                     raise RuntimeError("Handshake failed to complete")
             
             self._handshake_done = True
-            logger.info("Noise-KK handshake completed successfully")
+            logger.info("Noise-KK handshake completed successfully over JSON-RPC/HTTP")
             
         except Exception as e:
             logger.error(f"Noise-KK handshake failed: {e}")
             raise
     
-    def _send_message(self, message: bytes):
-        """Send a message with length prefix"""
-        if len(message) > 65535:
-            raise ValueError("Message too large")
+    def _jsonrpc_call(self, method: str, params: list) -> bytes:
+        """Make a JSON-RPC call and return the result (as bytes)"""
+        import base64, json
         
-        length_bytes = struct.pack('>H', len(message))  # 16-bit big-endian
-        self.socket.send(length_bytes + message)
+        # Convert binary parameters to base64
+        encoded_params = []
+        for param in params:
+            if isinstance(param, bytes):
+                encoded_params.append(base64.b64encode(param).decode('ascii'))
+            else:
+                encoded_params.append(param)
+        
+        # Build JSON-RPC request
+        request = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": encoded_params,
+            "id": self._next_request_id()
+        }
+        
+        # Send HTTP POST with JSON-RPC
+        self._http_post_jsonrpc(request)
+        
+        # Receive JSON-RPC response
+        response = self._jsonrpc_receive_response()
+        
+        # Check for errors
+        if "error" in response:
+            raise RuntimeError(f"JSON-RPC error: {response['error']}")
+        
+        # Decode result from base64 to bytes
+        result_b64 = response["result"]
+        return base64.b64decode(result_b64)
     
-    def _recv_message(self) -> bytes:
-        """Receive a message with length prefix"""
-        # Read length
-        length_bytes = self._recv_exact(2)
-        length = struct.unpack('>H', length_bytes)[0]
+    def _http_post_jsonrpc(self, jsonrpc_request: dict):
+        """Send JSON-RPC request over HTTP POST"""
+        import json
         
-        # Read message
-        return self._recv_exact(length)
+        # Serialize JSON-RPC request
+        body = json.dumps(jsonrpc_request).encode('utf-8')
+        
+        # Build HTTP POST request
+        request = (
+            f"POST / HTTP/1.1\r\n"
+            f"Host: {self.http_host}\r\n"
+            f"Content-Type: application/json\r\n"
+            f"Content-Length: {len(body)}\r\n"
+            f"Connection: keep-alive\r\n"
+            f"\r\n"
+        ).encode('utf-8') + body
+        
+        # Send request
+        self.socket.send(request)
+    
+    def _jsonrpc_receive_request(self) -> dict:
+        """Receive JSON-RPC request over HTTP and parse it"""
+        import json, base64
+        
+        # Receive HTTP request
+        http_request = self._http_receive_request()
+        
+        # Parse JSON-RPC from HTTP body
+        jsonrpc_request = json.loads(http_request['body'].decode('utf-8'))
+        
+        # Decode base64 parameters back to bytes
+        if 'params' in jsonrpc_request:
+            decoded_params = []
+            for param in jsonrpc_request['params']:
+                if isinstance(param, str):
+                    try:
+                        # Try to decode as base64
+                        decoded_params.append(base64.b64decode(param))
+                    except:
+                        # If it fails, keep as string
+                        decoded_params.append(param)
+                else:
+                    decoded_params.append(param)
+            jsonrpc_request['params'] = decoded_params
+        
+        return jsonrpc_request
+    
+    def _jsonrpc_send_response(self, request_id: int, result_data: bytes):
+        """Send JSON-RPC response over HTTP"""
+        import json, base64
+        
+        # Encode result as base64
+        result_b64 = base64.b64encode(result_data).decode('ascii')
+        
+        # Build JSON-RPC response
+        response = {
+            "jsonrpc": "2.0",
+            "result": result_b64,
+            "id": request_id
+        }
+        
+        # Send HTTP response
+        self._http_send_jsonrpc_response(200, response)
+    
+    def _jsonrpc_send_error(self, request_id: int, error_message: str):
+        """Send JSON-RPC error response over HTTP"""
+        import json
+        
+        # Build JSON-RPC error response
+        response = {
+            "jsonrpc": "2.0",
+            "error": {"code": -32603, "message": error_message},
+            "id": request_id
+        }
+        
+        # Send HTTP response
+        self._http_send_jsonrpc_response(500, response)
+    
+    def _jsonrpc_receive_response(self) -> dict:
+        """Receive JSON-RPC response over HTTP"""
+        import json
+        
+        # Receive HTTP response
+        http_response = self._http_receive_response()
+        
+        # Parse JSON-RPC from HTTP body
+        return json.loads(http_response['body'].decode('utf-8'))
+    
+    def _http_send_jsonrpc_response(self, status: int, jsonrpc_response: dict):
+        """Send HTTP response containing JSON-RPC"""
+        import json
+        
+        # Serialize JSON-RPC response
+        response_body = json.dumps(jsonrpc_response).encode('utf-8')
+        
+        # Build HTTP response
+        status_text = "OK" if status == 200 else "Error"
+        response = (
+            f"HTTP/1.1 {status} {status_text}\r\n"
+            f"Content-Type: application/json\r\n"
+            f"Content-Length: {len(response_body)}\r\n"
+            f"Connection: keep-alive\r\n"
+            f"\r\n"
+        ).encode('utf-8') + response_body
+        
+        self.socket.send(response)
+    
+    def _http_receive_request(self) -> dict:
+        """Receive HTTP request and parse it"""
+        # Read HTTP request line by line until we get headers and body
+        lines = []
+        while True:
+            line = self._recv_line()
+            lines.append(line)
+            if line == b'\r\n':  # End of headers
+                break
+        
+        # Parse request line
+        request_line = lines[0].decode('utf-8').strip()
+        method, path, version = request_line.split(' ', 2)
+        
+        # Parse headers
+        headers = {}
+        for line in lines[1:-1]:  # Skip request line and empty line
+            header_line = line.decode('utf-8').strip()
+            if ':' in header_line:
+                key, value = header_line.split(':', 1)
+                headers[key.strip().lower()] = value.strip()
+        
+        # Read body if present
+        body = b""
+        if 'content-length' in headers:
+            content_length = int(headers['content-length'])
+            body = self._recv_exact(content_length)
+        
+        return {
+            'method': method,
+            'path': path,
+            'headers': headers,
+            'body': body
+        }
+    
+    def _http_receive_response(self) -> dict:
+        """Receive HTTP response and parse it"""
+        # Read status line
+        status_line = self._recv_line().decode('utf-8').strip()
+        version, status_code, status_text = status_line.split(' ', 2)
+        
+        # Read headers
+        headers = {}
+        while True:
+            line = self._recv_line()
+            if line == b'\r\n':  # End of headers
+                break
+            header_line = line.decode('utf-8').strip()
+            if ':' in header_line:
+                key, value = header_line.split(':', 1)
+                headers[key.strip().lower()] = value.strip()
+        
+        # Read body
+        body = b""
+        if 'content-length' in headers:
+            content_length = int(headers['content-length'])
+            body = self._recv_exact(content_length)
+        
+        return {
+            'status': int(status_code),
+            'headers': headers,
+            'body': body
+        }
+    
+    def _recv_line(self) -> bytes:
+        """Receive a line ending with \r\n"""
+        line = b""
+        while True:
+            char = self.socket.recv(1)
+            if not char:
+                raise ConnectionError("Socket closed")
+            line += char
+            if line.endswith(b'\r\n'):
+                return line
     
     def _recv_exact(self, n: int) -> bytes:
         """Receive exactly n bytes"""
@@ -400,20 +616,38 @@ class NoiseKKTransport:
         return data
     
     def send_encrypted(self, plaintext: bytes):
-        """Send an encrypted message"""
+        """Send an encrypted message via JSON-RPC"""
         if not self._handshake_done:
             raise ValueError("Handshake not completed")
         
         ciphertext = self.noise_session.encrypt(plaintext)
-        self._send_message(ciphertext)
+        
+        if self.is_client:
+            # Client sends JSON-RPC call and receives response
+            response_ciphertext = self._jsonrpc_call("noise-data", [ciphertext])
+            # Store response for recv_encrypted to pick up
+            self._pending_response = response_ciphertext
+        else:
+            # Server side is handled in the server loop
+            raise RuntimeError("Server should not call send_encrypted directly")
     
     def recv_encrypted(self) -> bytes:
-        """Receive and decrypt a message"""
+        """Receive and decrypt a message via JSON-RPC"""
         if not self._handshake_done:
             raise ValueError("Handshake not completed")
         
-        ciphertext = self._recv_message()
-        return self.noise_session.decrypt(ciphertext)
+        if self.is_client:
+            # Client gets the response from send_encrypted
+            if not hasattr(self, '_pending_response'):
+                raise RuntimeError("No pending response available")
+            
+            response_ciphertext = self._pending_response
+            delattr(self, '_pending_response')
+            
+            return self.noise_session.decrypt(response_ciphertext)
+        else:
+            # Server side is handled in the server loop
+            raise RuntimeError("Server should not call recv_encrypted directly")
     
     def close(self):
         """Close the socket"""

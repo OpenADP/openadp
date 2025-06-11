@@ -92,8 +92,13 @@ class NoiseKKJSONRPCClient:
             
             logger.info(f"TLS connection established to {self.hostname}:{self.port}")
             
-            # Perform Noise-KK handshake
-            self._noise_transport = NoiseKKTransport(self._socket, self.noise_session)
+            # Perform Noise-KK handshake with HTTP tunneling
+            self._noise_transport = NoiseKKTransport(
+                self._socket, 
+                self.noise_session, 
+                is_client=True, 
+                http_host=self.hostname
+            )
             self._noise_transport.perform_handshake()
             
             logger.info("Noise-KK handshake completed")
