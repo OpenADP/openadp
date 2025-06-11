@@ -8,8 +8,7 @@ set -e
 INSTALL_DIR="/opt/openadp"
 SERVICE_USER="openadp"
 SERVICE_GROUP="openadp"
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-SOURCE_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+SOURCE_DIR="$(dirname "$(readlink -f "$0")")"
 
 echo "=== OpenADP Server Installation ==="
 echo "Source directory: $SOURCE_DIR"
@@ -49,7 +48,7 @@ echo "Setting permissions..."
 chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR"
 chmod 755 "$INSTALL_DIR"
 find "$INSTALL_DIR" -name "*.py" -exec chmod 644 {} \;
-chmod +x "$INSTALL_DIR/server/noise_jsonrpc_server.py"
+chmod +x "$INSTALL_DIR/server/jsonrpc_server.py"
 chmod +x "$INSTALL_DIR/encrypt.py"
 chmod +x "$INSTALL_DIR/decrypt.py"
 
@@ -62,7 +61,7 @@ systemctl daemon-reload
 # Install dependencies
 echo "Installing Python dependencies..."
 apt-get update
-apt-get install -y python3 sqlite3 python3-cryptography python3-dissononce
+apt-get install -y python3 sqlite3 python3-cryptography
 
 echo "=== Installation Complete ==="
 echo ""

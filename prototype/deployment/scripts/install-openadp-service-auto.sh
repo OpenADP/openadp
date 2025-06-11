@@ -9,8 +9,7 @@ INSTALL_DIR="/opt/openadp"
 SERVICE_USER="openadp"
 SERVICE_GROUP="openadp"
 # Navigate from deployment/scripts/ back to prototype root
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-SOURCE_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+SOURCE_DIR="$(dirname "$(dirname "$(dirname "$(readlink -f "$0")")")")"
 
 echo "=== OpenADP Server Installation (Auto-detect) ==="
 echo "Source directory: $SOURCE_DIR"
@@ -41,7 +40,6 @@ case $OS in
         PYTHON_PKG="python3"
         SQLITE_PKG="sqlite3"
         CRYPTO_PKG="python3-cryptography"
-        NOISE_PKG="python3-dissononce"
         ;;
     fedora|rhel|centos|rocky|almalinux)
         PKG_MANAGER="dnf"
@@ -50,7 +48,6 @@ case $OS in
         PYTHON_PKG="python3"
         SQLITE_PKG="sqlite"
         CRYPTO_PKG="python3-cryptography"
-        NOISE_PKG="python3-pip"  # DissoNonce not in dnf repos, will pip install
         ;;
     opensuse*|sles)
         PKG_MANAGER="zypp"
@@ -59,7 +56,6 @@ case $OS in
         PYTHON_PKG="python3"
         SQLITE_PKG="sqlite3"
         CRYPTO_PKG="python3-cryptography"
-        NOISE_PKG="python3-pip"  # DissoNonce not in zypper repos
         ;;
     arch|manjaro)
         PKG_MANAGER="pacman"
@@ -68,7 +64,6 @@ case $OS in
         PYTHON_PKG="python"
         SQLITE_PKG="sqlite"
         CRYPTO_PKG="python-cryptography"
-        NOISE_PKG="python-pip"  # DissoNonce via pip
         ;;
     *)
         echo "Unsupported OS: $OS"
@@ -98,9 +93,9 @@ mkdir -p "$INSTALL_DIR"
 
 # Copy files
 echo "Copying OpenADP files..."
-cp -r "$SOURCE_DIR"/src/* "$INSTALL_DIR/"
+cp -r "$SOURCE_DIR"/src "$INSTALL_DIR/"
 cp -r "$SOURCE_DIR"/proto "$INSTALL_DIR/" 2>/dev/null || true
-cp "$SOURCE_DIR"/tools/* "$INSTALL_DIR/" 2>/dev/null || true
+cp -r "$SOURCE_DIR"/tools "$INSTALL_DIR/" 2>/dev/null || true
 cp "$SOURCE_DIR"/run_server.py "$INSTALL_DIR/"
 
 # Set permissions
@@ -109,9 +104,8 @@ chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR"
 chmod 755 "$INSTALL_DIR"
 find "$INSTALL_DIR" -name "*.py" -exec chmod 644 {} \;
 chmod +x "$INSTALL_DIR/run_server.py"
-chmod +x "$INSTALL_DIR/server/noise_jsonrpc_server.py"
-chmod +x "$INSTALL_DIR/encrypt.py"
-chmod +x "$INSTALL_DIR/decrypt.py"
+chmod +x "$INSTALL_DIR/tools/encrypt.py"
+chmod +x "$INSTALL_DIR/tools/decrypt.py"
 
 # Install systemd service
 echo "Installing systemd service..."
@@ -124,19 +118,8 @@ echo "Installing Python dependencies..."
 echo "Running: $PKG_UPDATE"
 $PKG_UPDATE
 
-echo "Running: $PKG_INSTALL $PYTHON_PKG $SQLITE_PKG $CRYPTO_PKG $NOISE_PKG"
-$PKG_INSTALL $PYTHON_PKG $SQLITE_PKG $CRYPTO_PKG $NOISE_PKG
-
-# Install DissoNonce via pip for non-Debian systems
-case $OS in
-    ubuntu|debian|raspbian)
-        echo "DissoNonce installed via apt package"
-        ;;
-    *)
-        echo "Installing DissoNonce via pip..."
-        pip3 install dissononce
-        ;;
-esac
+echo "Running: $PKG_INSTALL $PYTHON_PKG $SQLITE_PKG $CRYPTO_PKG"
+$PKG_INSTALL $PYTHON_PKG $SQLITE_PKG $CRYPTO_PKG
 
 echo "=== Installation Complete ==="
 echo ""

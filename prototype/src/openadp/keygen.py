@@ -29,142 +29,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from openadp import crypto
 from openadp import sharing
-
-# Import the modern Noise-KK client
-try:
-    from client.noise_jsonrpc_client import NoiseKKJSONRPCClient
-    import json
-    HAVE_NOISE_CLIENT = True
-except ImportError as e:
-    # No fallback - require Noise-KK client
-    print(f"❌ Error: Could not import Noise-KK client: {e}")
-    print("Make sure the Noise-KK client is available in client/noise_jsonrpc_client.py")
-    sys.exit(1)
-
-
-class NoiseKKClientManager:
-    """
-    Client manager that provides a unified interface using Noise-KK clients
-    """
-    
-    def __init__(self, servers_json_path: str = None):
-        """Initialize with server list"""
-        if servers_json_path is None:
-            # Try multiple possible locations for servers.json
-            possible_paths = [
-                "../../../api/servers.json",  # From tools directory
-                "../../api/servers.json",     # From src directory  
-                "../api/servers.json",        # From one level up
-                "api/servers.json",           # From project root
-                "servers.json"                # Current directory
-            ]
-            servers_json_path = None
-            for path in possible_paths:
-                if os.path.exists(path):
-                    servers_json_path = path
-                    break
-            
-            if servers_json_path is None:
-                print("Warning: servers.json not found in standard locations")
-                servers_json_path = "../api/servers.json"  # fallback
-        
-        self.servers = self._load_servers(servers_json_path)
-        self.live_clients = self._test_servers()
-    
-    def _load_servers(self, servers_json_path: str) -> list:
-        """Load server information from servers.json"""
-        try:
-            with open(servers_json_path, 'r') as f:
-                data = json.load(f)
-                return data.get('servers', [])
-        except FileNotFoundError:
-            print(f"Warning: {servers_json_path} not found. Using default server list.")
-            return [
-                {
-                    "url": "https://xyzzybill.openadp.org",
-                    "public_key": "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder1XyZzyBillServer12345TestKey",
-                    "country": "US"
-                },
-                {
-                    "url": "https://sky.openadp.org",
-                    "public_key": "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder2SkyServerTestKey678901234",
-                    "country": "US"
-                }
-            ]
-    
-    def _test_servers(self) -> list:
-        """Test servers and return list of working clients"""
-        live_clients = []
-        
-        for i, server in enumerate(self.servers):
-            try:
-                # Extract server info (no 'id' field in actual servers.json)
-                url = server['url']
-                public_key = server['public_key']
-                server_name = f"server_{i+1}"  # Generate a name since no ID field
-                
-                # Create client - support both HTTP and HTTPS
-                if url.startswith('http://'):
-                    # For HTTP (local testing), use a simple direct connection
-                    try:
-                        import urllib.parse
-                        parsed = urllib.parse.urlparse(url)
-                        hostname = parsed.hostname or 'localhost'
-                        port = parsed.port or 8080
-                        
-                        # Create a simple wrapper that provides the same interface
-                        class SimpleHTTPClient:
-                            def __init__(self, url, hostname, port, public_key):
-                                self.server_url = url
-                                self.hostname = hostname
-                                self.port = port
-                                self.public_key = public_key
-                                
-                            def echo(self, message):
-                                # For now, assume HTTP servers are working if they're running
-                                return "test"
-                                
-                            def register_secret(self, uid, did, bid, version, x, y, max_guesses, expiration):
-                                # This will be handled by the actual encryption code
-                                # For now, simulate success for HTTP servers  
-                                return True, None
-                                
-                            def recover_secret(self, uid, did, bid, b, guess_num):
-                                # This will be handled by the actual decryption code
-                                return None, "HTTP recovery not implemented in basic test"
-                                
-                            def list_backups(self, uid):
-                                return [], None
-                        
-                        client = SimpleHTTPClient(url, hostname, port, public_key)
-                    except Exception as e:
-                        print(f"OpenADP: ❌ {server_name} ({url}) HTTP setup failed: {e}")
-                        continue
-                else:
-                    # Use regular HTTPS client
-                    client = NoiseKKJSONRPCClient(url, public_key)
-                
-                # Quick test to verify server is responsive
-                test_result = client.echo("test")
-                if test_result == "test":
-                    live_clients.append(client)
-                    print(f"OpenADP: ✅ {server_name} ({url}) online (Noise-KK)")
-                else:
-                    print(f"OpenADP: ❌ {server_name} ({url}) echo failed")
-            except Exception as e:
-                server_name = f"server_{i+1}"
-                url = server.get('url', 'unknown')
-                print(f"OpenADP: ❌ {server_name} ({url}) connection failed: {e}")
-        
-        return live_clients
-    
-    def get_live_clients(self) -> list:
-        """Get list of live client instances"""
-        return self.live_clients
-    
-    def get_live_server_urls(self) -> list:
-        """Get list of live server URLs"""
-        return [client.server_url for client in self.live_clients]
+from client.client import Client
 
 
 def derive_identifiers(filename: str, username: Optional[str] = None, 
@@ -241,22 +106,15 @@ def generate_encryption_key(filename: str, password: str, max_guesses: int = 10,
     # Step 2: Convert password to PIN
     pin = password_to_pin(password)
     
-    # Step 3: Initialize OpenADP client (prefer Noise-KK if available)
-    if HAVE_NOISE_CLIENT:
-        client_manager = NoiseKKClientManager()
-        live_clients = client_manager.get_live_clients()
-        if len(live_clients) == 0:
-            return None, "No live OpenADP servers available", None
-        print(f"OpenADP: Using {len(live_clients)} live servers with Noise-KK encryption")
-        server_urls_used = [client.server_url for client in live_clients]
-    else:
-        # Fallback to legacy client
-        client = Client()
-        if client.get_live_server_count() == 0:
-            return None, "No live OpenADP servers available", None
-        print(f"OpenADP: Using {client.get_live_server_count()} live servers (legacy mode)")
-        live_clients = client.live_servers
-        server_urls_used = client.get_live_server_urls()
+    # Step 3: Initialize OpenADP client
+    client = Client()
+    if client.get_live_server_count() == 0:
+        return None, "No live OpenADP servers available", None
+    
+    print(f"OpenADP: Using {client.get_live_server_count()} live servers")
+    
+    # Capture server URLs that will be used
+    server_urls_used = client.get_live_server_urls()
     
     # Step 4: Generate random secret and create point
     secret = secrets.randbelow(crypto.q)
@@ -264,8 +122,8 @@ def generate_encryption_key(filename: str, password: str, max_guesses: int = 10,
     S = crypto.point_mul(secret, U)
     
     # Step 5: Create shares using secret sharing
-    threshold = min(2, len(live_clients))  # Need at least 2 servers for threshold
-    num_shares = len(live_clients)
+    threshold = min(2, client.get_live_server_count())  # Need at least 2 servers for threshold
+    num_shares = client.get_live_server_count()
     
     if num_shares < threshold:
         return None, f"Need at least {threshold} servers, only {num_shares} available", None
@@ -278,11 +136,12 @@ def generate_encryption_key(filename: str, password: str, max_guesses: int = 10,
     registration_errors = []
     
     for i, (x, y) in enumerate(shares):
-        if i >= len(live_clients):
+        if i >= len(client.live_servers):
             break  # More shares than servers
             
-        # Register this specific share with this specific server
-        server_client = live_clients[i]
+        # Register this specific share to this specific server only
+        # Each server has its own database, so same UID/DID/BID is fine
+        server_client = client.live_servers[i]
         y_str = str(y)
         
         try:
@@ -337,53 +196,40 @@ def recover_encryption_key(filename: str, password: str, server_urls: Optional[L
     # Step 3: Initialize OpenADP client - use specific servers if provided
     if server_urls:
         # Use the specific servers that were used during encryption
-        if HAVE_NOISE_CLIENT:
-            # Use Noise-KK clients for specific server URLs
-            live_clients = []
-            print(f"OpenADP: Testing {len(server_urls)} servers from metadata...")
-            
-            for i, url in enumerate(server_urls):
-                try:
-                    # Create client for this specific server
-                    client_instance = NoiseKKJSONRPCClient(url, "placeholder_key")
-                    
-                    # Quick test to see if server is still alive
-                    test_message = f"recovery_test_{int(time.time())}"
-                    result, error = client_instance.echo(test_message)
-                    if not error and result == test_message:
-                        live_clients.append(client_instance)
-                        print(f"  ✅ Server {i+1}: {url}")
-                    else:
-                        print(f"  ❌ Server {i+1}: {url} - Echo failed")
-                except Exception as e:
-                    print(f"  ❌ Server {i+1}: {url} - {str(e)}")
-            
-            if len(live_clients) == 0:
-                return None, "None of the original servers are available"
-            
-            print(f"OpenADP: Using {len(live_clients)} servers from original encryption (Noise-KK)")
-        else:
-            # Legacy approach - try to connect to specific servers
-            live_clients = []
-            print(f"OpenADP: Testing {len(server_urls)} servers from metadata (legacy mode)...")
-            
-            # This is a simplified fallback - in practice you'd want better server selection
-            print("Warning: Legacy mode may not support all server URL formats")
-            return None, "Legacy client cannot handle specific server URLs. Use current servers instead."
+        from client.jsonrpc_client import OpenADPClient
+        live_servers = []
+        print(f"OpenADP: Testing {len(server_urls)} servers from metadata...")
+        
+        for i, url in enumerate(server_urls):
+            try:
+                client_instance = OpenADPClient(url)
+                # Quick test to see if server is still alive
+                test_message = f"recovery_test_{int(time.time())}"
+                result, error = client_instance.echo(test_message)
+                if not error and result == test_message:
+                    live_servers.append(client_instance)
+                    print(f"  ✅ Server {i+1}: {url}")
+                else:
+                    print(f"  ❌ Server {i+1}: {url} - {error or 'Echo failed'}")
+            except Exception as e:
+                print(f"  ❌ Server {i+1}: {url} - {str(e)}")
+        
+        if len(live_servers) == 0:
+            return None, "None of the original servers are available"
+        
+        print(f"OpenADP: Using {len(live_servers)} servers from original encryption")
+        # Create a mock client object with the live servers
+        class MockClient:
+            def __init__(self, servers):
+                self.live_servers = servers
+        client = MockClient(live_servers)
     else:
         # Fall back to scraping current servers (legacy behavior)
-        if HAVE_NOISE_CLIENT:
-            client_manager = NoiseKKClientManager()
-            live_clients = client_manager.get_live_clients()
-            if len(live_clients) == 0:
-                return None, "No live OpenADP servers available"
-            print(f"OpenADP: Using {len(live_clients)} live servers (Noise-KK)")
-        else:
-            client = Client()
-            if client.get_live_server_count() == 0:
-                return None, "No live OpenADP servers available"
-            live_clients = client.live_servers
-            print(f"OpenADP: Using {client.get_live_server_count()} live servers (legacy mode)")
+        client = Client()
+        if client.get_live_server_count() == 0:
+            return None, "No live OpenADP servers available"
+        
+        print(f"OpenADP: Using {client.get_live_server_count()} live servers")
     
     # Step 4: Create cryptographic context (same as encryption)
     U = crypto.H(uid.encode(), did.encode(), bid.encode(), pin)
@@ -398,7 +244,7 @@ def recover_encryption_key(filename: str, password: str, server_urls: Optional[L
     print("OpenADP: Recovering shares from servers...")
     recovered_shares = []
     
-    for i, server_client in enumerate(live_clients):
+    for i, server_client in enumerate(client.live_servers):
         try:
             # Get current guess number for this backup from this specific server
             backups, error = server_client.list_backups(uid)

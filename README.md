@@ -93,17 +93,6 @@ Noise-KK layer, where the server key is trusted by the client, and the client
 key is trusted by the server.  The client gets its authentication key when
 authenticating (how this works is TBD).
 
-The layers are fairly complex, but we need to use HTTP(S) to get through
-Cloudlfare, so we use JSON-RPC on the outer layer to transport the Noise-KK
-blobs, and JSON-RPC on the inside for providing the APIs for registerSecret,
-and the others.  The layers from inner to outer are:
-
-* JSON-RPC encoding for calling server methods.
-* Noise-KK encryption to provide privacy vs Cloudflare, as Cloudflare
-  terminates TLS.
-* TLS, the standard encrypted trasport from the client to Cloudflare.
-* TCP network protocol.
-
 Over the Noise-KK second layer of encryption, the client sends a key share to
 each of the OpenADP servers, which  can be anywhere in the world.  These
 servers use Cloudflare Tunnels, which hides their IP address from the client.

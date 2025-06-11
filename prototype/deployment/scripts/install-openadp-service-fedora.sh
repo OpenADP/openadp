@@ -9,8 +9,7 @@ INSTALL_DIR="/opt/openadp"
 SERVICE_USER="openadp"
 SERVICE_GROUP="openadp"
 # Navigate from deployment/scripts/ back to prototype root
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
-SOURCE_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+SOURCE_DIR="$(dirname "$(dirname "$(dirname "$(readlink -f "$0")")")")"
 
 echo "=== OpenADP Server Installation (Fedora) ==="
 echo "Source directory: $SOURCE_DIR"
@@ -64,10 +63,7 @@ systemctl daemon-reload
 # Install dependencies
 echo "Installing Python dependencies..."
 dnf update -y
-# Note: python3-dissononce may not be available in Fedora repos
-# Install from PyPI if needed: pip3 install dissononce
-dnf install -y python3 sqlite python3-cryptography python3-pip
-pip3 install dissononce
+dnf install -y python3 sqlite python3-cryptography
 
 echo "=== Installation Complete ==="
 echo ""

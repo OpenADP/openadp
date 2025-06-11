@@ -156,6 +156,30 @@
         <button class="copy-btn" onclick="copyJSON()">Copy JSON Schema</button>
     </div>
 
+    <script type="application/json" id="servers-data">
+    {
+      "version": "1.0",
+      "updated": "2024-01-15T10:30:00Z",
+      "servers": [
+        {
+          "url": "https://xyzzybill.openadp.org",
+          "public_key": "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder1XyZzyBillServer12345TestKey",
+          "country": "US"
+        },
+        {
+          "url": "https://sky.openadp.org",
+          "public_key": "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder2SkyServerTestKey67890Demo",
+          "country": "US"
+        },
+        {
+          "url": "https://akash.network",
+          "public_key": "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder3AkashNetworkTestKey111Demo",
+          "country": "CA"
+        }
+      ]
+    }
+    </script>
+
     <script>
         // Country code to flag emoji mapping
         const countryFlags = {
@@ -163,52 +187,35 @@
         };
 
         // Load and display server data
-        async function loadServerData() {
-            try {
-                const response = await fetch('api/servers.json');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const serverData = await response.json();
-                const serverGrid = document.getElementById('server-grid');
+        function loadServerData() {
+            const serverData = JSON.parse(document.getElementById('servers-data').textContent);
+            const serverGrid = document.getElementById('server-grid');
+            
+            serverGrid.innerHTML = '';
+            
+            // Update stats
+            const countries = new Set(serverData.servers.map(s => s.country));
+            document.getElementById('server-count').textContent = serverData.servers.length;
+            document.getElementById('country-count').textContent = countries.size;
+            
+            serverData.servers.forEach(server => {
+                const serverCard = document.createElement('div');
+                serverCard.className = 'server-card';
                 
-                serverGrid.innerHTML = '';
+                const flag = countryFlags[server.country] || '🏳️';
                 
-                // Update stats
-                const countries = new Set(serverData.servers.map(s => s.country));
-                document.getElementById('server-count').textContent = serverData.servers.length;
-                document.getElementById('country-count').textContent = countries.size;
+                serverCard.innerHTML = `
+                    <div class="server-url">${server.url}</div>
+                    <div class="server-detail">
+                        <strong>Country:</strong> 
+                        <span class="country-flag">${flag}</span>${server.country}
+                    </div>
+                    <div class="server-detail"><strong>Public Key:</strong></div>
+                    <div class="key-display">${server.public_key}</div>
+                `;
                 
-                // Update the JSON display with fresh data
-                document.getElementById('json-display').textContent = JSON.stringify(serverData, null, 2);
-
-                serverData.servers.forEach(server => {
-                    const serverCard = document.createElement('div');
-                    serverCard.className = 'server-card';
-                    
-                    const flag = countryFlags[server.country] || '🏳️';
-                    
-                    serverCard.innerHTML = `
-                        <div class="server-url">${server.url}</div>
-                        <div class="server-detail">
-                            <strong>Country:</strong> 
-                            <span class="country-flag">${flag}</span>${server.country}
-                        </div>
-                        <div class="server-detail"><strong>Public Key:</strong></div>
-                        <div class="key-display">${server.public_key}</div>
-                    `;
-                    
-                    serverGrid.appendChild(serverCard);
-                });
-
-                // Expose JSON data for programmatic access
-                window.OpenADPServers = serverData;
-
-            } catch (error) {
-                console.error("Failed to load server data:", error);
-                document.getElementById('server-grid').innerHTML = 
-                    '<p style="color: red;">Error: Could not load server directory.</p>';
-            }
+                serverGrid.appendChild(serverCard);
+            });
         }
         
         function copyEndpoint() {
@@ -221,7 +228,7 @@
         }
         
         function copyJSON() {
-            const jsonData = document.getElementById('json-display').textContent;
+            const jsonData = document.getElementById('servers-data').textContent;
             navigator.clipboard.writeText(jsonData).then(() => {
                 const btn = event.target;
                 const originalText = btn.textContent;
@@ -232,6 +239,9 @@
         
         // Load server data when page loads
         document.addEventListener('DOMContentLoaded', loadServerData);
+        
+        // Expose JSON data for programmatic access
+        window.OpenADPServers = JSON.parse(document.getElementById('servers-data').textContent);
     </script>
 </body>
 </html> 

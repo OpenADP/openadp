@@ -40,12 +40,12 @@ prototype/
 │   ├── client/              # Client components
 │   │   ├── __init__.py      # Package initialization
 │   │   ├── client.py        # High-level client business logic
-│   │   ├── noise_jsonrpc_client.py # JSON-RPC transport layer with Noise-KK encryption
+│   │   ├── jsonrpc_client.py # JSON-RPC transport layer
 │   │   └── scrape.py        # Server discovery
 │   └── server/              # Server components
 │       ├── __init__.py      # Package initialization
 │       ├── server.py        # Core server business logic
-│       ├── noise_jsonrpc_server.py # JSON-RPC server with Noise-KK encryption
+│       ├── jsonrpc_server.py # JSON-RPC server
 │       └── grpc_server.py   # gRPC server
 ├── tools/                   # Command-line utilities
 │   ├── encrypt.py          # File encryption tool

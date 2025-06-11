@@ -133,7 +133,7 @@ def get_fallback_servers() -> List[Dict[str, str]]:
             "country": "US"
         },
         {
-            "url": "https://sky.openadp.org", 
+            "url": "http://sky.openadp.org", 
             "public_key": "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder2SkyServerTestKey67890Demo",
             "country": "US"
         },
