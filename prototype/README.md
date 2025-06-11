@@ -21,16 +21,47 @@ For development and testing on Ubuntu 24.04:
 sudo apt install sqlite3 python3-cryptography
 ```
 
-You also need to build the Python files for openadp.proto. Go into ../proto and follow the README.md there.
+You also need to build the Python files for openadp.proto. Go into the `proto/` directory and follow the README.md there.
+
+## Project Structure
+
+```
+prototype/
+├── README.md                  # This file
+├── TODO                      # Development tasks
+├── src/                      # Core library code
+│   ├── openadp/             # Main OpenADP library
+│   │   ├── crypto.py        # Ed25519 cryptographic functions
+│   │   ├── sharing.py       # Secret sharing algorithms
+│   │   ├── database.py      # SQLite database operations
+│   │   └── keygen.py        # Key generation and recovery
+│   ├── client/              # Client components
+│   │   ├── client.py        # High-level client business logic
+│   │   ├── jsonrpc_client.py # JSON-RPC transport layer
+│   │   └── scrape.py        # Server discovery
+│   └── server/              # Server components
+│       ├── server.py        # Core server business logic
+│       ├── jsonrpc_server.py # JSON-RPC server
+│       └── grpc_server.py   # gRPC server
+├── tools/                   # Command-line utilities
+│   ├── encrypt.py          # File encryption tool
+│   └── decrypt.py          # File decryption tool
+├── tests/                   # Test files
+├── proto/                   # Protocol buffer definitions
+├── deployment/              # Installation and deployment
+│   ├── systemd/            # Systemd service files
+│   └── scripts/            # Installation scripts
+└── examples/               # Usage examples
+```
 
 ### File Encryption/Decryption
 
 ```bash
 # Encrypt a file
-python3 encrypt.py myfile.txt
+python3 tools/encrypt.py myfile.txt
 
 # Decrypt a file
-python3 decrypt.py myfile.txt.enc
+python3 tools/decrypt.py myfile.txt.enc
 ```
 
 ## Server Installation
@@ -40,7 +71,7 @@ python3 decrypt.py myfile.txt.enc
 The auto-detecting installer works on all major Linux distributions:
 
 ```bash
-sudo ./install-openadp-service-auto.sh
+sudo ./deployment/scripts/install-openadp-service-auto.sh
 ```
 
 **Supported distributions:**
@@ -53,12 +84,12 @@ sudo ./install-openadp-service-auto.sh
 
 #### Debian/Ubuntu/Raspbian
 ```bash
-sudo ./install-openadp-service.sh
+sudo ./deployment/scripts/install-openadp-service.sh
 ```
 
 #### Fedora/RHEL/CentOS
 ```bash
-sudo ./install-openadp-service-fedora.sh
+sudo ./deployment/scripts/install-openadp-service-fedora.sh
 ```
 
 ### Post-Installation

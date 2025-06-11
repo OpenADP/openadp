@@ -16,10 +16,10 @@ and work with both prototype and production clients.
 import time
 from typing import Union, Tuple, List, Any
 
-import crypto
-import database
+from ..openadp import crypto
+from ..openadp import database
 import secrets
-import sharing
+from ..openadp import sharing
 
 
 def check_register_inputs(uid: str, did: str, bid: str, x: int, y: bytes, 

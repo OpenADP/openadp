@@ -28,7 +28,11 @@ import getpass
 from typing import NoReturn
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
-import openadp_keygen
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from openadp import keygen
 
 # --- Configuration ---
 # Nonce (Number used once) is required for ChaCha20. It must be unique for each
@@ -60,7 +64,7 @@ def encrypt_file(input_filename: str, password: str) -> None:
 
     # 2. Generate encryption key using OpenADP
     print("Generating encryption key using OpenADP distributed servers...")
-    enc_key, error, server_urls = openadp_keygen.generate_encryption_key(input_filename, password)
+    enc_key, error, server_urls = keygen.generate_encryption_key(input_filename, password)
     
     if error:
         print(f"❌ Failed to generate encryption key: {error}")

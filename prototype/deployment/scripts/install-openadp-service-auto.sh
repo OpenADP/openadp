@@ -92,19 +92,23 @@ mkdir -p "$INSTALL_DIR"
 
 # Copy files
 echo "Copying OpenADP files..."
-cp "$SOURCE_DIR"/*.py "$INSTALL_DIR/"
-cp "$SOURCE_DIR"/proto/*.proto "$INSTALL_DIR/" 2>/dev/null || true
+cp -r "$SOURCE_DIR"/src/* "$INSTALL_DIR/"
+cp -r "$SOURCE_DIR"/proto "$INSTALL_DIR/" 2>/dev/null || true
+cp "$SOURCE_DIR"/tools/* "$INSTALL_DIR/" 2>/dev/null || true
 
 # Set permissions
 echo "Setting permissions..."
 chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR"
 chmod 755 "$INSTALL_DIR"
-chmod 644 "$INSTALL_DIR"/*.py
-chmod +x "$INSTALL_DIR/jsonrpc_server.py"
+find "$INSTALL_DIR" -name "*.py" -exec chmod 644 {} \;
+chmod +x "$INSTALL_DIR/server/jsonrpc_server.py"
+chmod +x "$INSTALL_DIR/encrypt.py"
+chmod +x "$INSTALL_DIR/decrypt.py"
 
 # Install systemd service
 echo "Installing systemd service..."
-cp "$SOURCE_DIR/openadp-server.service" /etc/systemd/system/
+cp "$SOURCE_DIR/deployment/systemd/openadp-server.service" /etc/systemd/system/
+cp "$SOURCE_DIR/deployment/systemd/openadp-server.conf" "$INSTALL_DIR/"
 systemctl daemon-reload
 
 # Install dependencies

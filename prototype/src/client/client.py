@@ -11,8 +11,8 @@ import time
 from typing import List, Optional, Tuple, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import scrape
-from jsonrpc_client import OpenADPClient
+from . import scrape
+from .jsonrpc_client import OpenADPClient
 
 
 class Client:

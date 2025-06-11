@@ -26,7 +26,11 @@ import getpass
 from typing import NoReturn, Dict, Any
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
-import openadp_keygen
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from openadp import keygen
 
 # --- Configuration ---
 # These must match the values used during encryption
@@ -110,7 +114,7 @@ def decrypt_file(input_filename: str, password: str) -> None:
     # Derive original filename for BID (backup identifier)
     original_filename = output_filename
     print("Recovering encryption key from the original OpenADP servers...")
-    enc_key, error = openadp_keygen.recover_encryption_key(original_filename, password, server_urls)
+    enc_key, error = keygen.recover_encryption_key(original_filename, password, server_urls)
     
     if error:
         print(f"❌ Failed to recover encryption key: {error}")

@@ -23,9 +23,9 @@ import base64
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import database
-import server
-import crypto
+from ..openadp import database
+from . import server
+from ..openadp import crypto
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
