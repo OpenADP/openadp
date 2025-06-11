@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenADP Server Directory</title>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .json-endpoint {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        .endpoint-url {
+            font-family: 'Monaco', 'Menlo', monospace;
+            background: #343a40;
+            color: #f8f9fa;
+            padding: 12px;
+            border-radius: 4px;
+            margin: 10px 0;
+            word-break: break-all;
+        }
+        .server-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            margin-top: 30px;
+        }
+        .server-card {
+            background: #ffffff;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .server-url {
+            color: #667eea;
+            font-weight: 600;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        .server-detail {
+            margin: 8px 0;
+            font-size: 13px;
+        }
+        .server-detail strong {
+            color: #495057;
+        }
+        .country-flag {
+            font-size: 16px;
+            margin-right: 8px;
+        }
+        .key-display {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 10px;
+            background: #f8f9fa;
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 8px;
+            word-break: break-all;
+            line-height: 1.3;
+        }
+        pre {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            overflow-x: auto;
+            margin: 20px 0;
+        }
+        code {
+            font-family: 'Monaco', 'Menlo', monospace;
+        }
+        .copy-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        .copy-btn:hover {
+            background: #5a67d8;
+        }
+        .stats {
+            text-align: center;
+            margin: 20px 0;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>OpenADP Server Directory</h1>
+        <p class="subtitle">Distributed trust network for Advanced Data Protection</p>
+        
+        <div class="json-endpoint">
+            <h3>📡 JSON API Endpoint</h3>
+            <p>OpenADP clients can fetch server information from:</p>
+            <div class="endpoint-url">GET https://servers.openadp.org/api/servers.json</div>
+            <p><strong>Content-Type:</strong> application/json</p>
+            <button class="copy-btn" onclick="copyEndpoint()">Copy API URL</button>
+        </div>
+
+        <div class="stats">
+            <span id="server-count">Loading...</span> servers across <span id="country-count">Loading...</span> countries
+        </div>
+
+        <h2>🌐 Available Servers</h2>
+        <div id="server-grid" class="server-grid">
+            <!-- Servers will be populated by JavaScript -->
+        </div>
+
+        <h3>📋 JSON Response Format</h3>
+        <pre><code id="json-display">{
+  "version": "1.0",
+  "updated": "2024-01-15T10:30:00Z",
+  "servers": [
+    {
+      "url": "https://server1.openadp.org",
+      "public_key": "ed25519:AAAA...",
+      "country": "US"
+    }
+  ]
+}</code></pre>
+        <button class="copy-btn" onclick="copyJSON()">Copy JSON Schema</button>
+    </div>
+
+    <script type="application/json" id="servers-data">
+    {
+      "version": "1.0",
+      "updated": "2024-01-15T10:30:00Z",
+      "servers": [
+        {
+          "url": "https://xyzzybill.openadp.org",
+          "public_key": "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder1XyZzyBillServer12345TestKey",
+          "country": "US"
+        },
+        {
+          "url": "https://sky.openadp.org",
+          "public_key": "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder2SkyServerTestKey67890Demo",
+          "country": "US"
+        },
+        {
+          "url": "https://akash.network",
+          "public_key": "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder3AkashNetworkTestKey111Demo",
+          "country": "CA"
+        }
+      ]
+    }
+    </script>
+
+    <script>
+        // Country code to flag emoji mapping
+        const countryFlags = {
+            'US': '🇺🇸', 'CA': '🇨🇦', 'SG': '🇸🇬'
+        };
+
+        // Load and display server data
+        function loadServerData() {
+            const serverData = JSON.parse(document.getElementById('servers-data').textContent);
+            const serverGrid = document.getElementById('server-grid');
+            
+            serverGrid.innerHTML = '';
+            
+            // Update stats
+            const countries = new Set(serverData.servers.map(s => s.country));
+            document.getElementById('server-count').textContent = serverData.servers.length;
+            document.getElementById('country-count').textContent = countries.size;
+            
+            serverData.servers.forEach(server => {
+                const serverCard = document.createElement('div');
+                serverCard.className = 'server-card';
+                
+                const flag = countryFlags[server.country] || '🏳️';
+                
+                serverCard.innerHTML = `
+                    <div class="server-url">${server.url}</div>
+                    <div class="server-detail">
+                        <strong>Country:</strong> 
+                        <span class="country-flag">${flag}</span>${server.country}
+                    </div>
+                    <div class="server-detail"><strong>Public Key:</strong></div>
+                    <div class="key-display">${server.public_key}</div>
+                `;
+                
+                serverGrid.appendChild(serverCard);
+            });
+        }
+        
+        function copyEndpoint() {
+            navigator.clipboard.writeText('https://servers.openadp.org/api/servers.json').then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = originalText, 2000);
+            });
+        }
+        
+        function copyJSON() {
+            const jsonData = document.getElementById('servers-data').textContent;
+            navigator.clipboard.writeText(jsonData).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = originalText, 2000);
+            });
+        }
+        
+        // Load server data when page loads
+        document.addEventListener('DOMContentLoaded', loadServerData);
+        
+        // Expose JSON data for programmatic access
+        window.OpenADPServers = JSON.parse(document.getElementById('servers-data').textContent);
+    </script>
+</body>
+</html> 

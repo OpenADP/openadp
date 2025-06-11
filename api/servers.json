@@ -1,0 +1,21 @@
+{
+  "version": "1.0",
+  "updated": "2024-01-15T10:30:00Z",
+  "servers": [
+    {
+      "url": "https://xyzzybill.openadp.org",
+      "public_key": "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder1XyZzyBillServer12345TestKey",
+      "country": "US"
+    },
+    {
+      "url": "https://sky.openadp.org",
+      "public_key": "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder2SkyServerTestKey67890Demo",
+      "country": "US"
+    },
+    {
+      "url": "https://akash.network",
+      "public_key": "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder3AkashNetworkTestKey111Demo",
+      "country": "CA"
+    }
+  ]
+} 

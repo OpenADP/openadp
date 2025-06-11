@@ -8,8 +8,7 @@ set -e
 INSTALL_DIR="/opt/openadp"
 SERVICE_USER="openadp"
 SERVICE_GROUP="openadp"
-# Navigate from deployment/scripts/ back to prototype root
-SOURCE_DIR="$(dirname "$(dirname "$(dirname "$(readlink -f "$0")")")")"
+SOURCE_DIR="$(dirname "$(readlink -f "$0")")"
 
 echo "=== OpenADP Server Installation ==="
 echo "Source directory: $SOURCE_DIR"
@@ -40,19 +39,18 @@ mkdir -p "$INSTALL_DIR"
 
 # Copy files
 echo "Copying OpenADP files..."
-cp -r "$SOURCE_DIR"/src "$INSTALL_DIR/"
+cp -r "$SOURCE_DIR"/src/* "$INSTALL_DIR/"
 cp -r "$SOURCE_DIR"/proto "$INSTALL_DIR/" 2>/dev/null || true
-cp -r "$SOURCE_DIR"/tools "$INSTALL_DIR/" 2>/dev/null || true
-cp "$SOURCE_DIR"/run_server.py "$INSTALL_DIR/"
+cp "$SOURCE_DIR"/tools/* "$INSTALL_DIR/" 2>/dev/null || true
 
 # Set permissions
 echo "Setting permissions..."
 chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR"
 chmod 755 "$INSTALL_DIR"
 find "$INSTALL_DIR" -name "*.py" -exec chmod 644 {} \;
-chmod +x "$INSTALL_DIR/run_server.py"
-chmod +x "$INSTALL_DIR/tools/encrypt.py"
-chmod +x "$INSTALL_DIR/tools/decrypt.py"
+chmod +x "$INSTALL_DIR/server/jsonrpc_server.py"
+chmod +x "$INSTALL_DIR/encrypt.py"
+chmod +x "$INSTALL_DIR/decrypt.py"
 
 # Install systemd service
 echo "Installing systemd service..."
