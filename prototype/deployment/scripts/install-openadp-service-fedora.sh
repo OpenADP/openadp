@@ -9,7 +9,8 @@ INSTALL_DIR="/opt/openadp"
 SERVICE_USER="openadp"
 SERVICE_GROUP="openadp"
 # Navigate from deployment/scripts/ back to prototype root
-SOURCE_DIR="$(dirname "$(dirname "$(dirname "$(readlink -f "$0")")")")"
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+SOURCE_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 echo "=== OpenADP Server Installation (Fedora) ==="
 echo "Source directory: $SOURCE_DIR"

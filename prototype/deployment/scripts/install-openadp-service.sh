@@ -8,7 +8,8 @@ set -e
 INSTALL_DIR="/opt/openadp"
 SERVICE_USER="openadp"
 SERVICE_GROUP="openadp"
-SOURCE_DIR="$(dirname "$(readlink -f "$0")")"
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+SOURCE_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 echo "=== OpenADP Server Installation ==="
 echo "Source directory: $SOURCE_DIR"
