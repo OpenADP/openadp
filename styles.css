@@ -810,7 +810,7 @@ body {
     margin-bottom: 0;
 }
 
-.google-example {
+.industry-example {
     background: linear-gradient(135deg, #4299e1 0%, #2b6cb0 100%);
     color: white;
     padding: 2.5rem;
@@ -818,7 +818,7 @@ body {
     margin: 3rem 0;
 }
 
-.google-example h3 {
+.industry-example h3 {
     font-size: 1.8rem;
     margin-bottom: 1.5rem;
     text-align: center;
