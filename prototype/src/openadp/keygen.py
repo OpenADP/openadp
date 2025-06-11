@@ -30,16 +30,16 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from openadp import crypto
 from openadp import sharing
 
-# Import the modern Noise-KK client instead of legacy client
+# Import the modern Noise-KK client
 try:
     from client.noise_jsonrpc_client import NoiseKKJSONRPCClient
     import json
     HAVE_NOISE_CLIENT = True
-except ImportError:
-    # Fallback to legacy client if Noise-KK not available
-    from client.client import Client
-    HAVE_NOISE_CLIENT = False
-    print("Warning: Using legacy non-encrypted client. Consider upgrading to Noise-KK.")
+except ImportError as e:
+    # No fallback - require Noise-KK client
+    print(f"❌ Error: Could not import Noise-KK client: {e}")
+    print("Make sure the Noise-KK client is available in client/noise_jsonrpc_client.py")
+    sys.exit(1)
 
 
 class NoiseKKClientManager:
