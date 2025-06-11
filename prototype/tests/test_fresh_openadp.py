@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """Test OpenADP with a fresh BID to avoid old registration conflicts."""
 
-import openadp_keygen
+import sys
+import os
+
+# Add the src directory to Python path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from openadp import keygen
 
 def test_fresh_openadp():
     """Test OpenADP key generation with a fresh backup ID."""
@@ -12,7 +18,7 @@ def test_fresh_openadp():
     
     # Test key generation
     print("\n1. Generating encryption key...")
-    enc_key, error = openadp_keygen.generate_encryption_key(test_filename, test_password)
+    enc_key, error, server_urls = keygen.generate_encryption_key(test_filename, test_password)
     
     if error:
         print(f"❌ Key generation failed: {error}")
@@ -22,7 +28,7 @@ def test_fresh_openadp():
     
     # Test key recovery
     print("\n2. Recovering encryption key...")
-    recovered_key, error = openadp_keygen.recover_encryption_key(test_filename, test_password)
+    recovered_key, error = keygen.recover_encryption_key(test_filename, test_password, server_urls)
     
     if error:
         print(f"❌ Key recovery failed: {error}")

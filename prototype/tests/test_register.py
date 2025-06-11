@@ -3,8 +3,14 @@
 Test script to debug the register_secret issue.
 """
 
+import sys
+import os
 import base64
-from client import Client
+
+# Add the src directory to Python path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from client.client import Client
 
 def test_register():
     """Test registering a secret with known values."""

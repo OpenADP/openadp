@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
-import crypto
-import sharing
+import sys
+import os
 import secrets
+
+# Add the src directory to Python path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from openadp import crypto
+from openadp import sharing
 
 s = secrets.randbelow(crypto.q)
 shares = sharing.make_random_shares(s, 2, 2)

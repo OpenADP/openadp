@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """Test with actual secret sharing values."""
 
-import crypto
-import sharing
+import sys
+import os
 import secrets
-from client import Client
+
+# Add the src directory to Python path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from openadp import crypto, sharing
+from client.client import Client
 
 def test_actual_secret_sharing():
     """Test with actual values from secret sharing."""

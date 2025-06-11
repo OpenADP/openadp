@@ -29,17 +29,21 @@ You also need to build the Python files for openadp.proto. Go into the `proto/` 
 prototype/
 ├── README.md                  # This file
 ├── TODO                      # Development tasks
+├── run_server.py             # Server runner script
 ├── src/                      # Core library code
 │   ├── openadp/             # Main OpenADP library
+│   │   ├── __init__.py      # Package initialization
 │   │   ├── crypto.py        # Ed25519 cryptographic functions
 │   │   ├── sharing.py       # Secret sharing algorithms
 │   │   ├── database.py      # SQLite database operations
 │   │   └── keygen.py        # Key generation and recovery
 │   ├── client/              # Client components
+│   │   ├── __init__.py      # Package initialization
 │   │   ├── client.py        # High-level client business logic
 │   │   ├── jsonrpc_client.py # JSON-RPC transport layer
 │   │   └── scrape.py        # Server discovery
 │   └── server/              # Server components
+│       ├── __init__.py      # Package initialization
 │       ├── server.py        # Core server business logic
 │       ├── jsonrpc_server.py # JSON-RPC server
 │       └── grpc_server.py   # gRPC server
@@ -47,11 +51,21 @@ prototype/
 │   ├── encrypt.py          # File encryption tool
 │   └── decrypt.py          # File decryption tool
 ├── tests/                   # Test files
+│   ├── test_*.py           # Unit and integration tests
+│   └── debug_*.py          # Debug utilities
 ├── proto/                   # Protocol buffer definitions
+│   ├── openadp.proto       # Service definitions
+│   ├── openadp_pb2.py      # Generated Python classes
+│   └── openadp_pb2_grpc.py # Generated gRPC stubs
 ├── deployment/              # Installation and deployment
 │   ├── systemd/            # Systemd service files
+│   │   ├── openadp-server.service
+│   │   └── openadp-server.conf
 │   └── scripts/            # Installation scripts
-└── examples/               # Usage examples
+│       ├── install-openadp-service.sh         # Debian/Ubuntu
+│       ├── install-openadp-service-fedora.sh  # Fedora/RHEL
+│       └── install-openadp-service-auto.sh    # Auto-detect OS
+└── examples/               # Usage examples (future)
 ```
 
 ### File Encryption/Decryption

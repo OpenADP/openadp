@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """Debug the integer to bytes conversion issue."""
 
-import crypto
-import sharing
+import sys
+import os
 import secrets
+
+# Add the src directory to Python path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from openadp import crypto
+from openadp import sharing
 
 # Test with actual secret sharing
 s = secrets.randbelow(crypto.q)

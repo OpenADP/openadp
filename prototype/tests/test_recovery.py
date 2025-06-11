@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """Test just the recovery logic to debug the issue."""
 
-import crypto
+import sys
+import os
 import secrets
-from client import Client
+
+# Add the src directory to Python path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from openadp import crypto
+from client.client import Client
 
 def test_recovery():
     """Test the recovery process."""

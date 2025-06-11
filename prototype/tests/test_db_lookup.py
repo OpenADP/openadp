@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-import server, database, crypto, secrets
+import sys
+import os
+import secrets
+
+# Add the src directory to Python path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from server import server
+from openadp import database, crypto
 
 # Test database lookup format
 db = database.Database('test_recover.db')

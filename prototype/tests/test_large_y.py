@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 """Test different y value sizes to understand remote server limits."""
 
+import sys
+import os
 import base64
-from client import Client
+
+# Add the src directory to Python path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+from client.client import Client
 
 def test_y_size(y_int, description):
     """Test registering with a specific y value."""
