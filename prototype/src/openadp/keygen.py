@@ -21,9 +21,15 @@ import secrets
 import base64
 from typing import Tuple, Optional, List
 
-from . import crypto
-from . import sharing
-from ..client.client import Client
+import sys
+import os
+
+# Add the src directory to Python path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from openadp import crypto
+from openadp import sharing
+from client.client import Client
 
 
 def derive_identifiers(filename: str, username: Optional[str] = None, 
@@ -190,7 +196,7 @@ def recover_encryption_key(filename: str, password: str, server_urls: Optional[L
     # Step 3: Initialize OpenADP client - use specific servers if provided
     if server_urls:
         # Use the specific servers that were used during encryption
-        from ..client.jsonrpc_client import OpenADPClient
+        from client.jsonrpc_client import OpenADPClient
         live_servers = []
         print(f"OpenADP: Testing {len(server_urls)} servers from metadata...")
         

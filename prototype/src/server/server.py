@@ -16,10 +16,16 @@ and work with both prototype and production clients.
 import time
 from typing import Union, Tuple, List, Any
 
-from ..openadp import crypto
-from ..openadp import database
+import sys
+import os
 import secrets
-from ..openadp import sharing
+
+# Add the src directory to Python path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from openadp import crypto
+from openadp import database
+from openadp import sharing
 
 
 def check_register_inputs(uid: str, did: str, bid: str, x: int, y: bytes, 

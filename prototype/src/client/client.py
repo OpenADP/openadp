@@ -11,8 +11,14 @@ import time
 from typing import List, Optional, Tuple, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from . import scrape
-from .jsonrpc_client import OpenADPClient
+import sys
+import os
+
+# Add the src directory to Python path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from client import scrape
+from client.jsonrpc_client import OpenADPClient
 
 
 class Client:

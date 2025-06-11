@@ -23,9 +23,15 @@ import base64
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from ..openadp import database
-from . import server
-from ..openadp import crypto
+import sys
+import os
+
+# Add the src directory to Python path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from openadp import database
+from openadp import crypto
+from server import server
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
