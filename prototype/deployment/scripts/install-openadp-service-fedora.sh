@@ -63,7 +63,10 @@ systemctl daemon-reload
 # Install dependencies
 echo "Installing Python dependencies..."
 dnf update -y
-dnf install -y python3 sqlite python3-cryptography
+# Note: python3-dissononce may not be available in Fedora repos
+# Install from PyPI if needed: pip3 install dissononce
+dnf install -y python3 sqlite python3-cryptography python3-pip
+pip3 install dissononce
 
 echo "=== Installation Complete ==="
 echo ""

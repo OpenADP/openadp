@@ -61,7 +61,7 @@ systemctl daemon-reload
 # Install dependencies
 echo "Installing Python dependencies..."
 apt-get update
-apt-get install -y python3 sqlite3 python3-cryptography
+apt-get install -y python3 sqlite3 python3-cryptography python3-dissononce
 
 echo "=== Installation Complete ==="
 echo ""

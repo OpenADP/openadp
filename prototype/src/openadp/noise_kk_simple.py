@@ -483,6 +483,36 @@ def create_server_session(server_private_key: x25519.X25519PrivateKey,
     )
 
 
+def test_simplified_noise_kk():
+    """Test function for simplified Noise-KK implementation"""
+    try:
+        # Test key generation
+        server_private, server_public = generate_client_keypair()
+        client_private, client_public = generate_client_keypair()
+        
+        # Create sessions
+        client_session = SimplifiedNoiseKK(True, client_private, server_public)
+        server_session = SimplifiedNoiseKK(False, server_private, client_public)
+        
+        # Handshake
+        msg1 = client_session.start_handshake()
+        msg2, complete_server = server_session.process_handshake_message(msg1)
+        _, complete_client = client_session.process_handshake_message(msg2)
+        
+        if not (complete_client and complete_server):
+            return False
+        
+        # Test encryption
+        test_data = b"Hello, OpenADP Noise-KK!"
+        encrypted = client_session.encrypt(test_data)
+        decrypted = server_session.decrypt(encrypted)
+        
+        return decrypted == test_data
+        
+    except Exception:
+        return False
+
+
 if __name__ == "__main__":
     # Test the implementation
     print("Testing Simplified Noise-KK implementation...")

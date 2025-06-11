@@ -26,8 +26,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from openadp import database
 from openadp import crypto
-from openadp.noise_kk_simple import (
-    SimplifiedNoiseKK, NoiseKKTransport,
+from openadp.noise_kk import (
+    NoiseKKSession, NoiseKKTransport,
     generate_client_keypair, create_server_session
 )
 from cryptography.hazmat.primitives.asymmetric import x25519

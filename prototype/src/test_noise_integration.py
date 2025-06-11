@@ -16,7 +16,7 @@ import tempfile
 import os
 from typing import Optional
 
-from openadp.noise_kk_simple import SimplifiedNoiseKK, NoiseKKTransport, generate_client_keypair
+from openadp.noise_kk import NoiseKKSession, NoiseKKTransport, generate_client_keypair
 from cryptography.hazmat.primitives.asymmetric import x25519
 from cryptography.hazmat.primitives import serialization
 import json
@@ -81,7 +81,7 @@ class SimpleNoiseKKServer:
                 dummy_client_private, client_public = generate_client_keypair()
             
             # Create server-side Noise session
-            noise_session = SimplifiedNoiseKK(
+            noise_session = NoiseKKSession(
                 is_initiator=False,
                 local_static_private=self.server_private,
                 remote_static_public=client_public
@@ -170,7 +170,7 @@ def test_noise_kk_integration():
         server.expected_client_public = client_public
         
         # Create client-side Noise session
-        client_session = SimplifiedNoiseKK(
+        client_session = NoiseKKSession(
             is_initiator=True,
             local_static_private=client_private,
             remote_static_public=server.server_public
@@ -267,8 +267,8 @@ def test_noise_kk_security_properties():
         print("1. Testing mutual authentication...")
         
         # Create sessions
-        alice_session = SimplifiedNoiseKK(True, alice_private, bob_public)
-        bob_session = SimplifiedNoiseKK(False, bob_private, alice_public)
+        alice_session = NoiseKKSession(True, alice_private, bob_public)
+        bob_session = NoiseKKSession(False, bob_private, alice_public)
         
         # Perform handshake
         msg1 = alice_session.start_handshake()
@@ -283,8 +283,8 @@ def test_noise_kk_security_properties():
         
         print("2. Testing forward secrecy...")
         # Each session should have different ephemeral keys
-        alice_session2 = SimplifiedNoiseKK(True, alice_private, bob_public)
-        bob_session2 = SimplifiedNoiseKK(False, bob_private, alice_public)
+        alice_session2 = NoiseKKSession(True, alice_private, bob_public)
+        bob_session2 = NoiseKKSession(False, bob_private, alice_public)
         
         msg1_2 = alice_session2.start_handshake()
         # The ephemeral components should be different

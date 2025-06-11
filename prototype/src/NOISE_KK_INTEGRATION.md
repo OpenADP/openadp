@@ -49,11 +49,14 @@ Where:
 ## Implementation Files
 
 ### Core Noise-KK Implementation
-- `openadp/noise_kk_simple.py` - Simplified Noise-KK implementation using Python cryptography library
-- `openadp/noise_kk.py` - Full implementation (uses external libraries)
+- `openadp/noise_kk.py` - **Main interface** - Clean, production-ready Noise-KK implementation
+- `openadp/noise_kk_simple.py` - Underlying implementation using Python cryptography library
+- `openadp/noise_kk_dissononce.py` - Optional DissoNonce-based implementation (experimental)
+- `openadp/noise_kk_unified.py` - Unified interface supporting multiple backends
 
 ### Client Integration
 - `client/noise_jsonrpc_client.py` - JSON-RPC client with Noise-KK support
+- `client/client_with_noise.py` - Example integration showing how to use Noise-KK
 
 ### Server Integration  
 - `server/noise_jsonrpc_server.py` - JSON-RPC server with Noise-KK support
@@ -95,6 +98,30 @@ with create_noise_client(server_url, server_public_key) as client:
         version=1, x=42, y=b"secret_data", 
         max_guesses=5, expiration=0
     )
+```
+
+### Direct Noise-KK Usage
+```python
+from openadp.noise_kk import create_client_session, NoiseKKTransport
+import socket, ssl
+
+# Create Noise-KK session
+server_public_key = "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIExample..."
+session = create_client_session(server_public_key)
+
+# Connect with TLS + Noise-KK
+context = ssl.create_default_context()
+sock = context.wrap_socket(socket.socket(), server_hostname="server.example.com")
+sock.connect(("server.example.com", 443))
+
+# Noise-KK transport over TLS
+transport = NoiseKKTransport(sock, session)
+transport.perform_handshake()
+
+# Send encrypted data
+transport.send_encrypted(b'{"method": "echo", "params": ["hello"]}')
+response = transport.recv_encrypted()
+print(response)
 ```
 
 ### Server Usage

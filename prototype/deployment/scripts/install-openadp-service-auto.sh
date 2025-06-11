@@ -40,6 +40,7 @@ case $OS in
         PYTHON_PKG="python3"
         SQLITE_PKG="sqlite3"
         CRYPTO_PKG="python3-cryptography"
+        NOISE_PKG="python3-dissononce"
         ;;
     fedora|rhel|centos|rocky|almalinux)
         PKG_MANAGER="dnf"
@@ -48,6 +49,7 @@ case $OS in
         PYTHON_PKG="python3"
         SQLITE_PKG="sqlite"
         CRYPTO_PKG="python3-cryptography"
+        NOISE_PKG="python3-pip"  # DissoNonce not in dnf repos, will pip install
         ;;
     opensuse*|sles)
         PKG_MANAGER="zypp"
@@ -56,6 +58,7 @@ case $OS in
         PYTHON_PKG="python3"
         SQLITE_PKG="sqlite3"
         CRYPTO_PKG="python3-cryptography"
+        NOISE_PKG="python3-pip"  # DissoNonce not in zypper repos
         ;;
     arch|manjaro)
         PKG_MANAGER="pacman"
@@ -64,6 +67,7 @@ case $OS in
         PYTHON_PKG="python"
         SQLITE_PKG="sqlite"
         CRYPTO_PKG="python-cryptography"
+        NOISE_PKG="python-pip"  # DissoNonce via pip
         ;;
     *)
         echo "Unsupported OS: $OS"
@@ -118,8 +122,19 @@ echo "Installing Python dependencies..."
 echo "Running: $PKG_UPDATE"
 $PKG_UPDATE
 
-echo "Running: $PKG_INSTALL $PYTHON_PKG $SQLITE_PKG $CRYPTO_PKG"
-$PKG_INSTALL $PYTHON_PKG $SQLITE_PKG $CRYPTO_PKG
+echo "Running: $PKG_INSTALL $PYTHON_PKG $SQLITE_PKG $CRYPTO_PKG $NOISE_PKG"
+$PKG_INSTALL $PYTHON_PKG $SQLITE_PKG $CRYPTO_PKG $NOISE_PKG
+
+# Install DissoNonce via pip for non-Debian systems
+case $OS in
+    ubuntu|debian|raspbian)
+        echo "DissoNonce installed via apt package"
+        ;;
+    *)
+        echo "Installing DissoNonce via pip..."
+        pip3 install dissononce
+        ;;
+esac
 
 echo "=== Installation Complete ==="
 echo ""
