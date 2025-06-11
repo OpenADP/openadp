@@ -11,10 +11,16 @@ Key Components:
 - keygen: High-level key generation and recovery functions
 """
 
-from .crypto import *
-from .sharing import *
-from .database import Database
-from .keygen import generate_encryption_key, recover_encryption_key
+import sys
+import os
+
+# Add the current directory to Python path to allow absolute imports
+sys.path.insert(0, os.path.dirname(__file__))
+
+from crypto import *
+from sharing import *
+from database import Database
+from keygen import generate_encryption_key, recover_encryption_key
 
 __version__ = "0.1.0"
 __author__ = "OpenADP Contributors"

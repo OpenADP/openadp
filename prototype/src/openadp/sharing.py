@@ -14,6 +14,13 @@ Provides functions for:
 import secrets
 from typing import List, Tuple
 
+import sys
+import os
+
+# Ensure we can import crypto from the same directory
+if __name__ == '__main__':
+    sys.path.insert(0, os.path.dirname(__file__))
+
 import crypto
 
 # Type definitions
