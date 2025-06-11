@@ -1,6 +1,6 @@
 # Dependencies.  Executed on Ubuntu 24.04
 
-sudo apt install sqlite3
+sudo apt install sqlite3 python3-cryptography
 
 ## Some database commands
 
