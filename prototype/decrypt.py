@@ -7,12 +7,13 @@ using OpenADP distributed secret sharing for key recovery instead of traditional
 password-based key derivation.
 
 The decryption process:
-1. Uses OpenADP servers to recover the encryption key used during encryption
-2. Decrypts the file with ChaCha20-Poly1305
-3. Restores the original file format
+1. Reads metadata from the encrypted file to determine which servers were used
+2. Uses those specific OpenADP servers to recover the encryption key 
+3. Decrypts the file with ChaCha20-Poly1305 using metadata as additional authenticated data
+4. Restores the original file format
 
-The key recovery is distributed across multiple servers, providing resilient
-decryption even if some servers are unavailable.
+The key recovery uses the specific servers from encryption metadata, providing
+more reliable decryption than re-scraping the server list.
 
 Usage:
     python3 decrypt.py <filename_to_decrypt>
@@ -20,8 +21,9 @@ Usage:
 
 import os
 import sys
+import json
 import getpass
-from typing import NoReturn
+from typing import NoReturn, Dict, Any
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
 import openadp_keygen
@@ -35,7 +37,8 @@ def decrypt_file(input_filename: str, password: str) -> None:
     """
     Decrypt the specified file using ChaCha20-Poly1305 with OpenADP key recovery.
 
-    Expected file format: [nonce][encrypted_data]
+    Expected file format: [metadata_length][metadata][nonce][encrypted_data]
+    The metadata contains server URLs and is used as additional authenticated data.
     The output file will have the same name but without the .enc extension.
     
     Args:
@@ -66,38 +69,67 @@ def decrypt_file(input_filename: str, password: str) -> None:
         sys.exit(1)
 
     # 3. Validate file size and extract components
-    if len(file_data) < NONCE_SIZE:
+    # Need at least: 4 bytes (metadata_length) + 1 byte (minimal metadata) + NONCE_SIZE + 1 byte (minimal ciphertext)
+    min_size = 4 + 1 + NONCE_SIZE + 1
+    if len(file_data) < min_size:
         print(f"Error: File is too small to be a valid encrypted file")
-        print(f"Expected at least {NONCE_SIZE} bytes, got {len(file_data)}")
+        print(f"Expected at least {min_size} bytes, got {len(file_data)}")
         sys.exit(1)
 
-    # Extract nonce and ciphertext from file format: [nonce][encrypted_data]
-    nonce = file_data[:NONCE_SIZE]
-    ciphertext = file_data[NONCE_SIZE:]
+    # Extract metadata length (first 4 bytes)
+    metadata_length = int.from_bytes(file_data[:4], 'little')
+    
+    # Validate metadata length
+    if metadata_length > len(file_data) - 4 - NONCE_SIZE:
+        print(f"Error: Invalid metadata length {metadata_length}")
+        sys.exit(1)
+    
+    # Extract components from file format: [metadata_length][metadata][nonce][encrypted_data]
+    metadata_start = 4
+    metadata_end = metadata_start + metadata_length
+    nonce_start = metadata_end
+    nonce_end = nonce_start + NONCE_SIZE
+    
+    metadata_json = file_data[metadata_start:metadata_end]
+    nonce = file_data[nonce_start:nonce_end]
+    ciphertext = file_data[nonce_end:]
+    
+    # Parse metadata
+    try:
+        metadata = json.loads(metadata_json.decode('utf-8'))
+        server_urls = metadata.get('servers', [])
+        if not server_urls:
+            print("Error: No server URLs found in metadata")
+            sys.exit(1)
+        print(f"Found metadata with {len(server_urls)} servers")
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        print(f"Error: Failed to parse metadata: {e}")
+        sys.exit(1)
 
-    # 4. Recover encryption key using OpenADP
+    # 4. Recover encryption key using OpenADP with specific servers from metadata
     # Derive original filename for BID (backup identifier)
     original_filename = output_filename
-    print("Recovering encryption key from OpenADP distributed servers...")
-    enc_key, error = openadp_keygen.recover_encryption_key(original_filename, password)
+    print("Recovering encryption key from the original OpenADP servers...")
+    enc_key, error = openadp_keygen.recover_encryption_key(original_filename, password, server_urls)
     
     if error:
         print(f"❌ Failed to recover encryption key: {error}")
         print("Check that:")
-        print("  • OpenADP servers are running and accessible")
+        print("  • The original OpenADP servers are running and accessible")
         print("  • The password matches the one used during encryption")
         print("  • The file was encrypted with the same user/device context")
         sys.exit(1)
 
-    # 5. Decrypt the file
+    # 5. Decrypt the file using metadata as additional authenticated data
     try:
         chacha = ChaCha20Poly1305(enc_key)
-        plaintext = chacha.decrypt(nonce, ciphertext, None)
+        plaintext = chacha.decrypt(nonce, ciphertext, metadata_json)
     except Exception as e:
         print(f"❌ Decryption failed: {e}")
         print("This could mean:")
         print("  • Wrong password")
         print("  • File has been corrupted or tampered with")
+        print("  • Metadata has been modified")
         print("  • File was not encrypted with OpenADP encrypt.py")
         sys.exit(1)
 

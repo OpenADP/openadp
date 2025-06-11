@@ -72,7 +72,7 @@ def password_to_pin(password: str) -> bytes:
 
 
 def generate_encryption_key(filename: str, password: str, max_guesses: int = 10,
-                           expiration: int = 0) -> Tuple[bytes, Optional[str]]:
+                           expiration: int = 0) -> Tuple[bytes, Optional[str], Optional[List[str]]]:
     """
     Generate an encryption key using OpenADP distributed secret sharing.
     
@@ -90,7 +90,8 @@ def generate_encryption_key(filename: str, password: str, max_guesses: int = 10,
         expiration: Expiration timestamp (0 for no expiration)
         
     Returns:
-        Tuple of (encryption_key, error_message). If successful, error_message is None.
+        Tuple of (encryption_key, error_message, server_urls). 
+        If successful, error_message is None and server_urls contains the URLs used.
     """
     # Step 1: Derive identifiers
     uid, did, bid = derive_identifiers(filename)
@@ -102,9 +103,12 @@ def generate_encryption_key(filename: str, password: str, max_guesses: int = 10,
     # Step 3: Initialize OpenADP client
     client = Client()
     if client.get_live_server_count() == 0:
-        return None, "No live OpenADP servers available"
+        return None, "No live OpenADP servers available", None
     
     print(f"OpenADP: Using {client.get_live_server_count()} live servers")
+    
+    # Capture server URLs that will be used
+    server_urls_used = client.get_live_server_urls()
     
     # Step 4: Generate random secret and create point
     secret = secrets.randbelow(crypto.q)
@@ -116,7 +120,7 @@ def generate_encryption_key(filename: str, password: str, max_guesses: int = 10,
     num_shares = client.get_live_server_count()
     
     if num_shares < threshold:
-        return None, f"Need at least {threshold} servers, only {num_shares} available"
+        return None, f"Need at least {threshold} servers, only {num_shares} available", None
     
     shares = sharing.make_random_shares(secret, threshold, num_shares)
     print(f"OpenADP: Created {len(shares)} shares with threshold {threshold}")
@@ -148,29 +152,30 @@ def generate_encryption_key(filename: str, password: str, max_guesses: int = 10,
             registration_errors.append(f"Server {i+1}: Exception: {str(e)}")
     
     if len(registration_errors) == len(shares):
-        return None, f"Failed to register any shares: {'; '.join(registration_errors)}"
+        return None, f"Failed to register any shares: {'; '.join(registration_errors)}", None
     
     # Step 7: Derive encryption key
     enc_key = crypto.deriveEncKey(S)
     print("OpenADP: Successfully generated encryption key")
     
-    return enc_key, None
+    return enc_key, None, server_urls_used
 
 
-def recover_encryption_key(filename: str, password: str) -> Tuple[bytes, Optional[str]]:
+def recover_encryption_key(filename: str, password: str, server_urls: Optional[List[str]] = None) -> Tuple[bytes, Optional[str]]:
     """
     Recover an encryption key from OpenADP servers for decryption.
     
     This function:
     1. Derives same UID/DID/BID from file and system context
     2. Converts password to same PIN 
-    3. Recovers secret shares from OpenADP servers
+    3. Recovers secret shares from OpenADP servers (using specific URLs if provided)
     4. Reconstructs original secret using threshold cryptography
     5. Derives same encryption key
     
     Args:
         filename: File being decrypted (used for BID)
         password: User password (must match encryption password)
+        server_urls: List of server URLs to use (if None, scrapes for current servers)
         
     Returns:
         Tuple of (encryption_key, error_message). If successful, error_message is None.
@@ -182,12 +187,43 @@ def recover_encryption_key(filename: str, password: str) -> Tuple[bytes, Optiona
     # Step 2: Convert password to same PIN
     pin = password_to_pin(password)
     
-    # Step 3: Initialize OpenADP client
-    client = Client()
-    if client.get_live_server_count() == 0:
-        return None, "No live OpenADP servers available"
-    
-    print(f"OpenADP: Using {client.get_live_server_count()} live servers")
+    # Step 3: Initialize OpenADP client - use specific servers if provided
+    if server_urls:
+        # Use the specific servers that were used during encryption
+        from jsonrpc_client import OpenADPClient
+        live_servers = []
+        print(f"OpenADP: Testing {len(server_urls)} servers from metadata...")
+        
+        for i, url in enumerate(server_urls):
+            try:
+                client_instance = OpenADPClient(url)
+                # Quick test to see if server is still alive
+                test_message = f"recovery_test_{int(time.time())}"
+                result, error = client_instance.echo(test_message)
+                if not error and result == test_message:
+                    live_servers.append(client_instance)
+                    print(f"  ✅ Server {i+1}: {url}")
+                else:
+                    print(f"  ❌ Server {i+1}: {url} - {error or 'Echo failed'}")
+            except Exception as e:
+                print(f"  ❌ Server {i+1}: {url} - {str(e)}")
+        
+        if len(live_servers) == 0:
+            return None, "None of the original servers are available"
+        
+        print(f"OpenADP: Using {len(live_servers)} servers from original encryption")
+        # Create a mock client object with the live servers
+        class MockClient:
+            def __init__(self, servers):
+                self.live_servers = servers
+        client = MockClient(live_servers)
+    else:
+        # Fall back to scraping current servers (legacy behavior)
+        client = Client()
+        if client.get_live_server_count() == 0:
+            return None, "No live OpenADP servers available"
+        
+        print(f"OpenADP: Using {client.get_live_server_count()} live servers")
     
     # Step 4: Create cryptographic context (same as encryption)
     U = crypto.H(uid.encode(), did.encode(), bid.encode(), pin)
@@ -257,17 +293,18 @@ def main():
     
     # Test key generation
     print("\n1. Generating encryption key...")
-    enc_key, error = generate_encryption_key(test_filename, test_password)
+    enc_key, error, server_urls = generate_encryption_key(test_filename, test_password)
     
     if error:
         print(f"❌ Key generation failed: {error}")
         return
     
     print(f"✅ Generated key: {enc_key.hex()[:32]}...")
+    print(f"✅ Used servers: {server_urls}")
     
     # Test key recovery
     print("\n2. Recovering encryption key...")
-    recovered_key, error = recover_encryption_key(test_filename, test_password)
+    recovered_key, error = recover_encryption_key(test_filename, test_password, server_urls)
     
     if error:
         print(f"❌ Key recovery failed: {error}")
