@@ -196,7 +196,9 @@ def recover_encryption_key(filename: str, password: str, server_urls: Optional[L
     # Step 3: Initialize OpenADP client - use specific servers if provided
     if server_urls:
         # Use the specific servers that were used during encryption
-        from client.jsonrpc_client import OpenADPClient
+        # NOTE: Old jsonrpc_client.py has been removed - update this code to use noise_jsonrpc_client
+        # from client.jsonrpc_client import OpenADPClient  # OLD - file removed
+        raise ImportError("keygen.py needs to be updated to use noise_jsonrpc_client for Noise-KK encryption")
         live_servers = []
         print(f"OpenADP: Testing {len(server_urls)} servers from metadata...")
         

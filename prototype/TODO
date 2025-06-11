@@ -1,3 +1,3 @@
-Add Noise-KK 2nd layer of encryption to OpenADP servers.
+✅ Add Noise-KK 2nd layer of encryption to OpenADP servers. (COMPLETED)
 Add trusted signatures over the list of servers found on servers.openadp.org.
     Today, Cloudflare can trivially PWN the system by posting malicious server nodes there.

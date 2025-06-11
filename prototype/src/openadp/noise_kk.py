@@ -17,15 +17,31 @@ Usage:
 """
 
 # Use the proven simplified implementation as primary
-from .noise_kk_simple import (
-    SimplifiedNoiseKK as NoiseKKSession,
-    NoiseKKTransport,
-    generate_client_keypair,
-    parse_server_public_key,
-    create_client_session,
-    create_server_session,
-    test_simplified_noise_kk
-)
+try:
+    # Relative import (when used as a module)
+    from .noise_kk_simple import (
+        SimplifiedNoiseKK as NoiseKKSession,
+        NoiseKKTransport,
+        generate_client_keypair,
+        parse_server_public_key,
+        create_client_session,
+        create_server_session,
+        test_simplified_noise_kk
+    )
+except ImportError:
+    # Direct import (when run as a script)
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(__file__))
+    from noise_kk_simple import (
+        SimplifiedNoiseKK as NoiseKKSession,
+        NoiseKKTransport,
+        generate_client_keypair,
+        parse_server_public_key,
+        create_client_session,
+        create_server_session,
+        test_simplified_noise_kk
+    )
 
 # Export all the necessary functions for easy import
 __all__ = [
