@@ -656,8 +656,21 @@ class NoiseKKTransport:
 
 # Key management utilities
 def generate_client_keypair() -> Tuple[x25519.X25519PrivateKey, x25519.X25519PublicKey]:
-    """Generate a client keypair"""
+    """Generate a random client keypair"""
     private_key = x25519.X25519PrivateKey.generate()
+    public_key = private_key.public_key()
+    return private_key, public_key
+
+
+def generate_dummy_client_keypair() -> Tuple[x25519.X25519PrivateKey, x25519.X25519PublicKey]:
+    """Generate a deterministic dummy client keypair for testing"""
+    # Use a fixed seed for deterministic key generation
+    # In production, this would be replaced with proper client authentication
+    dummy_seed = b"OpenADP-dummy-client-key-v1.0"
+    dummy_hash = hashlib.sha256(dummy_seed).digest()
+    
+    # Create private key from hash
+    private_key = x25519.X25519PrivateKey.from_private_bytes(dummy_hash)
     public_key = private_key.public_key()
     return private_key, public_key
 
@@ -697,7 +710,9 @@ def parse_server_public_key(public_key_str: str) -> x25519.X25519PublicKey:
 
 def create_client_session(server_public_key_str: str) -> SimplifiedNoiseKK:
     """Create a client Noise-KK session"""
-    client_private, client_public = generate_client_keypair()
+    # Use deterministic dummy client key for testing
+    # In production, this would use proper client authentication
+    client_private, client_public = generate_dummy_client_keypair()
     server_public = parse_server_public_key(server_public_key_str)
     
     return SimplifiedNoiseKK(

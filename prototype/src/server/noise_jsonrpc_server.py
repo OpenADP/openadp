@@ -27,8 +27,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from openadp import database
 from openadp import crypto
-from openadp.noise_kk import (
-    generate_client_keypair, create_server_session
+from openadp.noise_kk_simple import (
+    generate_dummy_client_keypair, create_server_session
 )
 from cryptography.hazmat.primitives.asymmetric import x25519
 from cryptography.hazmat.primitives import serialization
@@ -107,6 +107,11 @@ class NoiseKKHTTPHandler(BaseHTTPRequestHandler):
     def __init__(self, config: ServerConfig, *args, **kwargs):
         self.config = config
         self.noise_sessions = {}  # Track noise sessions by client
+        
+        # Generate a consistent dummy client key for all connections
+        # In production, this would be replaced with proper client authentication
+        self.dummy_client_private, self.dummy_client_public = generate_dummy_client_keypair()
+        
         super().__init__(*args, **kwargs)
     
     def log_message(self, format, *args):
@@ -167,13 +172,11 @@ class NoiseKKHTTPHandler(BaseHTTPRequestHandler):
             client_msg_b64 = params[0]
             client_msg = base64.b64decode(client_msg_b64)
             
-            # For dummy mode: generate a dummy client public key
-            dummy_client_private, dummy_client_public = generate_client_keypair()
-            
-            # Create server-side Noise session
+            # Create server-side Noise session using consistent dummy client key
+            # In production, this would use proper client authentication
             noise_session = create_server_session(
                 self.config.server_private_key,
-                dummy_client_public
+                self.dummy_client_public
             )
             
             # Process client handshake message
