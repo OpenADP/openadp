@@ -249,16 +249,20 @@ class SimplifiedNoiseKK:
             
             # Decrypt payload
             encrypted_payload = message[32:]
-            payload = self._decrypt_and_hash(encrypted_payload)
-            
-            # Generate response message: <- e, ee, se
+            try:
+                payload = self._decrypt_and_hash(encrypted_payload)
+            except Exception as e:
+                logger.error(f"Handshake payload decryption failed: {e}")
+                raise ValueError("Handshake payload decryption failed") from e
+
+            # Now, create the response message (message 2): <- e, ee, se
             response = bytearray()
             
-            # Generate our ephemeral key
+            # Generate ephemeral key pair
             self.local_ephemeral_private = x25519.X25519PrivateKey.generate()
             self.local_ephemeral_public = self.local_ephemeral_private.public_key()
             
-            # Add ephemeral public key
+            # Add ephemeral public key (e)
             ephemeral_bytes = self.local_ephemeral_public.public_bytes(
                 encoding=serialization.Encoding.Raw,
                 format=serialization.PublicFormat.Raw
@@ -269,16 +273,16 @@ class SimplifiedNoiseKK:
             # Perform ee: DH(local_ephemeral, remote_ephemeral)
             ee_shared = self.local_ephemeral_private.exchange(self.remote_ephemeral_public)
             self._mix_key(ee_shared)
-            
-            # Perform se: DH(local_ephemeral, remote_static) [responder perspective]
+
+            # Perform se: DH(local_ephemeral, remote_static)
             se_shared = self.local_ephemeral_private.exchange(self.remote_static_public)
             self._mix_key(se_shared)
             
-            # Add encrypted payload
+            # Add encrypted payload (empty for now)
             encrypted_payload = self._encrypt_and_hash(b"")
             response.extend(encrypted_payload)
             
-            # Split into send/recv keys
+            # Finalize handshake
             self._split_keys()
             self.handshake_complete = True
             
@@ -709,10 +713,10 @@ def parse_server_public_key(public_key_str: str) -> x25519.X25519PublicKey:
 
 
 def create_client_session(server_public_key_str: str) -> SimplifiedNoiseKK:
-    """Create a client Noise-KK session"""
-    # Use deterministic dummy client key for testing
-    # In production, this would use proper client authentication
+    """Creates a client-side Noise-KK session"""
+    # Use the same dummy keypair as the server expects for now
     client_private, client_public = generate_dummy_client_keypair()
+    
     server_public = parse_server_public_key(server_public_key_str)
     
     return SimplifiedNoiseKK(
@@ -733,83 +737,79 @@ def create_server_session(server_private_key: x25519.X25519PrivateKey,
 
 
 def test_simplified_noise_kk():
-    """Test function for simplified Noise-KK implementation"""
-    try:
-        # Test key generation
-        server_private, server_public = generate_client_keypair()
-        client_private, client_public = generate_client_keypair()
-        
-        # Create sessions
-        client_session = SimplifiedNoiseKK(True, client_private, server_public)
-        server_session = SimplifiedNoiseKK(False, server_private, client_public)
-        
-        # Handshake
-        msg1 = client_session.start_handshake()
-        msg2, complete_server = server_session.process_handshake_message(msg1)
-        _, complete_client = client_session.process_handshake_message(msg2)
-        
-        if not (complete_client and complete_server):
-            return False
-        
-        # Test encryption
-        test_data = b"Hello, OpenADP Noise-KK!"
-        encrypted = client_session.encrypt(test_data)
-        decrypted = server_session.decrypt(encrypted)
-        
-        return decrypted == test_data
-        
-    except Exception:
-        return False
-
-
-if __name__ == "__main__":
-    # Test the implementation
-    print("Testing Simplified Noise-KK implementation...")
+    """Test the simplified Noise-KK implementation"""
+    print("Testing Simplified Noise-KK Handshake...")
     
-    try:
-        # Generate test keys
-        server_private, server_public = generate_client_keypair()
-        client_private, client_public = generate_client_keypair()
+    # 1. Generate keypairs for client and server
+    client_static_private = x25519.X25519PrivateKey.generate()
+    client_static_public = client_static_private.public_key()
+    
+    server_static_private = x25519.X25519PrivateKey.generate()
+    server_static_public = server_static_private.public_key()
+    
+    # 2. Initiator (client) setup
+    client_session = SimplifiedNoiseKK(
+        is_initiator=True,
+        local_static_private=client_static_private,
+        remote_static_public=server_static_public
+    )
+    
+    # 3. Responder (server) setup
+    server_session = SimplifiedNoiseKK(
+        is_initiator=False,
+        local_static_private=server_static_private,
+        remote_static_public=client_static_public
+    )
+    
+    # 4. Client starts handshake
+    client_msg = client_session.start_handshake()
+    print(f"Client initial message size: {len(client_msg)} bytes")
+    
+    # 5. Server processes client message and generates response
+    server_msg, server_complete = server_session.process_handshake_message(client_msg)
+    
+    if not server_msg:
+        print("❌ Server did not generate a response message.")
+        return False
         
-        print(f"Server public key: {server_public.public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw).hex()}")
-        print(f"Client public key: {client_public.public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw).hex()}")
-        
-        # Create sessions
-        client_session = SimplifiedNoiseKK(True, client_private, server_public)
-        server_session = SimplifiedNoiseKK(False, server_private, client_public)
-        
-        print("\nPerforming handshake...")
-        
-        # Handshake
-        msg1 = client_session.start_handshake()
-        print(f"Client -> Server: {len(msg1)} bytes")
-        
-        msg2, complete_server = server_session.process_handshake_message(msg1)
-        print(f"Server -> Client: {len(msg2)} bytes, complete: {complete_server}")
-        
-        _, complete_client = client_session.process_handshake_message(msg2)
-        print(f"Client complete: {complete_client}")
-        
-        if complete_client and complete_server:
-            print("✅ Handshake completed!")
-            
-            # Test encryption
-            test_msg = b"Hello, OpenADP Noise-KK!"
-            encrypted = client_session.encrypt(test_msg)
-            decrypted = server_session.decrypt(encrypted)
-            
-            print(f"Original:  {test_msg}")
-            print(f"Encrypted: {encrypted.hex()}")
-            print(f"Decrypted: {decrypted}")
-            
-            if decrypted == test_msg:
-                print("✅ Encryption test passed!")
-            else:
-                print("❌ Encryption test failed!")
-        else:
-            print("❌ Handshake failed!")
-            
-    except Exception as e:
-        print(f"❌ Test failed: {e}")
-        import traceback
-        traceback.print_exc() 
+    print(f"Server response message size: {len(server_msg)} bytes")
+    assert server_complete, "Server should have completed handshake"
+
+    # 6. Client processes server response
+    _, client_complete = client_session.process_handshake_message(server_msg)
+    assert client_complete, "Client should have completed handshake"
+    
+    print("✅ Handshake completed successfully!")
+    
+    # 7. Test transport messages
+    print("Testing transport messages...")
+    
+    # Client sends message to server
+    client_plaintext = b"Hello from client!"
+    client_ciphertext = client_session.encrypt(client_plaintext)
+    
+    # Server decrypts message from client
+    server_plaintext = server_session.decrypt(client_ciphertext)
+    
+    assert client_plaintext == server_plaintext, "Client -> Server message mismatch"
+    print(f"✅ Client -> Server: '{server_plaintext.decode()}'")
+    
+    # Server sends message to client
+    server_plaintext = b"Hello from server!"
+    server_ciphertext = server_session.encrypt(server_plaintext)
+    
+    # Client decrypts message from server
+    client_plaintext = client_session.decrypt(server_ciphertext)
+    
+    assert server_plaintext == client_plaintext, "Server -> Client message mismatch"
+    print(f"✅ Server -> Client: '{client_plaintext.decode()}'")
+    
+    print("✅ Transport messages successful!")
+    return True
+
+
+if __name__ == '__main__':
+    if test_simplified_noise_kk():
+        print("🎉 All Noise-KK tests passed!")
+    else:
+        print("❌ Noise-KK tests failed!") 
