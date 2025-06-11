@@ -8,7 +8,8 @@ set -e
 INSTALL_DIR="/opt/openadp"
 SERVICE_USER="openadp"
 SERVICE_GROUP="openadp"
-SOURCE_DIR="$(dirname "$(readlink -f "$0")")"
+# Navigate from deployment/scripts/ back to prototype root
+SOURCE_DIR="$(dirname "$(dirname "$(dirname "$(readlink -f "$0")")")")"
 
 echo "=== OpenADP Server Installation (Auto-detect) ==="
 echo "Source directory: $SOURCE_DIR"
