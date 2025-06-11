@@ -48,7 +48,7 @@ echo "Setting permissions..."
 chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR"
 chmod 755 "$INSTALL_DIR"
 find "$INSTALL_DIR" -name "*.py" -exec chmod 644 {} \;
-chmod +x "$INSTALL_DIR/server/jsonrpc_server.py"
+chmod +x "$INSTALL_DIR/server/noise_jsonrpc_server.py"
 chmod +x "$INSTALL_DIR/encrypt.py"
 chmod +x "$INSTALL_DIR/decrypt.py"
 
