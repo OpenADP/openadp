@@ -42,15 +42,66 @@ logger = logging.getLogger(__name__)
 class ServerConfig:
     """Configuration for the Noise-KK server"""
     def __init__(self):
-        # Generate server keypair (in production, this should be persistent)
-        self.server_private_key = x25519.X25519PrivateKey.generate()
-        self.server_public_key = self.server_private_key.public_key()
+        # Database
+        self.db = database.Database("openadp.db")
+        
+        # Load or generate server keypair
+        self._load_or_generate_keypair()
         
         # For now, accept any client key (dummy mode as requested)
         self.accept_any_client = True
+    
+    def _load_or_generate_keypair(self):
+        """Load server keypair from database or generate new one if not found."""
+        from cryptography.hazmat.primitives import serialization
+        import logging
         
-        # Database
-        self.db = database.Database("openadp.db")
+        logger = logging.getLogger(__name__)
+        
+        # Try to load existing key from database
+        key_id = "noise_kk_server"
+        private_key_bytes = self.db.get_server_key(key_id)
+        
+        if private_key_bytes is not None:
+            # Load existing key
+            try:
+                self.server_private_key = serialization.load_der_private_key(
+                    private_key_bytes, 
+                    password=None
+                )
+                self.server_public_key = self.server_private_key.public_key()
+                logger.info("✅ Loaded existing server keypair from database")
+            except Exception as e:
+                logger.error(f"Failed to load stored key, generating new one: {e}")
+                self._generate_and_store_new_key(key_id)
+        else:
+            # Generate new key
+            logger.info("🔑 No existing server key found, generating new keypair")
+            self._generate_and_store_new_key(key_id)
+        
+        # Log the public key for servers.json
+        pub_key_str = self.get_server_public_key_string()
+        logger.info("=" * 80)
+        logger.info("🔑 SERVER PUBLIC KEY FOR servers.json:")
+        logger.info(f"    {pub_key_str}")
+        logger.info("=" * 80)
+    
+    def _generate_and_store_new_key(self, key_id: str):
+        """Generate a new keypair and store it in the database."""
+        from cryptography.hazmat.primitives import serialization
+        
+        # Generate server keypair
+        self.server_private_key = x25519.X25519PrivateKey.generate()
+        self.server_public_key = self.server_private_key.public_key()
+        
+        # Serialize and store the private key
+        private_key_bytes = self.server_private_key.private_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+        
+        self.db.store_server_key(key_id, private_key_bytes)
     
     def get_server_public_key_string(self) -> str:
         """Get server public key in the expected format for servers.json"""

@@ -67,6 +67,22 @@ class Database:
                 )
             """)
             self.con.commit()
+        
+        # Check if server_keys table exists
+        result = cur.execute(
+            "SELECT name FROM sqlite_master WHERE name='server_keys'"
+        ).fetchone()
+        
+        if result is None:
+            print(f"Creating server_keys table in {self.db_name}")
+            cur.execute("""
+                CREATE TABLE server_keys(
+                    key_id TEXT PRIMARY KEY,
+                    private_key BLOB NOT NULL,
+                    created_at INTEGER NOT NULL
+                )
+            """)
+            self.con.commit()
 
     def insert(self, uid: bytes, did: bytes, bid: bytes, version: int, x: int, 
                y: bytes, num_guesses: int, max_guesses: int, expiration: int) -> None:
@@ -181,6 +197,45 @@ class Database:
         """Explicitly close the database connection."""
         if hasattr(self, 'con'):
             self.con.close()
+
+    def store_server_key(self, key_id: str, private_key_bytes: bytes) -> None:
+        """
+        Store a server private key in the database.
+        
+        Args:
+            key_id: Identifier for this key (e.g., "noise_kk_server")
+            private_key_bytes: The private key in serialized bytes format
+        """
+        import time
+        
+        sql = """
+            REPLACE INTO server_keys(key_id, private_key, created_at)
+            VALUES(?, ?, ?)
+        """
+        cur = self.con.cursor()
+        cur.execute(sql, (key_id, private_key_bytes, int(time.time())))
+        self.con.commit()
+
+    def get_server_key(self, key_id: str) -> Optional[bytes]:
+        """
+        Retrieve a server private key from the database.
+        
+        Args:
+            key_id: Identifier for the key to retrieve
+            
+        Returns:
+            Private key bytes, or None if not found
+        """
+        sql = """
+            SELECT private_key FROM server_keys WHERE key_id = ?
+        """
+        cur = self.con.cursor()
+        result = cur.execute(sql, [key_id]).fetchone()
+        
+        if result is None:
+            return None
+        
+        return result[0]
 
 
 def main():
