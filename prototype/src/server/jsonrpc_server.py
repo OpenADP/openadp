@@ -291,8 +291,8 @@ def main():
     logger.info(f"Public Key (Base64): {pub_key_b64}")
     logger.info("="*60)
 
-    # Run the server
-    server_address = ('', 4433)
+    # Run the server on a standard non-privileged HTTP port
+    server_address = ('', 8080)
     httpd = HTTPServer(server_address, RPCRequestHandler)
     
     logger.info(f"Starting JSON-RPC server on port {server_address[1]}...")

@@ -8,7 +8,8 @@ set -e
 INSTALL_DIR="/opt/openadp"
 SERVICE_USER="openadp"
 SERVICE_GROUP="openadp"
-SOURCE_DIR="$(dirname "$(readlink -f "$0")")"
+# Correctly set the source directory to be the 'prototype' directory
+SOURCE_DIR=$(dirname "$(readlink -f "$0")")/../../
 
 echo "=== OpenADP Server Installation ==="
 echo "Source directory: $SOURCE_DIR"
@@ -37,31 +38,47 @@ fi
 echo "Creating installation directory..."
 mkdir -p "$INSTALL_DIR"
 
-# Copy files
+# Copy files from the correct 'prototype/src' location
 echo "Copying OpenADP files..."
-cp -r "$SOURCE_DIR"/src/* "$INSTALL_DIR/"
-cp -r "$SOURCE_DIR"/proto "$INSTALL_DIR/" 2>/dev/null || true
-cp "$SOURCE_DIR"/tools/* "$INSTALL_DIR/" 2>/dev/null || true
+# Remove old directories to ensure a clean install
+if [ -d "$INSTALL_DIR/src" ]; then rm -rf "$INSTALL_DIR/src"; fi
+# Copy the entire src directory
+cp -r "$SOURCE_DIR/src" "$INSTALL_DIR/"
 
 # Set permissions
 echo "Setting permissions..."
 chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR"
-chmod 755 "$INSTALL_DIR"
-find "$INSTALL_DIR" -name "*.py" -exec chmod 644 {} \;
-chmod +x "$INSTALL_DIR/server/jsonrpc_server.py"
-chmod +x "$INSTALL_DIR/encrypt.py"
-chmod +x "$INSTALL_DIR/decrypt.py"
+chmod -R 750 "$INSTALL_DIR"
+find "$INSTALL_DIR" -type f -exec chmod 640 {} \;
+chmod +x "$INSTALL_DIR/src/server/jsonrpc_server.py"
+
+# Create and own the virtual environment
+echo "Creating Python virtual environment..."
+python3 -m venv "$INSTALL_DIR/venv"
+chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR/venv"
+# Explicitly make pip and python executable
+chmod +x "$INSTALL_DIR/venv/bin/pip"
+chmod +x "$INSTALL_DIR/venv/bin/python"
 
 # Install systemd service
 echo "Installing systemd service..."
 cp "$SOURCE_DIR/deployment/systemd/openadp-server.service" /etc/systemd/system/
+# The conf file is not used by the service, but we'll copy it for completeness
 cp "$SOURCE_DIR/deployment/systemd/openadp-server.conf" "$INSTALL_DIR/"
 systemctl daemon-reload
 
-# Install dependencies
-echo "Installing Python dependencies..."
-apt-get update
-apt-get install -y python3 sqlite3 python3-cryptography
+# Copy requirements file and set permissions
+cp "$SOURCE_DIR/requirements.txt" "$INSTALL_DIR/"
+chown "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR/requirements.txt"
+
+# Install dependencies from requirements.txt as the service user
+echo "Installing Python dependencies into virtual environment..."
+if [ -f "$INSTALL_DIR/requirements.txt" ]; then
+    sudo -u "$SERVICE_USER" "$INSTALL_DIR/venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt"
+else
+    echo "Warning: requirements.txt not found. Skipping dependency installation."
+fi
+
 
 echo "=== Installation Complete ==="
 echo ""
@@ -78,4 +95,4 @@ echo "To view logs:"
 echo "  sudo journalctl -u openadp-server -f"
 echo ""
 echo "Database location: $INSTALL_DIR/openadp.db"
-echo "Service runs on port 8080" 
+echo "Service runs on port 4433" 
