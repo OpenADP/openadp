@@ -216,3 +216,110 @@ Operators behind Cloudflare set `tls.origin=unix:///var/run/cloudflared.sock`, o
 * **DPoP (Demonstration of Proof-of-Possession)** – A specific OAuth 2 draft (now RFC 9449) that defines **how** the client proves possession: it signs a small JWS (the "DPoP header") for every HTTP request. That header includes a nonce (`jti`), the HTTP method, URL, and the current timestamp. The server verifies the signature using the JWK from the token's `cnf` claim. 
 
 In our design *all* PoP tokens use the **DPoP** mechanism for the proof step. 
+
+## 11  Implementation Roadmap
+
+Each phase is sized to fit a single pull-request and can be tested independently.
+
+### Phase 0 – Prep (no repo changes)
+*Tasks*
+- 🐳 **Spin-up IdP**: Run Keycloak 22 via Docker Compose with `dpopBoundAccessTokens=true`.
+- 🔑 Create *OpenADP* realm, `cli-test` client (public) and two user accounts.
+- 🛰️ Launch a **staging OpenADP node** (anywhere) with `auth.enabled=false`.
+- 📝 Capture a sample PoP access-token, paste its decoded payload (showing `cnf.jwk`) in the wiki.
+
+*Acceptance tests*
+- Token can be introspected at `https://idp/realms/openadp/protocol/openid-connect/userinfo`.
+
+---
+
+### Phase 1 – Client key & token handling
+*Code*
+1. `prototype/src/openadp/auth/keys.py`
+   - `generate_keypair()` → returns `(private_key_obj, public_jwk_dict)`.
+   - `load_private_key()` / `save_private_key()` (file + `chmod 600`).
+2. `prototype/src/openadp/auth/device_flow.py`
+   - Runs OAuth 2 Device-Code flow; returns `{access, refresh, jwk_pub}`.
+3. `prototype/src/openadp/auth/dpop.py`
+   - `make_dpop_header(method, url, priv_key)`.
+4. Wire into `encrypt.py` behind `--auth` flag (default *off*).
+
+*Unit tests*
+- `tests/auth/test_keys.py`: key serialization round-trip.
+- `tests/auth/test_dpop.py`: header verifies, `jti` uniqueness, wrong method fails.
+
+*Integration (CI)*
+- GitHub Action uses Keycloak container, acquires token, calls `/echo` on staging (ignoring auth).
+
+---
+
+### Phase 2 – Server token verification middleware
+*Code*
+1. `prototype/src/server/auth_middleware.py`
+   - JWT+DPoP validation (`python-jose`, `jwt-dpop` helper lib).
+   - Redis (or in-memory) `jti` replay cache (5 min window).
+2. `prototype/src/server/config.py` gains `auth.enabled`, `auth.issuer`, `auth.jwks_url`.
+3. FastAPI/Flask `app.add_middleware(AuthMiddleware, …)` conditioned on config.
+
+*Unit tests*
+- `tests/server/test_auth_positive.py`: valid token passes.
+- `tests/server/test_auth_negative.py`: expired token, bad `htu`, duplicate `jti` → 401.
+
+*Integration*
+- Docker-compose spins IdP + OpenADP; pytest hits `RegisterSecret` (still ownerless) with valid token.
+
+---
+
+### Phase 3 – Auth-aware server logic
+*Code*
+1. Alembic migration: add `owner_sub` VARCHAR to `backups` table.
+2. Update handlers:
+   - **RegisterSecret**: if row absent ⇒ insert with `owner_sub=user_id`; else verify match.
+   - **RecoverSecret**: require `owner_sub` match.
+3. Simple Redis token-bucket per `user_id` (config knobs `rate.user_rps`).
+
+*Unit tests*
+- `tests/server/test_ownership.py`: two users, same UID ⇒ second register fails.
+- `tests/server/test_ratelimit.py`: 10 rapid calls ⇒ 429.
+
+*Migration test*
+- `scripts/dev/migrate_legacysql.sh` backfills `owner_sub='legacy'` and passes recovery.
+
+---
+
+### Phase 4 – Client default-on
+*Code*
+- Remove `--auth`; auth code path always used.
+- Token refresh: `refresh_if_needed()` before each request (400-line diff max).
+
+*Tests*
+- Regression suite previously written continues to pass with `auth.enabled=true`.
+
+---
+
+### Phase 5 – Ops & observability
+*Code/Infra*
+- Prometheus exporter counters: `openadp_auth_success_total`, `…_failure_total`, `…_replay_total`.
+- Structured JSON audit logger writes to file or Loki.
+- Grafana dashboard JSON committed in `ops/grafana/`.
+
+*Tests*
+- Unit: metrics increment properly.
+- Manual: dashboard shows traffic on staging.
+
+---
+
+### Phase 6 – Rollout & cleanup
+*Tasks*
+- Remove `--allow-unauth` flag; config default `auth.enabled=true`.
+- Update documentation & README quick-start.
+- Publish migration guide in `docs/migrating-to-pop.md`.
+
+*Acceptance*
+- Production nodes run for ≥1 week with zero unauth traffic.
+
+---
+
+Token lifetime parameters (see §7) remain: access 5 min, refresh 90 days.
+
+*End of v0.3 — phase details expanded.* 
