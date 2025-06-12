@@ -279,15 +279,17 @@ def main():
         priv_key, pub_key = crypto.x25519_generate_keypair()
         db_connection.set_server_config("noise_sk", priv_key)
         noise_private_key = priv_key
-        
-        pub_key_b64 = base64.b64encode(pub_key).decode('utf-8')
-        logger.info("="*60)
-        logger.info("NEW SERVER NOISE PUBLIC KEY GENERATED")
-        logger.info(f"Public Key (Base64): {pub_key_b64}")
-        logger.info("Add this key to the servers.json file for clients to use.")
-        logger.info("="*60)
+        logger.info("New key saved to database.")
     else:
         logger.info("Loaded existing Noise server key from database.")
+
+    # Always log the public key on startup
+    public_key = crypto.x25519_public_key_from_private(noise_private_key)
+    pub_key_b64 = base64.b64encode(public_key).decode('utf-8')
+    logger.info("="*60)
+    logger.info("SERVER NOISE PUBLIC KEY")
+    logger.info(f"Public Key (Base64): {pub_key_b64}")
+    logger.info("="*60)
 
     # Run the server
     server_address = ('', 4433)

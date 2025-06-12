@@ -291,6 +291,11 @@ def x25519_generate_keypair() -> Tuple[bytes, bytes]:
     public_key = private_key.public_key
     return (bytes(private_key), bytes(public_key))
 
+def x25519_public_key_from_private(private_key_bytes: bytes) -> bytes:
+    """Derives the X25519 public key from a private key."""
+    private_key = nacl.public.PrivateKey(private_key_bytes)
+    return bytes(private_key.public_key)
+
 def x25519_dh(private_key_bytes: bytes, public_key_bytes: bytes) -> bytes:
     """Performs X25519 Diffie-Hellman key exchange."""
     private_key = nacl.public.PrivateKey(private_key_bytes)
