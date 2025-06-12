@@ -1,27 +1,25 @@
 #!/usr/bin/env python3
 """
-Simple Noise-KK Demo
+Simple Noise-NK Demo
 
-This demonstrates how easy it is to use the NoiseKK class for secure communication.
+This demonstrates how easy it is to use the NoiseNK class for secure communication.
 """
 
-from noise_kk import NoiseKK, generate_keypair
+from noise_nk import NoiseNK, generate_keypair
 
 def main():
-    print("🔐 Simple Noise-KK Demo\n")
+    print("🔐 Simple Noise-NK Demo\n")
     
-    # Step 1: Generate keypairs (this would normally be done once and stored)
-    print("1. Generating keypairs...")
-    alice_key = generate_keypair()
+    # Step 1: Generate keypair for responder only (NK pattern)
+    print("1. Generating keypair...")
     bob_key = generate_keypair()
     
-    print(f"   Alice's public key: {alice_key.public.data.hex()[:32]}...")
     print(f"   Bob's public key:   {bob_key.public.data.hex()[:32]}...")
     
-    # Step 2: Initialize secure endpoints (both parties know each other's public keys)
+    # Step 2: Initialize secure endpoints (only initiator knows responder's public key)
     print("\n2. Setting up secure communication channels...")
-    alice = NoiseKK(role='initiator', local_static_key=alice_key, remote_static_key=bob_key.public)
-    bob = NoiseKK(role='responder', local_static_key=bob_key, remote_static_key=alice_key.public)
+    alice = NoiseNK(role='initiator', remote_static_key=bob_key.public)
+    bob = NoiseNK(role='responder', local_static_key=bob_key)
     
     # Step 3: Perform handshake
     print("\n3. Performing secure handshake...")
@@ -57,7 +55,7 @@ def main():
     print(f"📋 Session info:")
     print(f"   • Handshake hash: {alice.get_handshake_hash().hex()[:32]}...")
     print(f"   • Crypto: X25519 + AESGCM + SHA256")
-    print(f"   • Security: Mutual authentication + Forward secrecy")
+    print(f"   • Security: Server authentication + Forward secrecy")
 
 if __name__ == "__main__":
     main() 

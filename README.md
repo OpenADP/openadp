@@ -89,13 +89,9 @@ the network long-term.
 Once `s` is split into N shares with Shamir secret sharing, the device goes
 through the registration protocol with servers  It uses TLS, terminated at
 Cloudflare to talk to openadp.org.  The session is encrypted with a second
-Noise-KK layer, where the server key is trusted by the client, and the client
+Noise-NK layer, where the server key is trusted by the client, and the client
 key is trusted by the server.  The client gets its authentication key when
 authenticating (how this works is TBD).
-
-Over the Noise-KK second layer of encryption, the client sends a key share to
-each of the OpenADP servers, which  can be anywhere in the world.  These
-servers use Cloudflare Tunnels, which hides their IP address from the client.
 
 Each OpenADP server saves a record containing:
 
@@ -116,7 +112,7 @@ flow, and `max_guesses` is the maximum number of attempts the client wants to
 allow.
 
 The only RPC provided for registration is `RegisterVault`.  All communication
-with OpenADP servers is via gRPC, tunneled over Noise-KK, tunneled over TLS.
+with OpenADP servers is via gRPC, tunneled over Noise-NK, tunneled over TLS.
 
 ### Recovery
 

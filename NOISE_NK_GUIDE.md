@@ -1,20 +1,19 @@
-# Noise-KK Protocol Implementation Guide
+# Noise-NK Protocol Implementation Guide
 
 ## 🎯 **TL;DR - Simple Solution Available**
 
-**Problem:** Existing Noise-KK implementations are complex and hard to use.  
-**Solution:** We created a simple `NoiseKK` wrapper class that makes it easy.
+**Problem:** Existing Noise-NK implementations are complex and hard to use.  
+**Solution:** We created a simple `NoiseNK` wrapper class that makes it easy.
 
 ```python
-from noise_kk import NoiseKK, generate_keypair
+from noise_nk import NoiseNK, generate_keypair
 
-# Generate keys
-alice_key = generate_keypair()
+# Generate key for responder only
 bob_key = generate_keypair()
 
 # Setup endpoints  
-alice = NoiseKK('initiator', alice_key, bob_key.public)
-bob = NoiseKK('responder', bob_key, alice_key.public)
+alice = NoiseNK('initiator', remote_static_key=bob_key.public)
+bob = NoiseNK('responder', local_static_key=bob_key)
 
 # Handshake
 msg1 = alice.write_handshake_message(b"Hello")
@@ -31,29 +30,29 @@ decrypted = bob.decrypt(encrypted)
 
 ---
 
-## 📖 **What is Noise-KK?**
+## 📖 **What is Noise-NK?**
 
-The **KK handshake pattern** from the [Noise Protocol Framework](http://www.noiseprotocol.org/noise.html) provides secure, mutually authenticated communication where both parties have pre-shared knowledge of each other's static public keys.
+The **NK handshake pattern** from the [Noise Protocol Framework](http://www.noiseprotocol.org/noise.html) provides secure, responder-authenticated communication where the initiator has pre-shared knowledge of the responder's static public key.
 
-### **KK Pattern Overview:**
+### **NK Pattern Overview:**
 ```
-KK:
-  -> s    (initiator's static key - known by responder)
-  <- s    (responder's static key - known by initiator)  
+NK:
+  <- s    (responder's static key - known by initiator)
   ...
-  -> e, es, ss    (ephemeral + 2 DH operations)
-  <- e, ee, se    (ephemeral + 2 DH operations)
+  -> e, es    (ephemeral + DH with responder's static key)
+  <- e, ee    (ephemeral + DH between ephemeral keys)
 ```
 
 ### **Security Properties:**
-- ✅ **Mutual Authentication**: Both parties verify each other's identity
+- ✅ **Responder Authentication**: Initiator verifies responder's identity
 - ✅ **Forward Secrecy**: Session keys independent of static keys
 - ✅ **Key Compromise Resistance**: Strong protection against key compromise attacks
 - ✅ **Replay Protection**: Nonce progression prevents message replay
+- ✅ **Zero-RTT**: Initiator can send encrypted data immediately
 
 ---
 
-## 🚀 **Our Simple NoiseKK Class**
+## 🚀 **Our Simple NoiseNK Class**
 
 ### **Why We Built It**
 
@@ -62,9 +61,9 @@ The existing Python Noise implementations are unnecessarily complex:
 ```python
 # Typical dissononce complexity (20+ lines just to setup)
 factory = NoiseProtocolFactory()
-protocol = factory.get_noise_protocol('Noise_KK_25519_AESGCM_SHA256')
+protocol = factory.get_noise_protocol('Noise_NK_25519_AESGCM_SHA256')
 handshake_state = protocol.create_handshakestate()
-pattern = KKHandshakePattern()
+pattern = NKHandshakePattern()
 handshake_state.initialize(pattern, True, b'', local_key, remote_key)
 # ... more complex state management
 cipher1, cipher2 = handshake_state.symmetricstate.split()
@@ -75,7 +74,7 @@ cipher1, cipher2 = handshake_state.symmetricstate.split()
 
 ```python
 # Our solution (2 lines)
-alice = NoiseKK('initiator', local_key, remote_key)
+alice = NoiseNK('initiator', remote_static_key=remote_key)
 encrypted = alice.encrypt(b"message")
 ```
 
@@ -83,24 +82,21 @@ encrypted = alice.encrypt(b"message")
 
 ```python
 #!/usr/bin/env python3
-from noise_kk import NoiseKK, generate_keypair
+from noise_nk import NoiseNK, generate_keypair
 
 def secure_chat():
-    # 1. Generate keypairs (done once, stored securely)
-    alice_key = generate_keypair()
+    # 1. Generate keypair for responder only (NK pattern)
     bob_key = generate_keypair()
     
-    # 2. Initialize endpoints (both know each other's public keys)
-    alice = NoiseKK(
+    # 2. Initialize endpoints (only initiator knows responder's public key)
+    alice = NoiseNK(
         role='initiator',
-        local_static_key=alice_key,
         remote_static_key=bob_key.public
     )
     
-    bob = NoiseKK(
+    bob = NoiseNK(
         role='responder', 
-        local_static_key=bob_key,
-        remote_static_key=alice_key.public
+        local_static_key=bob_key
     )
     
     # 3. Perform handshake
@@ -139,10 +135,10 @@ if __name__ == "__main__":
 
 ## 🛠️ **API Reference**
 
-### **NoiseKK Class**
+### **NoiseNK Class**
 
 ```python
-class NoiseKK:
+class NoiseNK:
     def __init__(self, role: str, local_static_key=None, remote_static_key=None, prologue: bytes = b'')
     def write_handshake_message(self, payload: bytes = b'') -> bytes
     def read_handshake_message(self, message: bytes) -> bytes
@@ -156,20 +152,19 @@ class NoiseKK:
 ### **Helper Functions**
 
 ```python
-def generate_keypair()  # Generate X25519 keypair for NoiseKK
+def generate_keypair()  # Generate X25519 keypair for NoiseNK
 ```
 
 ### **Usage Patterns**
 
 #### **Basic Setup:**
 ```python
-# Generate or load keypairs
-client_key = generate_keypair()
+# Generate or load keypair for responder only
 server_key = generate_keypair()
 
 # Initialize endpoints
-client = NoiseKK('initiator', client_key, server_key.public)
-server = NoiseKK('responder', server_key, client_key.public)
+client = NoiseNK('initiator', remote_static_key=server_key.public)
+server = NoiseNK('responder', local_static_key=server_key)
 ```
 
 #### **Handshake:**
@@ -205,7 +200,7 @@ decrypted_reply = client.decrypt(encrypted_reply)
 - **Key Exchange**: X25519 Elliptic Curve Diffie-Hellman
 - **Encryption**: AES-256-GCM (Authenticated Encryption)
 - **Hashing**: SHA-256
-- **Protocol**: Noise-KK per [revision 34 specification](http://www.noiseprotocol.org/noise.html)
+- **Protocol**: Noise-NK per [revision 34 specification](http://www.noiseprotocol.org/noise.html)
 
 ### **Dependencies**
 ```bash
@@ -214,9 +209,9 @@ pip install dissononce  # Our wrapper uses this internally
 
 ### **File Structure**
 ```
-noise_kk.py           # Main NoiseKK class (self-contained)
-noise_kk_demo.py      # Usage example  
-NOISE_KK_GUIDE.md     # This guide
+noise_nk.py           # Main NoiseNK class (self-contained)
+noise_nk_demo.py      # Usage example  
+NOISE_NK_GUIDE.md     # This guide
 ```
 
 ---
@@ -225,7 +220,7 @@ NOISE_KK_GUIDE.md     # This guide
 
 | Solution | Complexity | Lines of Code | Ease of Use | Status |
 |----------|------------|---------------|-------------|--------|
-| **Our NoiseKK** | ⭐ Simple | ~5 lines | ⭐⭐⭐⭐⭐ Excellent | ✅ Working |
+| **Our NoiseNK** | ⭐ Simple | ~5 lines | ⭐⭐⭐⭐⭐ Excellent | ✅ Working |
 | dissononce | 😵 Complex | ~25+ lines | ⭐⭐ Poor | ✅ Working but hard |
 | noiseprotocol | 🤷 Limited | ~15 lines | ⭐⭐⭐ OK | ⚠️ Maintenance mode |
 | Manual crypto | 💀 Very complex | ~100+ lines | ⭐ Terrible | ❌ Error-prone |
@@ -238,7 +233,7 @@ NOISE_KK_GUIDE.md     # This guide
 - Confusing API with multiple ways to do the same thing
 - Easy to get cipher pairing wrong
 - Verbose error handling
-- No clear examples for KK pattern
+- No clear examples for NK pattern
 
 **Our wrapper solves all these issues** while still using dissononce's solid crypto underneath.
 
@@ -255,16 +250,16 @@ NOISE_KK_GUIDE.md     # This guide
 
 ### **Testing**
 ```bash
-python noise_kk.py        # Run built-in test suite
-python noise_kk_demo.py   # Run usage demo
+python noise_nk.py        # Run built-in test suite
+python noise_nk_demo.py   # Run usage demo
 ```
 
 ### **Use Cases**
-- **IoT Device Communication**: Pre-shared device certificates
-- **VPN Connections**: Known endpoint authentication  
-- **Secure APIs**: Client-server with distributed certificates
-- **P2P Applications**: Authenticated peer connections
-- **Any scenario with pre-exchanged public keys**
+- **IoT Device Communication**: Connect to devices with known public keys
+- **Client-Server APIs**: Authenticate servers with known certificates
+- **Secure Messaging**: Connect to servers with pre-shared public keys
+- **Anonymous Client Connections**: Authenticate servers while keeping client anonymous
+- **Any scenario where only the responder's identity needs to be verified**
 
 ---
 
@@ -299,7 +294,7 @@ assert hash1 == hash2  # Should always match
 
 ## 🎉 **Conclusion**
 
-The `NoiseKK` wrapper class solves the complexity problem of implementing Noise-KK in Python. It provides:
+The `NoiseNK` wrapper class solves the complexity problem of implementing Noise-NK in Python. It provides:
 
 - **Simple API** that's actually usable
 - **Complete security** following the official specification  
@@ -308,9 +303,9 @@ The `NoiseKK` wrapper class solves the complexity problem of implementing Noise-
 
 **Get started in 30 seconds:**
 
-1. Copy `noise_kk.py` to your project
-2. `from noise_kk import NoiseKK, generate_keypair`
+1. Copy `noise_nk.py` to your project
+2. `from noise_nk import NoiseNK, generate_keypair`
 3. Follow the examples above
 4. You now have secure, authenticated communication! 🔐
 
-For questions or issues, refer to the built-in test suite in `noise_kk.py` or the demo in `noise_kk_demo.py`. 
+For questions or issues, refer to the built-in test suite in `noise_nk.py` or the demo in `noise_nk_demo.py`. 

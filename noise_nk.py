@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Simple Noise-KK Implementation
+Simple Noise-NK Implementation
 
 A clean, easy-to-use wrapper around dissononce that implements just the
-Noise-KK handshake pattern with a straightforward API.
+Noise-NK handshake pattern with a straightforward API.
 
 Usage:
-    # Initialize parties with each other's public keys
-    client = NoiseKK(role='initiator', local_static_key=client_key, remote_static_key=server_key)
-    server = NoiseKK(role='responder', local_static_key=server_key, remote_static_key=client_key)
+    # Initialize parties - only responder needs static key known to initiator
+    client = NoiseNK(role='initiator', remote_static_key=server_key)
+    server = NoiseNK(role='responder', local_static_key=server_key)
     
     # Perform handshake
     msg1 = client.write_handshake_message(b"Hello Server")
@@ -24,25 +24,25 @@ Usage:
 
 from typing import Optional, Tuple, Union
 from dissononce.extras.meta.protocol.factory import NoiseProtocolFactory
-from dissononce.processing.handshakepatterns.interactive.KK import KKHandshakePattern
+from dissononce.processing.handshakepatterns.interactive.NK import NKHandshakePattern
 
 
-class NoiseKK:
+class NoiseNK:
     """
-    Simple Noise-KK implementation with clean API.
+    Simple Noise-NK implementation with clean API.
     
-    The KK pattern provides mutual authentication where both parties
-    have pre-shared knowledge of each other's static public keys.
+    The NK pattern provides responder authentication where the initiator
+    has pre-shared knowledge of the responder's static public key.
     """
     
     def __init__(self, role: str, local_static_key=None, remote_static_key=None, prologue: bytes = b''):
         """
-        Initialize a Noise-KK endpoint.
+        Initialize a Noise-NK endpoint.
         
         Args:
             role: Either 'initiator' or 'responder'
-            local_static_key: This party's static keypair (generated if None)
-            remote_static_key: The other party's static public key
+            local_static_key: Responder's static keypair (None for initiator)
+            remote_static_key: Responder's static public key (for initiator only)
             prologue: Optional prologue data (defaults to empty)
         """
         if role not in ['initiator', 'responder']:
@@ -55,25 +55,31 @@ class NoiseKK:
         
         # Create protocol factory and handshake state
         factory = NoiseProtocolFactory()
-        protocol = factory.get_noise_protocol('Noise_KK_25519_AESGCM_SHA256')
+        protocol = factory.get_noise_protocol('Noise_NK_25519_AESGCM_SHA256')
         self.handshake_state = protocol.create_handshakestate()
         self.dh = protocol.dh
         
-        # Generate or use provided static key
-        if local_static_key is None:
-            self.local_static_key = self.dh.generate_keypair()
+        # In NK pattern, only responder has a static key
+        if self.is_initiator:
+            # Initiator has no static key, only needs responder's public key
+            self.local_static_key = None
+            if remote_static_key is None:
+                raise ValueError("Initiator must provide responder's static public key")
+            self.remote_static_key = remote_static_key
         else:
-            self.local_static_key = local_static_key
+            # Responder must have a static key
+            if local_static_key is None:
+                self.local_static_key = self.dh.generate_keypair()
+            else:
+                self.local_static_key = local_static_key
+            self.remote_static_key = None
             
-        self.remote_static_key = remote_static_key
-        
-        # Initialize handshake if we have remote key
-        if self.remote_static_key is not None:
-            self._initialize_handshake()
+        # Initialize handshake
+        self._initialize_handshake()
     
     def _initialize_handshake(self):
-        """Initialize the handshake state with KK pattern."""
-        pattern = KKHandshakePattern()
+        """Initialize the handshake state with NK pattern."""
+        pattern = NKHandshakePattern()
         self.handshake_state.initialize(
             handshake_pattern=pattern,
             initiator=self.is_initiator,
@@ -215,46 +221,42 @@ class NoiseKK:
 
 def generate_keypair():
     """
-    Generate a new X25519 keypair for use with NoiseKK.
+    Generate a new X25519 keypair for use with NoiseNK.
     
     Returns:
         A keypair object that can be used as local_static_key
     """
     factory = NoiseProtocolFactory()
-    protocol = factory.get_noise_protocol('Noise_KK_25519_AESGCM_SHA256')
+    protocol = factory.get_noise_protocol('Noise_NK_25519_AESGCM_SHA256')
     return protocol.dh.generate_keypair()
 
 
 # Example usage and test
 if __name__ == "__main__":
-    def test_noise_kk():
-        """Test the NoiseKK implementation with bidirectional communication."""
-        print("=== Testing Simple NoiseKK Implementation ===\n")
+    def test_noise_nk():
+        """Test the NoiseNK implementation with bidirectional communication."""
+        print("=== Testing Simple NoiseNK Implementation ===\n")
         
-        # 1. Generate keypairs for both parties
-        print("1. Generating keypairs...")
-        client_keypair = generate_keypair()
+        # 1. Generate keypair for responder only (NK pattern)
+        print("1. Generating server keypair...")
         server_keypair = generate_keypair()
         
-        print(f"Client public key: {client_keypair.public.data.hex()}")
         print(f"Server public key: {server_keypair.public.data.hex()}")
         
-        # 2. Initialize both parties with each other's public keys
-        print("\n2. Initializing NoiseKK endpoints...")
-        client = NoiseKK(
+        # 2. Initialize both parties - only server has static key
+        print("\n2. Initializing NoiseNK endpoints...")
+        client = NoiseNK(
             role='initiator',
-            local_static_key=client_keypair,
             remote_static_key=server_keypair.public
         )
         
-        server = NoiseKK(
+        server = NoiseNK(
             role='responder', 
-            local_static_key=server_keypair,
-            remote_static_key=client_keypair.public
+            local_static_key=server_keypair
         )
         
-        # 3. Perform KK handshake
-        print("\n3. Performing KK handshake...")
+        # 3. Perform NK handshake
+        print("\n3. Performing NK handshake...")
         
         # Message 1: Client -> Server
         print("   Client sending handshake message 1...")
@@ -319,6 +321,6 @@ if __name__ == "__main__":
             
             print(f"   {direction}: '{msg.decode()}' -> '{decrypted.decode()}' ✅")
         
-        print("\n🎉 All tests passed! NoiseKK implementation working perfectly!")
+        print("\n🎉 All tests passed! NoiseNK implementation working perfectly!")
     
-    test_noise_kk() 
+    test_noise_nk() 
