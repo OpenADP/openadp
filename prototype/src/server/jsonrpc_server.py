@@ -29,9 +29,12 @@ import os
 # Add the src directory to Python path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from openadp import database
-from openadp import crypto
+# Import modules directly to avoid dependency issues
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'openadp'))
+import database
+import crypto
 from server import server
+from server.noise_session_manager import get_session_manager, validate_session_id
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -120,6 +123,10 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             return self._list_backups(params)
         elif method == 'Echo':
             return self._echo(params)
+        elif method == 'noise_handshake':
+            return self._noise_handshake(params)
+        elif method == 'encrypted_call':
+            return self._encrypted_call(params)
         else:
             error = {'code': -32601, 'message': 'Method not found'}
             return None, error
@@ -258,6 +265,123 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
         
         return params[0], None
 
+    def _noise_handshake(self, params: List[Any]) -> Tuple[Any, Optional[str]]:
+        """
+        Handle noise_handshake RPC method to establish encrypted session.
+        
+        Args:
+            params: List containing [session_id, handshake_message_base64]
+            
+        Returns:
+            Tuple of (handshake_response_dict, error_message)
+        """
+        try:
+            if len(params) != 2:
+                return None, "INVALID_ARGUMENT: noise_handshake expects exactly 2 parameters"
+            
+            session_id, handshake_message_b64 = params
+            
+            # Validate session ID format
+            if not validate_session_id(session_id):
+                return None, "INVALID_ARGUMENT: Invalid session ID format"
+            
+            # Decode handshake message
+            try:
+                handshake_message = base64.b64decode(handshake_message_b64)
+            except Exception as e:
+                return None, f"INVALID_ARGUMENT: Invalid base64 handshake message: {str(e)}"
+            
+            # Get session manager and start handshake
+            session_manager = get_session_manager()
+            server_response, error = session_manager.start_handshake(session_id, handshake_message)
+            
+            if error:
+                return None, f"HANDSHAKE_ERROR: {error}"
+            
+            # Return base64-encoded response
+            response = {
+                "message": base64.b64encode(server_response).decode('ascii')
+            }
+            
+            logger.info(f"Successfully completed handshake for session {session_id[:16]}...")
+            return response, None
+            
+        except Exception as e:
+            logger.error(f"Error in noise_handshake: {e}")
+            return None, f"INTERNAL_ERROR: {str(e)}"
+
+    def _encrypted_call(self, params: List[Any]) -> Tuple[Any, Optional[str]]:
+        """
+        Handle encrypted_call RPC method to process encrypted JSON-RPC requests.
+        
+        Args:
+            params: List containing [session_id, encrypted_data_base64]
+            
+        Returns:
+            Tuple of (encrypted_response_dict, error_message)
+        """
+        try:
+            if len(params) != 2:
+                return None, "INVALID_ARGUMENT: encrypted_call expects exactly 2 parameters"
+            
+            session_id, encrypted_data_b64 = params
+            
+            # Validate session ID format
+            if not validate_session_id(session_id):
+                return None, "INVALID_ARGUMENT: Invalid session ID format"
+            
+            # Decode encrypted data
+            try:
+                encrypted_data = base64.b64decode(encrypted_data_b64)
+            except Exception as e:
+                return None, f"INVALID_ARGUMENT: Invalid base64 encrypted data: {str(e)}"
+            
+            # Get session manager and decrypt the call
+            session_manager = get_session_manager()
+            decrypted_request, error = session_manager.decrypt_call(session_id, encrypted_data)
+            
+            if error:
+                return None, f"DECRYPTION_ERROR: {error}"
+            
+            # Extract the actual method and params from decrypted request
+            inner_method = decrypted_request.get('method')
+            inner_params = decrypted_request.get('params', [])
+            inner_id = decrypted_request.get('id')
+            
+            logger.debug(f"Decrypted call: method={inner_method}, params={inner_params}")
+            
+            # Route the decrypted method call (but not encryption methods!)
+            if inner_method in ['noise_handshake', 'encrypted_call']:
+                # Prevent recursive encryption calls
+                inner_result = None
+                inner_error = "INVALID_METHOD: Cannot encrypt encryption methods"
+            else:
+                inner_result, inner_error = self._route_method(inner_method, inner_params)
+            
+            # Build the inner response
+            if inner_error is None:
+                inner_response = {'jsonrpc': '2.0', 'result': inner_result, 'id': inner_id}
+            else:
+                inner_response = {'jsonrpc': '2.0', 'error': {'code': -32600, 'message': inner_error}, 'id': inner_id}
+            
+            # Encrypt the response
+            encrypted_response, error = session_manager.encrypt_response(session_id, inner_response)
+            
+            if error:
+                return None, f"ENCRYPTION_ERROR: {error}"
+            
+            # Return base64-encoded encrypted response
+            response = {
+                "data": base64.b64encode(encrypted_response).decode('ascii')
+            }
+            
+            logger.info(f"Successfully processed encrypted call for session {session_id[:16]}...")
+            return response, None
+            
+        except Exception as e:
+            logger.error(f"Error in encrypted_call: {e}")
+            return None, f"INTERNAL_ERROR: {str(e)}"
+
     def log_message(self, format: str, *args) -> None:
         """Override to use proper logging instead of printing to stderr."""
         logger.info(f"{self.address_string()} - {format % args}")
@@ -272,23 +396,30 @@ def main():
     db_connection = database.Database(db_path)
     logger.info(f"Database initialized at {db_path}")
 
-    # Load or generate Noise server key
+    # Load or generate Noise server key for legacy x25519 operations
     noise_private_key = db_connection.get_server_config("noise_sk")
     if noise_private_key is None:
-        logger.info("No Noise key found, generating a new one...")
+        logger.info("No legacy Noise key found, generating a new one...")
         priv_key, pub_key = crypto.x25519_generate_keypair()
         db_connection.set_server_config("noise_sk", priv_key)
         noise_private_key = priv_key
-        logger.info("New key saved to database.")
+        logger.info("New legacy key saved to database.")
     else:
-        logger.info("Loaded existing Noise server key from database.")
+        logger.info("Loaded existing legacy Noise server key from database.")
 
-    # Always log the public key on startup
-    public_key = crypto.x25519_public_key_from_private(noise_private_key)
-    pub_key_b64 = base64.b64encode(public_key).decode('utf-8')
+    # Initialize Noise-NK session manager (generates its own key)
+    session_manager = get_session_manager()
+    nk_public_key = session_manager.get_server_public_key()
+    nk_pub_key_b64 = base64.b64encode(nk_public_key).decode('utf-8')
+    
+    # Always log both public keys on startup
+    legacy_public_key = crypto.x25519_public_key_from_private(noise_private_key)
+    legacy_pub_key_b64 = base64.b64encode(legacy_public_key).decode('utf-8')
+    
     logger.info("="*60)
-    logger.info("SERVER NOISE PUBLIC KEY")
-    logger.info(f"Public Key (Base64): {pub_key_b64}")
+    logger.info("SERVER ENCRYPTION KEYS")
+    logger.info(f"Legacy Noise Public Key (Base64): {legacy_pub_key_b64}")
+    logger.info(f"Noise-NK Public Key (Base64):     {nk_pub_key_b64}")
     logger.info("="*60)
 
     # Run the server on a standard non-privileged HTTP port
