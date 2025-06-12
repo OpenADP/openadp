@@ -37,6 +37,10 @@ from server import server
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Global server state
+db_connection = None
+noise_private_key = None
+
 
 class RPCRequestHandler(BaseHTTPRequestHandler):
     """
@@ -48,7 +52,8 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
     
     def __init__(self, *args, **kwargs):
         """Initialize the request handler with a database connection."""
-        self.db = database.Database("openadp.db")
+        self.db = db_connection
+        self.noise_sk = noise_private_key
         super().__init__(*args, **kwargs)
 
     def do_POST(self) -> None:
@@ -259,20 +264,38 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
 
 
 def main():
-    """Main function to start the JSON-RPC server."""
-    port = 8080
-    server_address = ('', port)
+    """Main function to run the JSON-RPC server."""
+    global db_connection, noise_private_key
     
-    try:
-        httpd = HTTPServer(server_address, RPCRequestHandler)
-        logger.info(f"Starting OpenADP JSON-RPC server on port {port}")
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        logger.info("Server interrupted by user")
-    except Exception as e:
-        logger.error(f"Server error: {e}")
-        raise
+    # Initialize database
+    db_path = "openadp.db"
+    db_connection = database.Database(db_path)
+    logger.info(f"Database initialized at {db_path}")
+
+    # Load or generate Noise server key
+    noise_private_key = db_connection.get_server_config("noise_sk")
+    if noise_private_key is None:
+        logger.info("No Noise key found, generating a new one...")
+        priv_key, pub_key = crypto.x25519_generate_keypair()
+        db_connection.set_server_config("noise_sk", priv_key)
+        noise_private_key = priv_key
+        
+        pub_key_b64 = base64.b64encode(pub_key).decode('utf-8')
+        logger.info("="*60)
+        logger.info("NEW SERVER NOISE PUBLIC KEY GENERATED")
+        logger.info(f"Public Key (Base64): {pub_key_b64}")
+        logger.info("Add this key to the servers.json file for clients to use.")
+        logger.info("="*60)
+    else:
+        logger.info("Loaded existing Noise server key from database.")
+
+    # Run the server
+    server_address = ('', 4433)
+    httpd = HTTPServer(server_address, RPCRequestHandler)
+    
+    logger.info(f"Starting JSON-RPC server on port {server_address[1]}...")
+    httpd.serve_forever()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

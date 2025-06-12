@@ -12,6 +12,8 @@ import hashlib
 from typing import Tuple, Optional, Union
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
+import nacl.public
+import nacl.encoding
 
 # Type definitions for clarity
 Point2D = Tuple[int, int]  # (x, y) coordinates
@@ -280,6 +282,21 @@ def deriveEncKey(P: Point4D) -> bytes:
     p_compressed = point_compress(P)
     hkdf = HKDF(hashes.SHA256(), 32, b"", b"OpenADP enc_key derivation")
     return hkdf.derive(p_compressed)
+
+## X25519 functions for Noise protocol
+
+def x25519_generate_keypair() -> Tuple[bytes, bytes]:
+    """Generates an X25519 keypair."""
+    private_key = nacl.public.PrivateKey.generate()
+    public_key = private_key.public_key
+    return (bytes(private_key), bytes(public_key))
+
+def x25519_dh(private_key_bytes: bytes, public_key_bytes: bytes) -> bytes:
+    """Performs X25519 Diffie-Hellman key exchange."""
+    private_key = nacl.public.PrivateKey(private_key_bytes)
+    public_key = nacl.public.PublicKey(public_key_bytes)
+    shared_secret = private_key.diffie_hellman(public_key)
+    return shared_secret
 
 if __name__ == '__main__':
 

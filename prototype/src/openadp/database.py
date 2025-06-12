@@ -68,6 +68,37 @@ class Database:
             """)
             self.con.commit()
 
+        # Check if server_config table exists
+        result = cur.execute(
+            "SELECT name FROM sqlite_master WHERE name='server_config'"
+        ).fetchone()
+
+        if result is None:
+            print(f"Creating server_config table in {self.db_name}")
+            cur.execute("""
+                CREATE TABLE server_config(
+                    key TEXT PRIMARY KEY NOT NULL,
+                    value BLOB NOT NULL
+                )
+            """)
+            self.con.commit()
+
+    def get_server_config(self, key: str) -> Optional[bytes]:
+        """Gets a value from the server_config table."""
+        sql = "SELECT value FROM server_config WHERE key = ?"
+        cur = self.con.cursor()
+        results = cur.execute(sql, [key]).fetchall()
+        if not results:
+            return None
+        return results[0][0]
+
+    def set_server_config(self, key: str, value: bytes) -> None:
+        """Sets a value in the server_config table."""
+        sql = "REPLACE INTO server_config(key, value) VALUES(?, ?)"
+        cur = self.con.cursor()
+        cur.execute(sql, (key, value))
+        self.con.commit()
+
     def insert(self, uid: bytes, did: bytes, bid: bytes, version: int, x: int, 
                y: bytes, num_guesses: int, max_guesses: int, expiration: int) -> None:
         """
