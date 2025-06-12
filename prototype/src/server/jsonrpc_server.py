@@ -34,7 +34,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'openadp'))
 import database
 import crypto
 from server import server
-from server.noise_session_manager import get_session_manager, validate_session_id
+from server.noise_session_manager import get_session_manager, initialize_session_manager, validate_session_id
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -396,30 +396,47 @@ def main():
     db_connection = database.Database(db_path)
     logger.info(f"Database initialized at {db_path}")
 
-    # Load or generate Noise server key for legacy x25519 operations
+    # Load or generate server key for both legacy x25519 operations and Noise-NK
     noise_private_key = db_connection.get_server_config("noise_sk")
     if noise_private_key is None:
-        logger.info("No legacy Noise key found, generating a new one...")
+        logger.info("No server key found, generating a new one...")
         priv_key, pub_key = crypto.x25519_generate_keypair()
         db_connection.set_server_config("noise_sk", priv_key)
         noise_private_key = priv_key
-        logger.info("New legacy key saved to database.")
+        logger.info("New server key saved to database.")
     else:
-        logger.info("Loaded existing legacy Noise server key from database.")
+        logger.info("Loaded existing server key from database.")
 
-    # Initialize Noise-NK session manager (generates its own key)
-    session_manager = get_session_manager()
-    nk_public_key = session_manager.get_server_public_key()
-    nk_pub_key_b64 = base64.b64encode(nk_public_key).decode('utf-8')
+    # Create Noise-NK keypair object from the legacy key bytes
+    from noise_nk import NoiseProtocolFactory
+    from dissononce.dh.x25519.private import PrivateKey
+    from dissononce.dh.x25519.public import PublicKey
+    from dissononce.dh.keypair import KeyPair
     
-    # Always log both public keys on startup
+    factory = NoiseProtocolFactory()
+    protocol = factory.get_noise_protocol('Noise_NK_25519_AESGCM_SHA256')
+    
+    # Convert legacy private key bytes to Noise-NK keypair object
     legacy_public_key = crypto.x25519_public_key_from_private(noise_private_key)
+    private_key_obj = PrivateKey(noise_private_key)
+    public_key_obj = PublicKey(legacy_public_key)
+    server_static_keypair = KeyPair(public_key_obj, private_key_obj)
+    
+    # Initialize Noise-NK session manager with the same key
+    session_manager = initialize_session_manager(server_static_keypair)
+    
+    # Verify that the keypair was created correctly
+    nk_public_key = server_static_keypair.public.data
+    if legacy_public_key != nk_public_key:
+        logger.error("Key mismatch! Legacy and Noise-NK keys don't match!")
+        raise Exception("Server key consistency check failed")
+    
     legacy_pub_key_b64 = base64.b64encode(legacy_public_key).decode('utf-8')
     
     logger.info("="*60)
-    logger.info("SERVER ENCRYPTION KEYS")
-    logger.info(f"Legacy Noise Public Key (Base64): {legacy_pub_key_b64}")
-    logger.info(f"Noise-NK Public Key (Base64):     {nk_pub_key_b64}")
+    logger.info("SERVER ENCRYPTION KEY")
+    logger.info(f"Server Public Key (Base64): {legacy_pub_key_b64}")
+    logger.info("  - Used for both legacy operations and Noise-NK encryption")
     logger.info("="*60)
 
     # Run the server on a standard non-privileged HTTP port
