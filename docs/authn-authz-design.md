@@ -255,18 +255,27 @@ Each phase is sized to fit a single pull-request and can be tested independently
 
 ### Phase 2 – Server token verification middleware
 *Code*
-1. `prototype/src/server/auth_middleware.py`
-   - JWT+DPoP validation (`python-jose`, `jwt-dpop` helper lib).
-   - Redis (or in-memory) `jti` replay cache (5 min window).
-2. `prototype/src/server/config.py` gains `auth.enabled`, `auth.issuer`, `auth.jwks_url`.
-3. FastAPI/Flask `app.add_middleware(AuthMiddleware, …)` conditioned on config.
+1. **`prototype/src/server/auth_middleware.py`** (new)  
+   Implements **`validate_auth(request_bytes, headers)`** → `(user_id | None, error_str | None)`.
+2. Modify **`prototype/src/server/jsonrpc_server.py`**:  
+   - In `RPCRequestHandler.do_POST` call `validate_auth()` **before** parsing the JSON-RPC body.  
+   - If `auth.enabled` is *false* → bypass check (for dev).  
+   - On failure, return JSON-RPC error `{code:-32001, message:"Unauthorized"}`.
+3. Lightweight config via **env-vars** (no dedicated config module yet):  
+   - `OPENADP_AUTH_ENABLED`  ("0"|"1")  
+   - `OPENADP_AUTH_ISSUER`   
+   - `OPENADP_AUTH_JWKS_URL`.
+4. **Replay cache**: simple in-memory `set()` keyed by `jti` with timestamp eviction (sliding 5-min window).  No Redis yet—can swap later.
 
 *Unit tests*
-- `tests/server/test_auth_positive.py`: valid token passes.
-- `tests/server/test_auth_negative.py`: expired token, bad `htu`, duplicate `jti` → 401.
+- `tests/server/test_auth_positive.py`: valid token + DPoP header accepted.
+- `tests/server/test_auth_negative.py`:  
+  • expired token  
+  • wrong `htu`  
+  • duplicate `jti` ⇒ 401.
 
 *Integration*
-- Docker-compose spins IdP + OpenADP; pytest hits `RegisterSecret` (still ownerless) with valid token.
+- Docker-compose spins IdP + **current `jsonrpc_server`**; pytest posts a `RegisterSecret` with valid PoP token and receives 200.
 
 ---
 
