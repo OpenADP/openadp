@@ -42,7 +42,6 @@ logger = logging.getLogger(__name__)
 
 # Global server state
 db_connection = None
-noise_private_key = None
 
 
 class RPCRequestHandler(BaseHTTPRequestHandler):
@@ -56,7 +55,6 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         """Initialize the request handler with a database connection."""
         self.db = db_connection
-        self.noise_sk = noise_private_key
         super().__init__(*args, **kwargs)
 
     def do_POST(self) -> None:
@@ -389,38 +387,50 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
 
 def main():
     """Main function to run the JSON-RPC server."""
-    global db_connection, noise_private_key
+    global db_connection
     
     # Initialize database
     db_path = "openadp.db"
     db_connection = database.Database(db_path)
     logger.info(f"Database initialized at {db_path}")
 
-    # Load or generate Noise server key for legacy x25519 operations
-    noise_private_key = db_connection.get_server_config("noise_sk")
-    if noise_private_key is None:
-        logger.info("No legacy Noise key found, generating a new one...")
-        priv_key, pub_key = crypto.x25519_generate_keypair()
-        db_connection.set_server_config("noise_sk", priv_key)
-        noise_private_key = priv_key
-        logger.info("New legacy key saved to database.")
+    # Load or generate server Noise-NK key from database
+    stored_key_data = db_connection.get_server_config("noise_nk_keypair")
+    if stored_key_data is None:
+        logger.info("No server key found, generating a new Noise-NK keypair...")
+        # Import here to avoid circular dependency
+        from openadp.noise_nk import generate_keypair
+        server_keypair = generate_keypair()
+        
+        # Store the keypair data (private key bytes) in database
+        # The keypair object contains both private and public key data
+        db_connection.set_server_config("noise_nk_keypair", server_keypair.private.data)
+        logger.info("New server key generated and saved to database.")
     else:
-        logger.info("Loaded existing legacy Noise server key from database.")
+        logger.info("Loading existing server key from database...")
+        # Recreate keypair from stored private key bytes
+        from dissononce.extras.meta.protocol.factory import NoiseProtocolFactory
+        from dissononce.dh.keypair import KeyPair
+        from dissononce.dh.private import PrivateKey
+        
+        factory = NoiseProtocolFactory()
+        protocol = factory.get_noise_protocol('Noise_NK_25519_AESGCM_SHA256')
+        
+        # Create a private key object from the stored bytes
+        private_key_obj = PrivateKey(stored_key_data)
+        server_keypair = protocol.dh.generate_keypair(private_key_obj)
+        logger.info("Server key loaded from database.")
 
-    # Initialize Noise-NK session manager (generates its own key)
-    session_manager = get_session_manager()
-    nk_public_key = session_manager.get_server_public_key()
-    nk_pub_key_b64 = base64.b64encode(nk_public_key).decode('utf-8')
+    # Initialize Noise-NK session manager with our stored key
+    from server.noise_session_manager import initialize_session_manager
+    session_manager = initialize_session_manager(server_keypair)
+    server_public_key = session_manager.get_server_public_key()
+    server_pub_key_b64 = base64.b64encode(server_public_key).decode('utf-8')
     
-    # Always log both public keys on startup
-    legacy_public_key = crypto.x25519_public_key_from_private(noise_private_key)
-    legacy_pub_key_b64 = base64.b64encode(legacy_public_key).decode('utf-8')
-    
-    logger.info("="*60)
-    logger.info("SERVER ENCRYPTION KEYS")
-    logger.info(f"Legacy Noise Public Key (Base64): {legacy_pub_key_b64}")
-    logger.info(f"Noise-NK Public Key (Base64):     {nk_pub_key_b64}")
-    logger.info("="*60)
+    logger.info("="*50)
+    logger.info("SERVER PUBLIC KEY")
+    logger.info(f"Noise-NK (Base64): {server_pub_key_b64}")
+    logger.info("="*50)
 
     # Run the server on a standard non-privileged HTTP port
     server_address = ('', 8080)

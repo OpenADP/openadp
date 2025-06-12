@@ -58,7 +58,7 @@ class NoiseSessionManager:
         else:
             self._server_key = server_static_key
             
-        logger.info(f"Noise-NK server initialized with public key: {self.get_server_public_key().hex()[:32]}...")
+        logger.debug(f"Noise-NK session manager initialized with public key: {self.get_server_public_key().hex()[:32]}...")
     
     def get_server_public_key(self) -> bytes:
         """Get the server's static public key for distribution to clients."""
