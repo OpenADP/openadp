@@ -9,6 +9,7 @@ Key Components:
 - sharing: Secret sharing and reconstruction algorithms  
 - database: SQLite database operations for server storage
 - keygen: High-level key generation and recovery functions
+- noise_nk: Simple Noise-NK encryption for secure JSON-RPC communication
 """
 
 import sys
@@ -20,6 +21,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from crypto import *
 from sharing import *
 from database import Database
+from noise_nk import NoiseNK, generate_keypair
 
 __version__ = "0.1.0"
 __author__ = "OpenADP Contributors"
@@ -35,4 +37,7 @@ __all__ = [
     
     # Database
     'Database',
+    
+    # Noise-NK encryption
+    'NoiseNK', 'generate_keypair',
 ] 
