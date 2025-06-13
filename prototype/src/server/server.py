@@ -71,7 +71,7 @@ def check_register_inputs(uid: str, did: str, bid: str, x: int, y: bytes,
 
 def register_secret(db: database.Database, uid: str, did: str, bid: str, 
                    version: int, x: int, y: bytes, max_guesses: int, 
-                   expiration: int) -> Union[bool, Exception]:
+                   expiration: int, owner_sub: str) -> Union[bool, Exception]:
     """
     Register a secret share with the server.
     
@@ -85,6 +85,7 @@ def register_secret(db: database.Database, uid: str, did: str, bid: str,
         y: Y coordinate (encrypted share)
         max_guesses: Maximum number of recovery attempts allowed
         expiration: Expiration timestamp (0 for no expiration)
+        owner_sub: OAuth sub claim of the user registering this backup
         
     Returns:
         True if successful, Exception with error message otherwise
@@ -98,7 +99,11 @@ def register_secret(db: database.Database, uid: str, did: str, bid: str,
     did_bytes = did.encode('utf-8') if isinstance(did, str) else did
     bid_bytes = bid.encode('utf-8') if isinstance(bid, str) else bid
     
-    db.insert(uid_bytes, did_bytes, bid_bytes, version, x, y, 0, max_guesses, expiration)
+    # Check ownership before allowing registration/update
+    if not db.check_ownership(uid_bytes, did_bytes, bid_bytes, owner_sub):
+        return Exception(f"Access denied: User {owner_sub} does not own backup {uid}/{did}/{bid}")
+    
+    db.insert(uid_bytes, did_bytes, bid_bytes, version, x, y, 0, max_guesses, expiration, owner_sub)
     return True
 
 
@@ -130,7 +135,7 @@ def check_recover_inputs(uid: str, did: str, bid: str, b: Any) -> Union[bool, Ex
 
 
 def recover_secret(db: database.Database, uid: str, did: str, bid: str, 
-                  b: Any, guess_num: int) -> Union[Tuple[int, int, Any, int, int, int], Exception]:
+                  b: Any, guess_num: int, owner_sub: str) -> Union[Tuple[int, int, Any, int, int, int], Exception]:
     """
     Recover a secret share from the server.
     
@@ -144,6 +149,7 @@ def recover_secret(db: database.Database, uid: str, did: str, bid: str,
         bid: Backup identifier
         b: Point B for cryptographic recovery
         guess_num: Expected current guess number (for idempotency)
+        owner_sub: OAuth sub claim of the user requesting recovery
         
     Returns:
         Tuple of (version, x, siB, num_guesses, max_guesses, expiration) if successful,
@@ -167,11 +173,15 @@ def recover_secret(db: database.Database, uid: str, did: str, bid: str,
         # Debug: check result format
         print(f"DEBUG: Database lookup result: {result}, type: {type(result)}, length: {len(result)}")
         
-        # Safely unpack the result
-        if len(result) != 6:
-            return Exception(f"Invalid database result format: expected 6 fields, got {len(result)}")
+        # Safely unpack the result (now with owner_sub at index 6)
+        if len(result) != 7:
+            return Exception(f"Invalid database result format: expected 7 fields, got {len(result)}")
         
-        version, x, y, num_guesses, max_guesses, expiration = result
+        version, x, y, num_guesses, max_guesses, expiration, backup_owner = result
+        
+        # Check ownership - user must own this backup to recover it
+        if backup_owner != owner_sub:
+            return Exception(f"Access denied: User {owner_sub} does not own backup {uid}/{did}/{bid} (owned by {backup_owner})")
         
         # Debug: check field types
         print(f"DEBUG: version={version}, x={x}, y type={type(y)}, num_guesses={num_guesses}")
@@ -184,9 +194,9 @@ def recover_secret(db: database.Database, uid: str, did: str, bid: str,
         if num_guesses >= max_guesses:
             return Exception("Too many guesses")
         
-        # Increment guess counter
+        # Increment guess counter (preserve ownership)
         num_guesses += 1
-        db.insert(uid_bytes, did_bytes, bid_bytes, version, x, y, num_guesses, max_guesses, expiration)
+        db.insert(uid_bytes, did_bytes, bid_bytes, version, x, y, num_guesses, max_guesses, expiration, owner_sub)
         
         # Perform cryptographic recovery calculation
         y_int = int.from_bytes(y, "little")
@@ -201,21 +211,22 @@ def recover_secret(db: database.Database, uid: str, did: str, bid: str,
         return Exception(f"Recovery failed: {str(e)}")
 
 
-def list_backups(db: database.Database, uid: str) -> List[Tuple]:
+def list_backups(db: database.Database, uid: str, owner_sub: str) -> List[Tuple]:
     """
-    List all backups for a user.
+    List all backups for a user that they own.
     
     Args:
         db: Database connection
         uid: User identifier
+        owner_sub: OAuth sub claim to filter by ownership
         
     Returns:
         List of tuples containing backup information:
-        (did, bid, version, num_guesses, max_guesses, expiration)
+        (did, bid, version, num_guesses, max_guesses, expiration, owner_sub)
     """
     # Convert string to bytes if needed for database query
     uid_bytes = uid.encode('utf-8') if isinstance(uid, str) else uid
-    return db.list_backups(uid_bytes)
+    return db.list_backups(uid_bytes, owner_sub)
 
 
 def main():
@@ -265,11 +276,11 @@ def main():
         y_enc = int.to_bytes(y, 32, "little")
         db_name = f"openadp_test{x}.db"
         db = database.Database(db_name)
-        register_secret(db, uid.decode(), did.decode(), bid.decode(), 1, x, y_enc, 10, 10000000000)
+        register_secret(db, uid.decode(), did.decode(), bid.decode(), 1, x, y_enc, 10, 10000000000, "owner_sub")
         
         # Simulate some random failed recovery attempts
         for guess_num in range(secrets.randbelow(10)):
-            result = recover_secret(db, uid.decode(), did.decode(), bid.decode(), b, guess_num)
+            result = recover_secret(db, uid.decode(), did.decode(), bid.decode(), b, guess_num, "owner_sub")
     
     # Verify cryptographic relationship
     assert crypto.point_equal(u, crypto.point_mul(r_inv, b))
@@ -281,7 +292,7 @@ def main():
         db_name = f"openadp_test{x}.db"
         db = database.Database(db_name)
         guess_num = db.find_guess_number(uid, did, bid)
-        result = recover_secret(db, uid.decode(), did.decode(), bid.decode(), b, guess_num)
+        result = recover_secret(db, uid.decode(), did.decode(), bid.decode(), b, guess_num, "owner_sub")
         
         assert not isinstance(result, Exception), f"Recovery failed: {result}"
         
