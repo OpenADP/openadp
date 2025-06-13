@@ -1,0 +1,3 @@
+# Noise-NK Protocol Implementation Guide
+
+// ... existing file content copied from prototype/src/NOISE_NK_GUIDE.md ...

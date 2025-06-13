@@ -432,8 +432,9 @@ def main():
     logger.info(f"Noise-NK (Base64): {server_pub_key_b64}")
     logger.info("="*50)
 
-    # Run the server on a standard non-privileged HTTP port
-    server_address = ('', 8080)
+    # Run the server on a configurable port (default 8080)
+    port = int(os.environ.get('OPENADP_PORT', '8080'))
+    server_address = ('', port)
     httpd = HTTPServer(server_address, RPCRequestHandler)
     
     logger.info(f"Starting JSON-RPC server on port {server_address[1]}...")
