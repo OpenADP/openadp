@@ -62,6 +62,7 @@ def check_register_inputs(uid: str, did: str, bid: str, x: int, y: bytes,
     
     seconds_since_epoch = int(time.time())
     # Allow 0 to represent no expiration
+    print(f"DEBUG: expiration={expiration} (type={type(expiration)}), seconds_since_epoch={seconds_since_epoch} (type={type(seconds_since_epoch)})")
     if expiration < seconds_since_epoch and expiration != 0:
         return Exception("Expiration is in the past")
     

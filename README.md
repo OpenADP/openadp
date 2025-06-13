@@ -200,10 +200,17 @@ public backup key can be saved on Lastpass servers.
 
 #### Bitlocker, VeraCrypt, FileVvalut2, DiskCryptor
 
-The problem here is decryption via OpenADP occurs every time the encrypted
-volume is decrypted, and we don't want bad guesses to accumulate and hit
-the maximum.  In this case, a new registration with OpenADP is needed after
-every successful volume decryption.
+Of these, Bitlocker is the only one that routinely hands your disk encryption
+keys to authorities, since they are the only one that copies your disk
+encryption keys to their cloud.  They are also in danger of being forced to do
+secret mass surveillance.  Benefits of OpenADP for Bitlocker are clear.  The
+others would still benefit from having strong encryption keys derived from weak
+passwords or pins, which attackers can cheaply guess in most cases using GPUs.
+
+The challenge here is decryption via OpenADP occurs every time the encrypted
+volume is decrypted, and we don't want bad guesses to accumulate and hit the
+maximum.  In this case, a new registration with OpenADP is needed after every
+successful volume decryption.
 
 The volume is to large to re-encrypt every time to a new key, so instead,
 the actual disk encryption key is wrapped with `enc_key` and this encrypted
@@ -218,7 +225,14 @@ sock drawer.  In this case, never rotate the key.  There are maybe 10 guesses
 available, period.  In this case, a strong legal password can be derived from
 `enc_key`.
 
-#### The original use case: Backups of your phone's data
+#### Backups of your phone's data
+
+While Apple coined the term Advanced Data Protection, they rarely use it to
+protect user data, and hand over many thousands of user backups to authorities
+each year.  Their version has no ability to compromise on when to expose user
+data, so they are stuck with mass secret surveillance as one extreme and no
+data at all on the other, even when exposing it is clearly the right thing to
+do.  There are clear benefits to switching to OpenADP.
 
 Just like the case with full disk encryption, we need to wrap the actual
 encryption key with `enc_key`.  If the device vendor is truing to sync

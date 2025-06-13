@@ -35,6 +35,7 @@ import database
 import crypto
 from server import server
 from server.noise_session_manager import get_session_manager, validate_session_id
+from server.auth_middleware import validate_auth, get_auth_stats
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -69,11 +70,41 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
             
-            # Parse JSON-RPC request
+            # Parse JSON-RPC request first to check if auth is needed
             request = json.loads(post_data.decode('utf-8'))
             method = request.get('method')
             params = request.get('params', [])
             request_id = request.get('id')
+            
+            # Check if this method requires authentication
+            auth_required_methods = {'RegisterSecret', 'RecoverSecret', 'ListBackups'}
+            
+            # Perform authentication for state-changing methods
+            user_id = None
+            if method in auth_required_methods:
+                # Build full request URL for DPoP validation
+                host = self.headers.get('Host', 'localhost:8080')
+                scheme = 'https' if self.headers.get('X-Forwarded-Proto') == 'https' else 'http'
+                request_url = f"{scheme}://{host}{self.path}"
+                
+                # Validate authentication
+                user_id, auth_error = validate_auth(post_data, dict(self.headers), "POST", request_url)
+                
+                if auth_error:
+                    logger.warning(f"Authentication failed for method {method}: {auth_error}")
+                    response = {
+                        'jsonrpc': '2.0',
+                        'error': {'code': -32001, 'message': 'Unauthorized', 'data': auth_error},
+                        'id': request_id
+                    }
+                    self._send_json_response(response)
+                    return
+                
+                if user_id:
+                    logger.info(f"Authenticated request for method {method} by user {user_id}")
+            
+            # Store user context for ownership tracking
+            self.user_id = user_id
             
             # Route to appropriate method
             result, error = self._route_method(method, params)
@@ -127,6 +158,8 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             return self._noise_handshake(params)
         elif method == 'encrypted_call':
             return self._encrypted_call(params)
+        elif method == 'GetAuthStatus':
+            return self._get_auth_status(params)
         else:
             error = {'code': -32601, 'message': 'Method not found'}
             return None, error
@@ -293,6 +326,7 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
                     "ListBackups",
                     "Echo",
                     "GetServerInfo",
+                    "GetAuthStatus",
                     "noise_handshake",
                     "encrypted_call"
                 ],
@@ -421,6 +455,29 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             
         except Exception as e:
             logger.error(f"Error in encrypted_call: {e}")
+            return None, f"INTERNAL_ERROR: {str(e)}"
+
+    def _get_auth_status(self, params: List[Any]) -> Tuple[Any, Optional[str]]:
+        """
+        Handle GetAuthStatus RPC method.
+        
+        Args:
+            params: Empty list (no parameters expected)
+            
+        Returns:
+            Tuple of (auth_status_dict, error_message)
+        """
+        try:
+            if len(params) != 0:
+                return None, "INVALID_ARGUMENT: GetAuthStatus expects no parameters"
+            
+            # Get authentication middleware statistics
+            auth_stats = get_auth_stats()
+            
+            return auth_stats, None
+            
+        except Exception as e:
+            logger.error(f"Error in get_auth_status: {e}")
             return None, f"INTERNAL_ERROR: {str(e)}"
 
     def log_message(self, format: str, *args) -> None:
