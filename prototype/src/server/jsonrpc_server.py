@@ -121,6 +121,8 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             return self._list_backups(params)
         elif method == 'Echo':
             return self._echo(params)
+        elif method == 'GetServerInfo':
+            return self._get_server_info(params)
         elif method == 'noise_handshake':
             return self._noise_handshake(params)
         elif method == 'encrypted_call':
@@ -262,6 +264,47 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             return None, "INVALID_ARGUMENT: Echo expects exactly 1 parameter"
         
         return params[0], None
+
+    def _get_server_info(self, params: List[Any]) -> Tuple[Any, Optional[str]]:
+        """
+        Handle GetServerInfo RPC method to get server capabilities and public key.
+        
+        Args:
+            params: Empty list (no parameters required)
+            
+        Returns:
+            Tuple of (server_info_dict, error_message)
+        """
+        if len(params) != 0:
+            return None, "INVALID_ARGUMENT: GetServerInfo expects no parameters"
+        
+        try:
+            # Get session manager and server public key
+            session_manager = get_session_manager()
+            server_public_key = session_manager.get_server_public_key()
+            server_pub_key_b64 = base64.b64encode(server_public_key).decode('utf-8')
+            
+            server_info = {
+                "version": "0.1.0",
+                "noise_nk_public_key": server_pub_key_b64,
+                "supported_methods": [
+                    "RegisterSecret",
+                    "RecoverSecret", 
+                    "ListBackups",
+                    "Echo",
+                    "GetServerInfo",
+                    "noise_handshake",
+                    "encrypted_call"
+                ],
+                "encryption_supported": True,
+                "encryption_protocol": "Noise-NK"
+            }
+            
+            return server_info, None
+            
+        except Exception as e:
+            logger.error(f"Error in get_server_info: {e}")
+            return None, f"INTERNAL_ERROR: {str(e)}"
 
     def _noise_handshake(self, params: List[Any]) -> Tuple[Any, Optional[str]]:
         """
