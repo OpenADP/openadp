@@ -45,7 +45,7 @@ PRIVATE_KEY_PATH = os.path.join(TOKEN_CACHE_DIR, "dpop_key.pem")
 TOKEN_CACHE_PATH = os.path.join(TOKEN_CACHE_DIR, "tokens.json")
 
 
-def decrypt_file(input_filename: str, password: str, use_auth: bool = False,
+def decrypt_file(input_filename: str, password: str,
                 override_servers: Optional[List[str]] = None, 
                 issuer_url: str = DEFAULT_ISSUER_URL, client_id: str = DEFAULT_CLIENT_ID) -> None:
     """
@@ -58,8 +58,9 @@ def decrypt_file(input_filename: str, password: str, use_auth: bool = False,
     Args:
         input_filename: Path to the encrypted file to decrypt
         password: Password for OpenADP key recovery (must match encryption password)
-        use_auth: Whether to use DPoP authentication (should match encryption setting)
         override_servers: Optional list of server URLs to use instead of metadata servers
+        issuer_url: OAuth issuer URL for authentication
+        client_id: OAuth client ID for authentication
         
     Raises:
         SystemExit: If file operations fail or key recovery fails
@@ -127,43 +128,36 @@ def decrypt_file(input_filename: str, password: str, use_auth: bool = False,
             print(f"Overriding metadata servers with {len(override_servers)} custom servers")
             server_urls = override_servers
         
-        # Check if authentication is required
-        if auth_enabled and not use_auth:
-            print("⚠️  Warning: File was encrypted with authentication, but --auth flag not provided")
-            print("   This may cause decryption to fail if servers require authentication")
-        elif not auth_enabled and use_auth:
-            print("ℹ️  Note: --auth flag provided but file was encrypted without authentication")
-            
+        # Always show authentication status (Phase 4: auth always enabled)
         if auth_enabled:
             print("🔒 Authentication was enabled during encryption")
+        else:
+            print("ℹ️  File was encrypted without authentication, but will use auth for decryption")
             
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
         print(f"Error: Failed to parse metadata: {e}")
         sys.exit(1)
 
-    # 4. Handle authentication if needed
-    auth_data = None
-    token_data = None
-    if use_auth or auth_enabled:
-        try:
-            # Get auth token for decryption
-            token_data = get_auth_token(issuer_url, client_id)
-            if not token_data:
-                print("❌ Authentication required for decryption but failed. Exiting.")
-                sys.exit(1)
-            
-            # Create auth_data for Phase 3.5 encrypted authentication
-            auth_data = {
-                "needs_signing": True,
-                "access_token": token_data['access_token'],
-                "private_key": token_data['private_key'],
-                "public_key_jwk": token_data['jwk_public']
-            }
-            print("🔐 Using Phase 3.5 encrypted authentication")
-            
-        except Exception as e:
-            print(f"❌ Authentication error: {e}")
+    # 4. Handle authentication (always enabled in Phase 4)
+    try:
+        # Get auth token for decryption
+        token_data = get_auth_token(issuer_url, client_id)
+        if not token_data:
+            print("❌ Authentication required for decryption but failed. Exiting.")
             sys.exit(1)
+        
+        # Create auth_data for Phase 3.5 encrypted authentication
+        auth_data = {
+            "needs_signing": True,
+            "access_token": token_data['access_token'],
+            "private_key": token_data['private_key'],
+            "public_key_jwk": token_data['jwk_public']
+        }
+        print("🔐 Using Phase 3.5 encrypted authentication")
+        
+    except Exception as e:
+        print(f"❌ Authentication error: {e}")
+        sys.exit(1)
 
     # 5. Recover encryption key using OpenADP with specific servers from metadata
     # Derive original filename for BID (backup identifier)
@@ -179,8 +173,7 @@ def decrypt_file(input_filename: str, password: str, use_auth: bool = False,
         print("  • The original OpenADP servers are running and accessible")
         print("  • The password matches the one used during encryption")
         print("  • The file was encrypted with the same user/device context")
-        if auth_enabled or use_auth:
-            print("  • Authentication credentials are valid (when server-side auth is ready)")
+        print("  • Authentication credentials are valid")
         sys.exit(1)
 
     # 6. Decrypt the file using metadata as additional authenticated data
@@ -203,8 +196,7 @@ def decrypt_file(input_filename: str, password: str, use_auth: bool = False,
         print(f"✅ Decryption successful. File saved to '{output_filename}'")
         print(f"   Encrypted size: {len(file_data)} bytes") 
         print(f"   Decrypted size: {len(plaintext)} bytes")
-        if auth_enabled or use_auth:
-            print(f"   Authentication: Enabled (DPoP)")
+        print(f"   Authentication: Enabled (DPoP)")
     except IOError as e:
         print(f"Error writing to '{output_filename}': {e}")
         sys.exit(1)
@@ -305,17 +297,13 @@ def main() -> NoReturn:
     # Parse command-line arguments
     parser = argparse.ArgumentParser(
         description="Decrypt files using OpenADP distributed secret sharing",
-        epilog="This utility decrypts files that were encrypted using OpenADP."
+        epilog="This utility decrypts files that were encrypted using OpenADP with OAuth authentication."
     )
     parser.add_argument(
         "filename", 
         help="Path to the encrypted file to decrypt"
     )
-    parser.add_argument(
-        "--auth", 
-        action="store_true",
-        help="Use DPoP authentication (should match encryption setting)"
-    )
+
     
     parser.add_argument(
         '--issuer',
@@ -346,7 +334,7 @@ def main() -> NoReturn:
     user_password = get_password_securely()
     
     # Perform decryption
-    decrypt_file(args.filename, user_password, args.auth, 
+    decrypt_file(args.filename, user_password, 
                 override_servers=args.servers, issuer_url=args.issuer, client_id=args.client_id)
     
     sys.exit(0)

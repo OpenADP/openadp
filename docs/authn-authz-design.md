@@ -271,6 +271,18 @@ This approach replaces the original HTTP header roadmap:
 - Remove `--auth` flag; authentication always enabled
 - Clean up legacy HTTP header code
 
+**Phase 6 - Production Hardening**
+- Change server default to `OPENADP_AUTH_ENABLED='1'`
+- Deploy authentication enforcement to production servers
+- Remove legacy unauthenticated code paths
+
+**Phase 7 - Multi-Issuer Support**
+- Support multiple trusted OAuth issuers per server
+- Server configuration: `OPENADP_AUTH_ISSUERS="issuer1,issuer2,issuer3"`
+- Per-issuer JWKS caching and validation
+- JWT `iss` claim determines which issuer's keys to use for validation
+- Enterprise federation support (corporate identity + community identity)
+
 ### 8.5  Trade-off Analysis
 
 **Advantages**:
@@ -303,6 +315,40 @@ This is equivalent to the security/performance trade-off made by all TLS-protect
 5. **Phase 6**: Remove legacy HTTP header authentication code
 
 The OAuth2 Device Flow and DPoP key management work completed in Phases 1-2 remains fully applicable—only the transport mechanism changes.
+
+### 8.8  Multi-Issuer Architecture (Phase 7)
+
+**Problem**: Organizations want to use their corporate identity provider while still allowing community identity providers.
+
+**Solution**: Server accepts JWTs from multiple pre-configured trusted issuers.
+
+#### Validation Flow
+```
+1. Extract `iss` claim from JWT
+2. Check if issuer is in server's trusted list
+3. Fetch/cache JWKS from `{iss}/.well-known/jwks.json`
+4. Validate JWT signature using issuer-specific public keys
+```
+
+#### Server Configuration
+```bash
+# Single issuer (current)
+OPENADP_AUTH_ISSUER="http://localhost:8081/realms/openadp"
+
+# Multiple issuers (Phase 7)
+OPENADP_AUTH_ISSUERS="http://localhost:8081/realms/openadp,https://corporate.example.com,https://community.openadp.org"
+```
+
+#### Security Properties
+- **Client cannot forge issuer**: `iss` claim is cryptographically signed
+- **Server controls trust boundary**: Only pre-configured issuers accepted  
+- **No cross-issuer token reuse**: Each issuer's keys validate only their own tokens
+- **Independent JWKS caching**: Per-issuer public key caches with separate TTLs
+
+#### Enterprise Use Cases
+- **Corporate + Community**: Employees use corporate SSO, external users use GitHub/Google
+- **Multi-tenant**: Different customer organizations with their own identity providers
+- **Development**: Local test issuer + production issuer support in same server config
 
 ---
 

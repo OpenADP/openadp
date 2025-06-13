@@ -48,7 +48,7 @@ class AuthConfig:
     """Configuration for authentication middleware from environment variables."""
     
     def __init__(self):
-        self.enabled = os.environ.get('OPENADP_AUTH_ENABLED', '0') == '1'
+        self.enabled = os.environ.get('OPENADP_AUTH_ENABLED', '1') == '1'
         self.issuer = os.environ.get('OPENADP_AUTH_ISSUER', '')
         self.jwks_url = os.environ.get('OPENADP_AUTH_JWKS_URL', '')
         self.cache_ttl = int(os.environ.get('OPENADP_AUTH_CACHE_TTL', '3600'))

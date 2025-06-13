@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 db_connection = None
 
 # Authentication configuration
-AUTH_ENABLED = os.environ.get('OPENADP_AUTH_ENABLED', '0') == '1'
+AUTH_ENABLED = os.environ.get('OPENADP_AUTH_ENABLED', '1') == '1'
 AUTH_ISSUER = os.environ.get('OPENADP_AUTH_ISSUER', 'http://localhost:8080/realms/openadp')
 AUTH_JWKS_URL = os.environ.get('OPENADP_AUTH_JWKS_URL')
 
@@ -233,6 +233,29 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             method = request.get('method')
             params = request.get('params', [])
             request_id = request.get('id')
+            
+            # Check authentication for state-changing methods (Phase 4)
+            # Echo, GetServerInfo, and handshake methods remain unauthenticated
+            unauthenticated_methods = {'Echo', 'GetServerInfo', 'noise_handshake'}
+            
+            if AUTH_ENABLED and method not in unauthenticated_methods:
+                from server.auth_middleware import validate_auth
+                user_id, auth_error = validate_auth(post_data, dict(self.headers))
+                
+                if auth_error:
+                    error_response = {
+                        'jsonrpc': '2.0',
+                        'error': {'code': -32001, 'message': f'Unauthorized: {auth_error}'},
+                        'id': request_id
+                    }
+                    self._send_json_response(error_response)
+                    return
+                
+                # Store user_id for method handlers to use
+                self.user_id = user_id
+                logger.info(f"Authenticated request for user: {user_id}, method: {method}")
+            else:
+                self.user_id = None
             
             # Route to appropriate method
             result, error = self._route_method(method, params)

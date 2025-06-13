@@ -18,10 +18,10 @@ The metadata contains the list of servers used during encryption, which is
 cryptographically bound to the encrypted data as "additional data" in the AEAD cipher.
 
 Usage:
-    python3 encrypt.py <filename_to_encrypt> [--auth]
+    python3 encrypt.py <filename_to_encrypt>
     
-Options:
-    --auth    Enable DPoP authentication (Phase 1)
+Authentication is always enabled (Phase 4). The tool will guide you through
+OAuth authentication using the Device Code flow.
 """
 
 import os
@@ -156,7 +156,7 @@ def make_authenticated_request(url: str, method: str = "POST",
     return headers
 
 
-def encrypt_file(input_filename: str, password: str, use_auth: bool = False, 
+def encrypt_file(input_filename: str, password: str, 
                 servers: Optional[List[str]] = None, servers_url: str = "https://servers.openadp.org",
                 issuer_url: str = DEFAULT_ISSUER_URL, client_id: str = DEFAULT_CLIENT_ID) -> None:
     """
@@ -183,23 +183,20 @@ def encrypt_file(input_filename: str, password: str, use_auth: bool = False,
     
     output_filename = input_filename + ".enc"
 
-    # 2. Handle authentication if requested
-    auth_data = None
-    token_data = None
-    if use_auth:
-        token_data = get_auth_token(issuer_url, client_id)
-        if not token_data:
-            print("❌ Authentication required but failed. Exiting.")
-            sys.exit(1)
-        
-        # Create auth_data for Phase 3.5 encrypted authentication
-        auth_data = {
-            "needs_signing": True,
-            "access_token": token_data['access_token'],
-            "private_key": token_data['private_key'],
-            "public_key_jwk": token_data['jwk_public']
-        }
-        print("🔐 Using Phase 3.5 encrypted authentication")
+    # 2. Handle authentication (always enabled in Phase 4)
+    token_data = get_auth_token(issuer_url, client_id)
+    if not token_data:
+        print("❌ Authentication required but failed. Exiting.")
+        sys.exit(1)
+    
+    # Create auth_data for Phase 3.5 encrypted authentication
+    auth_data = {
+        "needs_signing": True,
+        "access_token": token_data['access_token'],
+        "private_key": token_data['private_key'],
+        "public_key_jwk": token_data['jwk_public']
+    }
+    print("🔐 Using Phase 3.5 encrypted authentication")
 
     # 3. Generate encryption key using OpenADP
     print("Generating encryption key using OpenADP distributed servers...")
@@ -218,7 +215,7 @@ def encrypt_file(input_filename: str, password: str, use_auth: bool = False,
         "servers": server_urls,
         "threshold": threshold,
         "filename": os.path.basename(input_filename),
-        "auth_enabled": use_auth
+        "auth_enabled": True
     }
     metadata_json = json.dumps(metadata, separators=(',', ':')).encode('utf-8')
     metadata_length = len(metadata_json)
@@ -258,8 +255,7 @@ def encrypt_file(input_filename: str, password: str, use_auth: bool = False,
         print(f"   Metadata size: {metadata_length} bytes")
         print(f"   Total encrypted size: {4 + metadata_length + len(nonce) + len(ciphertext)} bytes")
         print(f"   Used servers: {len(server_urls)} servers")
-        if use_auth:
-            print(f"   Authentication: Enabled (DPoP)")
+        print(f"   Authentication: Enabled (DPoP)")
     except IOError as e:
         print(f"Error writing to '{output_filename}': {e}")
         sys.exit(1)
@@ -295,7 +291,7 @@ def main() -> NoReturn:
     parser = argparse.ArgumentParser(
         description="OpenADP File Encryption Utility",
         epilog="This utility encrypts files using OpenADP distributed secret sharing "
-               "for enhanced security and recovery properties."
+               "with OAuth authentication for enhanced security and recovery properties."
     )
     
     parser.add_argument(
@@ -303,11 +299,7 @@ def main() -> NoReturn:
         help='File to encrypt'
     )
     
-    parser.add_argument(
-        '--auth',
-        action='store_true',
-        help='Enable DPoP authentication (Phase 1 - default: off)'
-    )
+
     
     parser.add_argument(
         '--issuer',
@@ -339,7 +331,7 @@ def main() -> NoReturn:
     user_password = get_password_securely()
     
     # Perform encryption
-    encrypt_file(args.filename, user_password, use_auth=args.auth, servers=args.servers, 
+    encrypt_file(args.filename, user_password, servers=args.servers, 
                  servers_url=args.servers_url, issuer_url=args.issuer, client_id=args.client_id)
     
     sys.exit(0)
