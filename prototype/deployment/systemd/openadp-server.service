@@ -15,6 +15,9 @@ RestartSec=10
 StandardOutput=journal
 StandardError=journal
 
+# Authentication Configuration
+Environment=OPENADP_AUTH_ISSUER=https://dev-ofq24vi3c6obh8fz.us.auth0.com/
+
 # Security settings
 NoNewPrivileges=true
 PrivateTmp=true
