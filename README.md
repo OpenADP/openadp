@@ -156,6 +156,85 @@ A guess is known to be correct if i`enc_key` is able to decrypt `enc_s`.
 Decrypting `s` also enables the device to reset the bad guess counter for the
 backup just restored.
 
+### Key rotation
+
+For the Advanced Data Protection use case, the right time for key rotation is
+generally whenever there is a successful recover attempt.  How exactly this
+should work depends on the application.
+
+To cover the comon use cases, take a look at some examples from [The Top Free
+Encryption Software Tools in 2024](https://heimdalsecurity.com/blog/free-encryption-software-tools/):
+
+#### Lastpass
+
+If Lastpass were to offer Advanced Data Protection, they should certainly
+consider OpenADP.  This eliminaes the risk of having all of yor Lastpass
+passwords leaked when [Lastpass gets
+hacked](https://www.upguard.com/blog/lastpass-vulnerability-and-future-of-password-security).
+
+Password data like this can be long-lived, with expirations of OpenADP
+registrations of say 5 years.  The data itself is small.  It is updated
+frequently compared to recovery.  In this case, there should be a separate
+metadata blob for the backup to OpenADP, containing:
+
+```
+{
+  'private_key': <the private encryption key used to decrypt the passwords>
+  'openadp_nodes': [<node1 URL>, <node2 URL>, ...],
+  'threshold': <number of nodes requred for recovery>,
+  ...  metadata needed by the Lastpass application.
+}
+```
+
+This scheme allows a Lastpass user to encrypt data frequently to the public key
+corresponding to `private_key`, without interacting with OpenADP.  When the
+user does need to recover on a new device, they start using their limited (say
+10) guesses.  On success, it is time for a key rotation.  A new public/private
+key pair should be chosen for the new device Lastpass backups, and a new quorum
+of OpenADP nodes should be chosen to protect the data.  In this case, we may
+one one global backup for a given user, so UID, DID, and BID are the same for
+each device.  The new registration automatically refreshes the quorum in case
+some OpenADP nodes no longer work, and it resets the number of guesses back
+to the desired maximum.  Metadata such as which nodes were used and the current
+public backup key can be saved on Lastpass servers.
+
+#### Bitlocker, VeraCrypt, FileVvalut2, DiskCryptor
+
+The problem here is decryption via OpenADP occurs every time the encrypted
+volume is decrypted, and we don't want bad guesses to accumulate and hit
+the maximum.  In this case, a new registration with OpenADP is needed after
+every successful volume decryption.
+
+The volume is to large to re-encrypt every time to a new key, so instead,
+the actual disk encryption key is wrapped with `enc_key` and this encrypted
+wrapped key is saved as metadata on the disk.  When `enc_key` is recovered
+it is used to unwrap the disk encryption key.
+
+#### 7-Zip, AxCrypt
+
+There are probably multiple use cases here, but the simple one is I just want
+to encrypt my backup before I write it to a flash drive and stuff it in my
+sock drawer.  In this case, never rotate the key.  There are maybe 10 guesses
+available, period.  In this case, a strong legal password can be derived from
+`enc_key`.
+
+#### The original use case: Backups of your phone's data
+
+Just like the case with full disk encryption, we need to wrap the actual
+encryption key with `enc_key`.  If the device vendor is truing to sync
+all data between devices all the time, then there can be just one
+UID, DID, BID per user and device type (tablet, phone or watch).
+The key is probably the user's device unlock secret, which is rarely changed.
+The wrapped unlock secret is simply synced between devices along with the
+encrypted data, which can include contacts, message history, and application
+data, etc.
+
+To restore the number of remaining guesses back to the maximum after a
+successful recovery, the new device should immediately re-register with
+OpenADP, re-wrap their phone unlock secret with the new `enc_key`, and sync
+this between devices when they come back online.  If any were online, then they
+would not need to contact OpenADP for recovery in the first place.
+
 ## Security
 
 The attacker wants to decrypt a backup which they have obtained from a user.
@@ -172,20 +251,19 @@ probably 10 by default.  If the user fails this many times at a given server,
 that server will return an error.
 
 This scheme has a weakness, which is acceptable given the simplification this
-scheme enjoys from not requiring global consensus between OpenADP servers.
-An attacker who can authenticate as the user can get more than 10 guesses.  In
-a 9-of-15 scheme, at least 9 servers are required to participate in each
-attempt.  The total attempts are 15\*10 = 150, so the attacker can get 16
-guesses.  The user can also get more guesses, and can do OpenVault calls
-serially  until `T` valid responses are received.  New guesses should be made
-using servers with the lowest number of bad guesses.  The ListValuts RPC
-returns this data.
+scheme enjoys from not requiring global consensus between OpenADP servers.  An
+attacker who can authenticate as the user can get more than 10 guesses.  In a
+9-of-15 scheme, at least 9 servers are required to participate in each attempt.
+The total attempts are 15\*10 = 150, so the attacker can get 16 guesses.  The
+user can also get more guesses, and can do OpenVault calls serially  until `T`
+valid responses are received.  New guesses should be made using servers with
+the lowest number of bad guesses.  The ListValuts RPC returns this data.
 
 ### Partial Byzantine fault tolerance.
 
-In a 9-of-15 scheme, if two OpenADP servers are compromised and under
-control of the attacker, the protocol can complete correctly, and the attacker
-learns nothing other than 2 Shamir secret shares.
+In a 9-of-15 scheme, if two OpenADP servers are compromised and under control
+of the attacker, the protocol can complete correctly, and the attacker learns
+nothing other than 2 Shamir secret shares.
 
 However, with 3 compromised nodes, if the attacker controls the network, they
 can can split the honest nodes into two groups of 6, and add their compromised
@@ -196,18 +274,3 @@ OpenADP.
 When a compromised node returns invalid points rather than `s[i]*B`,  then all
 subsets of `T` responses should be checked to see if they result in a valid
 solution.  Reporting bad nodes needs to be supported, and is TBD.
-
-### Language choice for OpenADP server
-
-adsfisdf
-
-OpenADP will be designed to be compatible with running in Confidential VMs
-(CVMs), which can be remotely verified to be running trustworthy binaries, at
-least when using the [Project Oak](http://github.com/project-oak) stack.  The
-portion of code that must be trusted will be written in Rust, and may be
-compatible with Oak's Restricted Kernel, which is a low-TCB environment best
-suited for security bottom turtles.
-
-The portion of the server that runs outside should be written in C++, which
-has the best support libraries of the systems programming languages.
-
