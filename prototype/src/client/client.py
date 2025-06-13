@@ -63,17 +63,22 @@ class Client:
         Scrape server list and test each server for liveness.
         Only servers that respond to echo are kept as live servers.
         """
-        print("Scraping server list...")
-        
-        # Scrape server URLs
-        server_urls = scrape.scrape_server_urls(self.servers_url)
-        
-        # Use fallback servers if scraping failed
-        if not server_urls:
-            print(f"Failed to scrape servers from {self.servers_url}, using fallback servers")
+        # If servers_url is None, skip scraping and use fallback servers directly
+        if self.servers_url is None:
+            print("Skipping server scraping, using provided servers...")
             server_urls = self.fallback_servers
         else:
-            print(f"Found {len(server_urls)} servers to test")
+            print("Scraping server list...")
+            
+            # Scrape server URLs
+            server_urls = scrape.scrape_server_urls(self.servers_url)
+            
+            # Use fallback servers if scraping failed
+            if not server_urls:
+                print(f"Failed to scrape servers from {self.servers_url}, using fallback servers")
+                server_urls = self.fallback_servers
+            else:
+                print(f"Found {len(server_urls)} servers to test")
         
         # Test servers concurrently for better performance
         self.live_servers = self._test_servers_concurrently(server_urls)
@@ -257,99 +262,77 @@ class Client:
         return None, error_msg
 
     def register_secret(self, uid: str, did: str, bid: str, version: int, 
-                       x: int, y: bytes, max_guesses: int, expiration: int) -> Tuple[bool, Optional[str]]:
+                       x: int, y: bytes, max_guesses: int, expiration: int, 
+                       auth_data: Optional[Dict[str, Any]] = None) -> Tuple[bool, Optional[str]]:
         """
-        Register a secret share with live servers.
-        
-        Tries to register with all live servers for redundancy. Returns success
-        if at least one server accepts the registration.
+        Register a secret with the first available server.
         
         Args:
             uid: User identifier
             did: Device identifier
             bid: Backup identifier
-            version: Version number for this backup
-            x: X coordinate for secret sharing
-            y: Y coordinate (encrypted share)
-            max_guesses: Maximum number of recovery attempts allowed
-            expiration: Expiration timestamp (0 for no expiration)
+            version: Version number
+            x: Share x coordinate
+            y: Share y coordinate (as bytes)
+            max_guesses: Maximum guess attempts
+            expiration: Expiration timestamp
+            auth_data: Optional authentication data for Phase 3.5 encrypted auth
             
         Returns:
-            Tuple of (success, error_message). If successful, error_message is None.
+            Tuple of (success, error_message)
         """
         if not self.live_servers:
             return False, "No live servers available"
         
-        successes = 0
-        errors = []
-        
         for client in self.live_servers:
             try:
-                result, error = client.register_secret(uid, did, bid, version, x, y, max_guesses, expiration)
+                result, error = client.register_secret(uid, did, bid, version, str(x), str(y), max_guesses, expiration, encrypted=True, auth_data=auth_data)
                 
                 if error:
-                    errors.append(f"{client.server_url}: {error}")
                     continue
                 
                 if result:
-                    successes += 1
+                    return True, None
                 else:
-                    errors.append(f"{client.server_url}: Registration returned false")
+                    return False, None
                     
             except Exception as e:
-                errors.append(f"{client.server_url}: Exception: {str(e)}")
                 continue
         
-        if successes > 0:
-            return True, None
-        else:
-            error_msg = f"All {len(self.live_servers)} servers failed. Errors: " + "; ".join(errors)
-            return False, error_msg
+        return False, "All servers failed"
 
-    def recover_secret(self, uid: str, did: str, bid: str, b: Any, guess_num: int) -> Tuple[Optional[Any], Optional[str]]:
+    def recover_secret(self, uid: str, did: str, bid: str, b: Any, guess_num: int, 
+                      auth_data: Optional[Dict[str, Any]] = None) -> Tuple[Optional[Any], Optional[str]]:
         """
-        Recover a secret share from live servers.
-        
-        Tries each live server in order until one succeeds. The servers should
-        have identical data, so only one successful response is needed.
+        Recover a secret from the first available server.
         
         Args:
             uid: User identifier
             did: Device identifier
             bid: Backup identifier
-            b: Point B for cryptographic recovery
-            guess_num: Expected current guess number (for idempotency)
+            b: B parameter for recovery
+            guess_num: Guess number
+            auth_data: Optional authentication data for Phase 3.5 encrypted auth
             
         Returns:
-            Tuple of (recovery_result, error_message). If successful, error_message is None.
-            recovery_result format: (version, x, siB, num_guesses, max_guesses, expiration)
+            Tuple of (recovered_secret, error_message)
         """
         if not self.live_servers:
             return None, "No live servers available"
         
-        errors = []
-        
-        for i, client in enumerate(self.live_servers):
+        for client in self.live_servers:
             try:
-                result, error = client.recover_secret(uid, did, bid, b, guess_num)
+                result, error = client.recover_secret(uid, did, bid, str(b), guess_num, encrypted=True, auth_data=auth_data)
                 
                 if error:
-                    errors.append(f"{client.server_url}: {error}")
                     continue
                 
-                # Success! Return the result
-                if i > 0:  # If we had to try multiple servers
-                    print(f"Successfully recovered secret from {client.server_url} (after {i} failed attempts)")
-                
                 return result, None
-                
+                    
             except Exception as e:
-                errors.append(f"{client.server_url}: Exception: {str(e)}")
                 continue
         
-        # All servers failed
-        error_msg = f"All {len(self.live_servers)} servers failed. Errors: " + "; ".join(errors)
-        return None, error_msg
+        return None, "All servers failed"
 
 
 if __name__ == "__main__":

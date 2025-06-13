@@ -24,7 +24,7 @@ import sys
 import json
 import getpass
 import argparse
-from typing import NoReturn, Dict, Any, Optional
+from typing import NoReturn, Dict, Any, Optional, List, Tuple
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
 import sys
@@ -45,7 +45,9 @@ PRIVATE_KEY_PATH = os.path.join(TOKEN_CACHE_DIR, "dpop_key.pem")
 TOKEN_CACHE_PATH = os.path.join(TOKEN_CACHE_DIR, "tokens.json")
 
 
-def decrypt_file(input_filename: str, password: str, use_auth: bool = False) -> None:
+def decrypt_file(input_filename: str, password: str, use_auth: bool = False,
+                override_servers: Optional[List[str]] = None, 
+                issuer_url: str = DEFAULT_ISSUER_URL, client_id: str = DEFAULT_CLIENT_ID) -> None:
     """
     Decrypt the specified file using ChaCha20-Poly1305 with OpenADP key recovery.
 
@@ -57,6 +59,7 @@ def decrypt_file(input_filename: str, password: str, use_auth: bool = False) -> 
         input_filename: Path to the encrypted file to decrypt
         password: Password for OpenADP key recovery (must match encryption password)
         use_auth: Whether to use DPoP authentication (should match encryption setting)
+        override_servers: Optional list of server URLs to use instead of metadata servers
         
     Raises:
         SystemExit: If file operations fail or key recovery fails
@@ -112,11 +115,17 @@ def decrypt_file(input_filename: str, password: str, use_auth: bool = False) -> 
         metadata = json.loads(metadata_json.decode('utf-8'))
         server_urls = metadata.get('servers', [])
         auth_enabled = metadata.get('auth_enabled', False)
+        threshold = metadata.get('threshold', 2)  # Default to 2 for older files
         
         if not server_urls:
             print("Error: No server URLs found in metadata")
             sys.exit(1)
-        print(f"Found metadata with {len(server_urls)} servers")
+        print(f"Found metadata with {len(server_urls)} servers, threshold {threshold}")
+        
+        # Use override servers if provided
+        if override_servers:
+            print(f"Overriding metadata servers with {len(override_servers)} custom servers")
+            server_urls = override_servers
         
         # Check if authentication is required
         if auth_enabled and not use_auth:
@@ -133,18 +142,24 @@ def decrypt_file(input_filename: str, password: str, use_auth: bool = False) -> 
         sys.exit(1)
 
     # 4. Handle authentication if needed
-    auth_headers = {}
+    auth_data = None
+    token_data = None
     if use_auth or auth_enabled:
         try:
             # Get auth token for decryption
-            token_data = get_auth_token()
+            token_data = get_auth_token(issuer_url, client_id)
             if not token_data:
                 print("❌ Authentication required for decryption but failed. Exiting.")
                 sys.exit(1)
             
-            # For now, we'll prepare headers but keygen.py doesn't support auth yet
-            # This is preparation for when server-side auth is fully implemented
-            print("📝 Authentication prepared (server-side auth integration in progress)")
+            # Create auth_data for Phase 3.5 encrypted authentication
+            auth_data = {
+                "needs_signing": True,
+                "access_token": token_data['access_token'],
+                "private_key": token_data['private_key'],
+                "public_key_jwk": token_data['jwk_public']
+            }
+            print("🔐 Using Phase 3.5 encrypted authentication")
             
         except Exception as e:
             print(f"❌ Authentication error: {e}")
@@ -154,7 +169,9 @@ def decrypt_file(input_filename: str, password: str, use_auth: bool = False) -> 
     # Derive original filename for BID (backup identifier)
     original_filename = output_filename
     print("Recovering encryption key from the original OpenADP servers...")
-    enc_key, error = keygen.recover_encryption_key(original_filename, password, server_urls)
+    
+    enc_key, error = keygen.recover_encryption_key(original_filename, password, server_urls, 
+                                                   auth_data=auth_data, threshold=threshold)
     
     if error:
         print(f"❌ Failed to recover encryption key: {error}")
@@ -300,6 +317,24 @@ def main() -> NoReturn:
         help="Use DPoP authentication (should match encryption setting)"
     )
     
+    parser.add_argument(
+        '--issuer',
+        default=DEFAULT_ISSUER_URL,
+        help=f'OAuth issuer URL (default: {DEFAULT_ISSUER_URL})'
+    )
+    
+    parser.add_argument(
+        '--client-id',
+        default=DEFAULT_CLIENT_ID,
+        help=f'OAuth client ID (default: {DEFAULT_CLIENT_ID})'
+    )
+    
+    parser.add_argument(
+        '--servers',
+        nargs='+',
+        help='Override server URLs for recovery (ignores metadata servers). Example: --servers http://localhost:8081'
+    )
+    
     # Check for minimum arguments before parsing
     if len(sys.argv) < 2:
         parser.print_help()
@@ -311,7 +346,8 @@ def main() -> NoReturn:
     user_password = get_password_securely()
     
     # Perform decryption
-    decrypt_file(args.filename, user_password, args.auth)
+    decrypt_file(args.filename, user_password, args.auth, 
+                override_servers=args.servers, issuer_url=args.issuer, client_id=args.client_id)
     
     sys.exit(0)
 

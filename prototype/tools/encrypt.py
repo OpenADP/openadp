@@ -29,7 +29,7 @@ import sys
 import json
 import getpass
 import argparse
-from typing import NoReturn, Optional, Dict, Any
+from typing import NoReturn, Optional, Dict, Any, List
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
 import sys
@@ -156,7 +156,9 @@ def make_authenticated_request(url: str, method: str = "POST",
     return headers
 
 
-def encrypt_file(input_filename: str, password: str, use_auth: bool = False) -> None:
+def encrypt_file(input_filename: str, password: str, use_auth: bool = False, 
+                servers: Optional[List[str]] = None, servers_url: str = "https://servers.openadp.org",
+                issuer_url: str = DEFAULT_ISSUER_URL, client_id: str = DEFAULT_CLIENT_ID) -> None:
     """
     Encrypt the specified file using ChaCha20-Poly1305 with OpenADP key derivation.
 
@@ -168,6 +170,8 @@ def encrypt_file(input_filename: str, password: str, use_auth: bool = False) -> 
         input_filename: Path to the file to encrypt
         password: Password for OpenADP key derivation
         use_auth: Whether to use DPoP authentication
+        servers: Optional list of custom server URLs (bypasses scraping)
+        servers_url: URL to scrape for server list if servers not provided
         
     Raises:
         SystemExit: If file operations fail or key generation fails
@@ -180,20 +184,28 @@ def encrypt_file(input_filename: str, password: str, use_auth: bool = False) -> 
     output_filename = input_filename + ".enc"
 
     # 2. Handle authentication if requested
-    auth_headers = {}
+    auth_data = None
+    token_data = None
     if use_auth:
-        token_data = get_auth_token()
+        token_data = get_auth_token(issuer_url, client_id)
         if not token_data:
             print("❌ Authentication required but failed. Exiting.")
             sys.exit(1)
         
-        # For now, we'll prepare headers but keygen.py doesn't support auth yet
-        # This is preparation for Phase 2 when server-side auth is implemented
-        print("📝 Authentication prepared (server-side auth coming in Phase 2)")
+        # Create auth_data for Phase 3.5 encrypted authentication
+        auth_data = {
+            "needs_signing": True,
+            "access_token": token_data['access_token'],
+            "private_key": token_data['private_key'],
+            "public_key_jwk": token_data['jwk_public']
+        }
+        print("🔐 Using Phase 3.5 encrypted authentication")
 
     # 3. Generate encryption key using OpenADP
     print("Generating encryption key using OpenADP distributed servers...")
-    enc_key, error, server_urls = keygen.generate_encryption_key(input_filename, password)
+    
+    enc_key, error, server_urls, threshold = keygen.generate_encryption_key(input_filename, password, 
+                                                                auth_data=auth_data, servers=servers, servers_url=servers_url)
     
     if error:
         print(f"❌ Failed to generate encryption key: {error}")
@@ -204,6 +216,7 @@ def encrypt_file(input_filename: str, password: str, use_auth: bool = False) -> 
     metadata = {
         "version": 1,
         "servers": server_urls,
+        "threshold": threshold,
         "filename": os.path.basename(input_filename),
         "auth_enabled": use_auth
     }
@@ -308,13 +321,26 @@ def main() -> NoReturn:
         help=f'OAuth client ID (default: {DEFAULT_CLIENT_ID})'
     )
     
+    parser.add_argument(
+        '--servers',
+        nargs='+',
+        help='Custom server URLs to use (bypasses scraping). Example: --servers http://localhost:8081 http://localhost:8082'
+    )
+    
+    parser.add_argument(
+        '--servers-url',
+        default="https://servers.openadp.org",
+        help='URL to scrape for server list (default: https://servers.openadp.org)'
+    )
+    
     args = parser.parse_args()
     
     # Get password securely without echoing it to the terminal
     user_password = get_password_securely()
     
     # Perform encryption
-    encrypt_file(args.filename, user_password, use_auth=args.auth)
+    encrypt_file(args.filename, user_password, use_auth=args.auth, servers=args.servers, 
+                 servers_url=args.servers_url, issuer_url=args.issuer, client_id=args.client_id)
     
     sys.exit(0)
 
