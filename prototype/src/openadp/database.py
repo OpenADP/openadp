@@ -63,21 +63,10 @@ class Database:
                     num_guesses INTEGER NOT NULL,
                     max_guesses INTEGER NOT NULL,
                     expiration INTEGER NOT NULL,
-                    owner_sub TEXT NOT NULL,
                     PRIMARY KEY(UID, DID, BID)
                 )
             """)
             self.con.commit()
-        else:
-            # Check if owner_sub column exists (Phase 3 migration)
-            cursor = cur.execute("PRAGMA table_info(shares)")
-            columns = [column[1] for column in cursor.fetchall()]
-            
-            if 'owner_sub' not in columns:
-                print(f"Phase 3 migration: Adding owner_sub column to shares table in {self.db_name}")
-                cur.execute("ALTER TABLE shares ADD COLUMN owner_sub TEXT NOT NULL DEFAULT 'migration-placeholder'")
-                self.con.commit()
-                print("⚠️  Phase 3 migration complete - all existing shares will need to be re-registered with authentication")
 
         # Check if server_config table exists
         result = cur.execute(
@@ -111,8 +100,7 @@ class Database:
         self.con.commit()
 
     def insert(self, uid: bytes, did: bytes, bid: bytes, version: int, x: int, 
-               y: bytes, num_guesses: int, max_guesses: int, expiration: int, 
-               owner_sub: str) -> None:
+               y: bytes, num_guesses: int, max_guesses: int, expiration: int) -> None:
         """
         Insert or update a secret share in the database.
         
@@ -128,11 +116,10 @@ class Database:
             num_guesses: Current number of recovery attempts
             max_guesses: Maximum number of recovery attempts allowed
             expiration: Expiration timestamp (0 for no expiration)
-            owner_sub: OAuth sub claim of the user who owns this backup (required)
         """
         sql = """
-            REPLACE INTO shares(UID, DID, BID, version, x, y, num_guesses, max_guesses, expiration, owner_sub)
-            VALUES(?,?,?,?,?,?,?,?,?,?)
+            REPLACE INTO shares(UID, DID, BID, version, x, y, num_guesses, max_guesses, expiration)
+            VALUES(?,?,?,?,?,?,?,?,?)
         """
         cur = self.con.cursor()
         cur.execute(sql, (
@@ -144,32 +131,32 @@ class Database:
             y,
             num_guesses, 
             max_guesses, 
-            expiration,
-            owner_sub
+            expiration
         ))
         self.con.commit()
 
-    def list_backups(self, uid: Union[str, bytes], owner_sub: str) -> List[Tuple]:
+    def list_backups(self, uid: Union[str, bytes]) -> List[Tuple]:
         """
-        List all backups for a specific user that they own.
+        List all backups for a specific user.
         
         Args:
             uid: User identifier (string or bytes)
-            owner_sub: OAuth sub claim to filter by ownership (required)
             
         Returns:
             List of tuples containing:
-            (did, bid, version, num_guesses, max_guesses, expiration, owner_sub)
+            (did, bid, version, num_guesses, max_guesses, expiration)
         """
         sql = """
-            SELECT DID, BID, version, num_guesses, max_guesses, expiration, owner_sub
+            SELECT DID, BID, version, num_guesses, max_guesses, expiration 
             FROM shares 
-            WHERE UID = ? AND owner_sub = ?
+            WHERE UID = ?
         """
+        cur = self.con.cursor()
+        
+        # Handle both string and bytes input
         uid_str = uid.decode('utf-8') if isinstance(uid, bytes) else uid
         
-        cur = self.con.cursor()
-        return cur.execute(sql, [uid_str, owner_sub]).fetchall()
+        return cur.execute(sql, [uid_str]).fetchall()
 
     def lookup(self, uid: bytes, did: bytes, bid: bytes) -> Optional[Tuple]:
         """
@@ -181,11 +168,11 @@ class Database:
             bid: Backup identifier (bytes)
             
         Returns:
-            Tuple containing (version, x, y, num_guesses, max_guesses, expiration, owner_sub)
+            Tuple containing (version, x, y, num_guesses, max_guesses, expiration)
             or None if not found
         """
         sql = """
-            SELECT version, x, y, num_guesses, max_guesses, expiration, owner_sub
+            SELECT version, x, y, num_guesses, max_guesses, expiration 
             FROM shares
             WHERE UID = ? AND DID = ? AND BID = ?
         """
@@ -218,31 +205,8 @@ class Database:
         if backup is None:
             return None
         
-        # num_guesses is at index 3 in the tuple (owner_sub at index 6)
+        # num_guesses is at index 3 in the tuple
         return backup[3]
-
-    def check_ownership(self, uid: bytes, did: bytes, bid: bytes, owner_sub: str) -> bool:
-        """
-        Check if a user owns a specific backup.
-        
-        Args:
-            uid: User identifier (bytes)
-            did: Device identifier (bytes)
-            bid: Backup identifier (bytes)
-            owner_sub: OAuth sub claim to verify ownership
-            
-        Returns:
-            True if the user owns the backup, False otherwise
-        """
-        backup = self.lookup(uid, did, bid)
-        if backup is None:
-            return True  # No existing backup, so ownership check passes for new registration
-        
-        # owner_sub is at index 6 in the tuple
-        backup_owner = backup[6]
-        
-        # Must match exactly (no legacy support)
-        return backup_owner == owner_sub
 
     def close(self) -> None:
         """Explicitly close the database connection."""
@@ -271,12 +235,12 @@ def main():
     
     # Test insertions
     print("Inserting test data...")
-    db.insert(uid, did, b"file://archive.tgz", version, x, y, 0, 10, expiration, "test_owner")
-    db.insert(uid, did, b"firefox_passwords://passwords.json", version, x, y, 0, 10, expiration, "test_owner")
+    db.insert(uid, did, b"file://archive.tgz", version, x, y, 0, 10, expiration)
+    db.insert(uid, did, b"firefox_passwords://passwords.json", version, x, y, 0, 10, expiration)
     
     # Test list_backups
     print("Testing list_backups...")
-    backups = db.list_backups(uid, "test_owner")
+    backups = db.list_backups(uid)
     print(f"Found {len(backups)} backups:")
     for backup in backups:
         print(f"  {backup}")

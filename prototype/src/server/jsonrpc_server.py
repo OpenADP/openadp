@@ -20,10 +20,8 @@ Note: HTTPS is required for production servers.
 import json
 import logging
 import base64
-import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any, Dict, List, Optional, Tuple, Union
-from collections import defaultdict
 
 import sys
 import os
@@ -45,47 +43,6 @@ logger = logging.getLogger(__name__)
 
 # Global server state
 db_connection = None
-
-# Rate limiting configuration
-MAX_REQUESTS_PER_USER_PER_MINUTE = int(os.getenv('OPENADP_MAX_USER_RPM', '60'))  # 60 requests per minute per user
-MAX_REQUESTS_PER_IP_PER_MINUTE = int(os.getenv('OPENADP_MAX_IP_RPM', '120'))    # 120 requests per minute per IP
-
-# Rate limiting storage (in production, use Redis)
-user_request_counts = defaultdict(list)  # user_id -> [timestamp, timestamp, ...]
-ip_request_counts = defaultdict(list)    # ip_address -> [timestamp, timestamp, ...]
-
-
-def check_rate_limit(user_id: Optional[str], client_ip: str) -> Optional[str]:
-    """
-    Check if request should be rate limited.
-    
-    Args:
-        user_id: Authenticated user ID (None for unauthenticated requests)
-        client_ip: Client IP address
-        
-    Returns:
-        Error message if rate limited, None if allowed
-    """
-    current_time = time.time()
-    one_minute_ago = current_time - 60
-    
-    # Clean old entries and check IP rate limit
-    ip_request_counts[client_ip] = [t for t in ip_request_counts[client_ip] if t > one_minute_ago]
-    if len(ip_request_counts[client_ip]) >= MAX_REQUESTS_PER_IP_PER_MINUTE:
-        return f"Rate limit exceeded: IP {client_ip} has made {len(ip_request_counts[client_ip])} requests in the last minute (max: {MAX_REQUESTS_PER_IP_PER_MINUTE})"
-    
-    # Check user rate limit (if authenticated)
-    if user_id is not None:
-        user_request_counts[user_id] = [t for t in user_request_counts[user_id] if t > one_minute_ago]
-        if len(user_request_counts[user_id]) >= MAX_REQUESTS_PER_USER_PER_MINUTE:
-            return f"Rate limit exceeded: User {user_id} has made {len(user_request_counts[user_id])} requests in the last minute (max: {MAX_REQUESTS_PER_USER_PER_MINUTE})"
-    
-    # Record this request
-    ip_request_counts[client_ip].append(current_time)
-    if user_id is not None:
-        user_request_counts[user_id].append(current_time)
-    
-    return None  # Not rate limited
 
 
 class RPCRequestHandler(BaseHTTPRequestHandler):
@@ -130,57 +87,39 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
                 scheme = 'https' if self.headers.get('X-Forwarded-Proto') == 'https' else 'http'
                 request_url = f"{scheme}://{host}{self.path}"
                 
+                # Validate authentication
                 user_id, auth_error = validate_auth(post_data, dict(self.headers), "POST", request_url)
                 
                 if auth_error:
-                    logger.warning(f"Authentication failed for {method}: {auth_error}")
+                    logger.warning(f"Authentication failed for method {method}: {auth_error}")
                     response = {
                         'jsonrpc': '2.0',
-                        'error': {'code': -32001, 'message': f'Unauthorized: {auth_error}'},
+                        'error': {'code': -32001, 'message': 'Unauthorized', 'data': auth_error},
                         'id': request_id
                     }
                     self._send_json_response(response)
                     return
                 
-                logger.info(f"Authenticated user {user_id} for method {method}")
+                if user_id:
+                    logger.info(f"Authenticated request for method {method} by user {user_id}")
             
-            # Store user context for handlers
+            # Store user context for ownership tracking
             self.user_id = user_id
             
-            # Rate limiting check
-            client_ip = self.client_address[0]
-            rate_limit_error = check_rate_limit(user_id, client_ip)
-            if rate_limit_error:
-                logger.warning(f"Rate limit exceeded for user {user_id}, IP {client_ip}: {rate_limit_error}")
-                response = {
-                    'jsonrpc': '2.0',
-                    'error': {'code': -32002, 'message': f'Rate limit exceeded: {rate_limit_error}'},
-                    'id': request_id
-                }
-                self._send_json_response(response)
-                return
+            # Route to appropriate method
+            result, error = self._route_method(method, params)
             
-            # Route the method call
-            result, error_dict = self._route_method(method, params)
-            
-            if error_dict:
-                response = {
-                    'jsonrpc': '2.0',
-                    'error': error_dict,
-                    'id': request_id
-                }
+            # Build response
+            if error is None:
+                response = {'jsonrpc': '2.0', 'result': result, 'id': request_id}
             else:
-                response = {
-                    'jsonrpc': '2.0',
-                    'result': result,
-                    'id': request_id
-                }
+                response = {'jsonrpc': '2.0', 'error': error, 'id': request_id}
 
         except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON in request: {e}")
+            logger.error(f"JSON decode error: {e}")
             response = {
-                'jsonrpc': '2.0',
-                'error': {'code': -32700, 'message': 'Parse error'},
+                'jsonrpc': '2.0', 
+                'error': {'code': -32700, 'message': 'Parse error'}, 
                 'id': None
             }
         except Exception as e:
@@ -254,10 +193,6 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             
             uid, did, bid, version, x, y_str, max_guesses, expiration = params
             
-            # Require authentication for this method
-            if not hasattr(self, 'user_id') or self.user_id is None:
-                return None, "UNAUTHORIZED: Authentication required for RegisterSecret"
-            
             # Convert y from string to bytes (x is already an integer from JSON)
             try:
                 y_int = int(y_str)
@@ -273,8 +208,8 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             except OverflowError as e:
                 return None, f"INVALID_ARGUMENT: Y integer too large for 32 bytes: {str(e)}"
             
-            # Call server function with authenticated user's owner_sub
-            result = server.register_secret(self.db, uid, did, bid, version, x, y, max_guesses, expiration, self.user_id)
+            # Call server function
+            result = server.register_secret(self.db, uid, did, bid, version, x, y, max_guesses, expiration)
             
             if isinstance(result, Exception):
                 return None, f"INVALID_ARGUMENT: {str(result)}"
@@ -301,10 +236,6 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             
             uid, did, bid, b_unexpanded, guess_num = params
             
-            # Require authentication for this method
-            if not hasattr(self, 'user_id') or self.user_id is None:
-                return None, "UNAUTHORIZED: Authentication required for RecoverSecret"
-            
             # Convert b from JSON representation back to cryptographic point
             try:
                 b = crypto.expand(b_unexpanded)
@@ -312,8 +243,8 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 return None, f"INVALID_ARGUMENT: Invalid point b: {str(e)}"
             
-            # Call server function with authenticated user's owner_sub
-            result = server.recover_secret(self.db, uid, did, bid, b, guess_num, self.user_id)
+            # Call server function
+            result = server.recover_secret(self.db, uid, did, bid, b, guess_num)
             
             if isinstance(result, Exception):
                 return None, f"INVALID_ARGUMENT: {str(result)}"
@@ -340,12 +271,8 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             
             uid = params[0]
             
-            # Require authentication for this method
-            if not hasattr(self, 'user_id') or self.user_id is None:
-                return None, "UNAUTHORIZED: Authentication required for ListBackups"
-            
-            # Call server function with authenticated user's owner_sub
-            result = server.list_backups(self.db, uid, self.user_id)
+            # Call server function
+            result = server.list_backups(self.db, uid)
             
             if isinstance(result, Exception):
                 return None, f"INVALID_ARGUMENT: {str(result)}"
