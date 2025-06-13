@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'openadp'))
 
 from noise_nk import NoiseNK, generate_keypair
-from jsonrpc_client import OpenADPClient
+from client.jsonrpc_client import OpenADPClient
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ class EncryptedOpenADPClient(OpenADPClient):
         if server_public_key:
             logger.debug(f"Server public key: {server_public_key.hex()[:32]}...")
     
-    def _make_encrypted_request(self, method: str, params: List[Any], request_id: int) -> Tuple[Any, Optional[str]]:
+    def _make_encrypted_request(self, method: str, params: List[Any], request_id: int, auth_data: Optional[Dict] = None) -> Tuple[Any, Optional[str]]:
         """
         Make an encrypted JSON-RPC request using Noise-NK.
         
@@ -62,6 +62,7 @@ class EncryptedOpenADPClient(OpenADPClient):
             method: The RPC method name
             params: List of parameters for the method
             request_id: Request ID for JSON-RPC
+            auth_data: Authentication data to include in encrypted payload
             
         Returns:
             Tuple of (result, error_message). If successful, error_message is None.
@@ -129,6 +130,23 @@ class EncryptedOpenADPClient(OpenADPClient):
                 "id": request_id + 1
             }
             
+            # Add authentication data if provided
+            if auth_data:
+                # If auth_data contains the raw auth info, we need to sign it with handshake hash
+                if "needs_signing" in auth_data:
+                    # This is for when we have the raw auth materials and need to create the full payload
+                    access_token = auth_data["access_token"]
+                    private_key = auth_data["private_key"]
+                    public_key_jwk = auth_data["public_key_jwk"]
+                    handshake_hash = noise_client.get_handshake_hash()
+                    
+                    # Create complete auth payload with handshake signature
+                    complete_auth = self.create_auth_payload(access_token, private_key, public_key_jwk, handshake_hash)
+                    inner_request["auth"] = complete_auth
+                else:
+                    # Pre-formed auth payload
+                    inner_request["auth"] = auth_data
+            
             # Encrypt the inner request
             inner_json = json.dumps(inner_request).encode('utf-8')
             encrypted_inner = noise_client.encrypt(inner_json)
@@ -176,6 +194,46 @@ class EncryptedOpenADPClient(OpenADPClient):
             logger.error(f"Unexpected error in encrypted request: {e}")
             return None, f"Encryption error: {str(e)}"
     
+    def create_auth_payload(self, access_token: str, private_key, public_key_jwk: Dict, handshake_hash: bytes) -> Dict:
+        """
+        Create authentication payload for Noise-NK encrypted authentication.
+        
+        Args:
+            access_token: OAuth access token
+            private_key: DPoP private key (cryptography private key object)
+            public_key_jwk: DPoP public key as JWK dictionary
+            handshake_hash: Noise-NK handshake hash
+            
+        Returns:
+            Complete auth payload dictionary
+        """
+        try:
+            from cryptography.hazmat.primitives import hashes
+            from cryptography.hazmat.primitives.asymmetric import ec
+            
+            # Sign the handshake hash with DPoP private key
+            signature = private_key.sign(handshake_hash, ec.ECDSA(hashes.SHA256()))
+            
+            # Base64url encode the signature
+            import base64
+            def base64url_encode(data: bytes) -> str:
+                return base64.urlsafe_b64encode(data).decode('ascii').rstrip('=')
+            
+            signature_b64 = base64url_encode(signature)
+            
+            # Create auth payload
+            auth_payload = {
+                "access_token": access_token,
+                "handshake_signature": signature_b64,
+                "dpop_public_key": public_key_jwk
+            }
+            
+            return auth_payload
+            
+        except Exception as e:
+            logger.error(f"Error creating auth payload: {e}")
+            raise ValueError(f"Failed to create auth payload: {str(e)}")
+    
     def _send_request(self, payload: Dict) -> Dict:
         """Send a raw JSON-RPC request and return the parsed response."""
         import requests
@@ -189,7 +247,7 @@ class EncryptedOpenADPClient(OpenADPClient):
         response.raise_for_status()
         return response.json()
     
-    def _make_request(self, method: str, params: List[Any], encrypted: bool = False) -> Tuple[Any, Optional[str]]:
+    def _make_request(self, method: str, params: List[Any], encrypted: bool = False, auth_data: Optional[Dict] = None) -> Tuple[Any, Optional[str]]:
         """
         Make a JSON-RPC request, optionally encrypted.
         
@@ -197,6 +255,7 @@ class EncryptedOpenADPClient(OpenADPClient):
             method: The RPC method name
             params: List of parameters for the method
             encrypted: Whether to encrypt the request
+            auth_data: Authentication data for encrypted requests
             
         Returns:
             Tuple of (result, error_message). If successful, error_message is None.
@@ -204,7 +263,7 @@ class EncryptedOpenADPClient(OpenADPClient):
         self.request_id += 1
         
         if encrypted:
-            return self._make_encrypted_request(method, params, self.request_id)
+            return self._make_encrypted_request(method, params, self.request_id, auth_data)
         else:
             # Use parent class implementation for unencrypted calls
             return super()._make_request(method, params)
@@ -213,7 +272,7 @@ class EncryptedOpenADPClient(OpenADPClient):
     
     def register_secret(self, uid: str, did: str, bid: str, version: int, 
                        x: str, y: str, max_guesses: int, expiration: int, 
-                       encrypted: bool = False) -> Tuple[bool, Optional[str]]:
+                       encrypted: bool = False, auth_data: Optional[Dict] = None) -> Tuple[bool, Optional[str]]:
         """
         Register a secret with the server.
         
@@ -232,7 +291,7 @@ class EncryptedOpenADPClient(OpenADPClient):
             Tuple of (success, error_message). If successful, error_message is None.
         """
         params = [uid, did, bid, version, x, y, max_guesses, expiration]
-        result, error = self._make_request("RegisterSecret", params, encrypted)
+        result, error = self._make_request("RegisterSecret", params, encrypted, auth_data)
         
         if error:
             return False, error
@@ -240,7 +299,7 @@ class EncryptedOpenADPClient(OpenADPClient):
         return bool(result), None
     
     def recover_secret(self, uid: str, did: str, bid: str, b: str, guess_num: int,
-                      encrypted: bool = False) -> Tuple[Optional[str], Optional[str]]:
+                      encrypted: bool = False, auth_data: Optional[Dict] = None) -> Tuple[Optional[str], Optional[str]]:
         """
         Recover a secret from the server.
         
@@ -256,14 +315,14 @@ class EncryptedOpenADPClient(OpenADPClient):
             Tuple of (recovered_secret, error_message). If successful, error_message is None.
         """
         params = [uid, did, bid, b, guess_num]
-        result, error = self._make_request("RecoverSecret", params, encrypted)
+        result, error = self._make_request("RecoverSecret", params, encrypted, auth_data)
         
         if error:
             return None, error
         
         return result, None
     
-    def list_backups(self, uid: str, encrypted: bool = False) -> Tuple[Optional[List[Dict]], Optional[str]]:
+    def list_backups(self, uid: str, encrypted: bool = False, auth_data: Optional[Dict] = None) -> Tuple[Optional[List[Dict]], Optional[str]]:
         """
         List backups for a user.
         
@@ -275,7 +334,7 @@ class EncryptedOpenADPClient(OpenADPClient):
             Tuple of (backup_list, error_message). If successful, error_message is None.
         """
         params = [uid]
-        result, error = self._make_request("ListBackups", params, encrypted)
+        result, error = self._make_request("ListBackups", params, encrypted, auth_data)
         
         if error:
             return None, error
@@ -300,6 +359,29 @@ class EncryptedOpenADPClient(OpenADPClient):
             return None, error
         
         return result, None
+    
+    def make_authenticated_request(self, method: str, params: List[Any], access_token: str, private_key, public_key_jwk: Dict) -> Tuple[Any, Optional[str]]:
+        """
+        Make an authenticated encrypted request using DPoP over Noise-NK.
+        
+        Args:
+            method: The RPC method name
+            params: List of parameters for the method
+            access_token: OAuth access token
+            private_key: DPoP private key (cryptography object)
+            public_key_jwk: DPoP public key as JWK dictionary
+            
+        Returns:
+            Tuple of (result, error_message). If successful, error_message is None.
+        """
+        auth_data = {
+            "needs_signing": True,
+            "access_token": access_token,
+            "private_key": private_key,
+            "public_key_jwk": public_key_jwk
+        }
+        
+        return self._make_request(method, params, encrypted=True, auth_data=auth_data)
 
 
 # Convenience functions with encryption support

@@ -1,0 +1,35 @@
+Metadata-Version: 2.1
+Name: dissononce
+Version: 0.34.3
+Summary: Noise Protocol Framework Implementation for Python2-3.x
+Home-page: UNKNOWN
+Author: Tarek Galal
+Author-email: tare2.galal@gmail.com
+License: MIT
+Platform: any
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Natural Language :: English
+Classifier: Programming Language :: Python :: 2
+Classifier: Programming Language :: Python :: 2.5
+Classifier: Programming Language :: Python :: 2.6
+Classifier: Programming Language :: Python :: 2.7
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.3
+Classifier: Programming Language :: Python :: 3.4
+Classifier: Programming Language :: Python :: 3.5
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Operating System :: MacOS :: MacOS X
+Classifier: Operating System :: Microsoft :: Windows
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Topic :: Security :: Cryptography
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Requires-Dist: cryptography (>=2.5)
+Provides-Extra: guardedhandshakestate
+Requires-Dist: transitions ; extra == 'guardedhandshakestate'
+
+Dissononce is a python implementation for Noise Protocol Framework. A main goal of this project is to provide a simple, easy to read and understand practical reference for Noise enthusiasts, implementers and users.
+
+

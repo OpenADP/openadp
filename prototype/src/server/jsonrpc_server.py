@@ -35,7 +35,6 @@ import database
 import crypto
 from server import server
 from server.noise_session_manager import get_session_manager, validate_session_id
-from server.auth_middleware import validate_auth, get_auth_stats
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -44,6 +43,165 @@ logger = logging.getLogger(__name__)
 # Global server state
 db_connection = None
 
+# Authentication configuration
+AUTH_ENABLED = os.environ.get('OPENADP_AUTH_ENABLED', '0') == '1'
+AUTH_ISSUER = os.environ.get('OPENADP_AUTH_ISSUER', 'http://localhost:8080/realms/openadp')
+AUTH_JWKS_URL = os.environ.get('OPENADP_AUTH_JWKS_URL')
+
+# Auto-derive JWKS URL if not provided
+if not AUTH_JWKS_URL:
+    AUTH_JWKS_URL = f"{AUTH_ISSUER}/.well-known/jwks.json"
+
+# JWKS cache
+jwks_cache = {}
+jwks_cache_expiry = 0
+
+def load_jwks():
+    """Load JWKS from IdP endpoint with caching."""
+    global jwks_cache, jwks_cache_expiry
+    import time
+    import urllib.request
+    
+    current_time = time.time()
+    cache_ttl = int(os.environ.get('OPENADP_AUTH_CACHE_TTL', '3600'))
+    
+    if current_time < jwks_cache_expiry and jwks_cache:
+        return jwks_cache
+    
+    try:
+        logger.info(f"Fetching JWKS from {AUTH_JWKS_URL}")
+        with urllib.request.urlopen(AUTH_JWKS_URL, timeout=10) as response:
+            jwks_data = json.loads(response.read())
+            jwks_cache = jwks_data
+            jwks_cache_expiry = current_time + cache_ttl
+            logger.info(f"JWKS cached for {cache_ttl} seconds")
+            return jwks_cache
+    except Exception as e:
+        logger.error(f"Failed to fetch JWKS: {e}")
+        return jwks_cache if jwks_cache else None
+
+def validate_jwt_token(access_token: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Validate JWT access token and extract user ID.
+    
+    Returns:
+        Tuple of (user_id, error_message)
+    """
+    try:
+        import jwt
+        from jwt import PyJWKClient
+        
+        # Load JWKS
+        jwks_data = load_jwks()
+        if not jwks_data:
+            return None, "Failed to load JWKS for token validation"
+        
+        # Decode token header to get key ID
+        unverified_header = jwt.get_unverified_header(access_token)
+        kid = unverified_header.get('kid')
+        
+        # Find the signing key
+        signing_key = None
+        for key in jwks_data.get('keys', []):
+            if key.get('kid') == kid:
+                signing_key = jwt.PyJWK(key).key
+                break
+        
+        if not signing_key:
+            return None, f"No signing key found for kid: {kid}"
+        
+        # Verify and decode token
+        payload = jwt.decode(
+            access_token,
+            signing_key,
+            algorithms=['RS256', 'ES256'],
+            issuer=AUTH_ISSUER,
+            options={"verify_aud": False}  # We'll check audience manually if needed
+        )
+        
+        # Extract user ID from 'sub' claim
+        user_id = payload.get('sub')
+        if not user_id:
+            return None, "Token missing 'sub' claim"
+        
+        logger.info(f"JWT token validated for user: {user_id}")
+        return user_id, None
+        
+    except jwt.ExpiredSignatureError:
+        return None, "Token has expired"
+    except jwt.InvalidTokenError as e:
+        return None, f"Invalid token: {str(e)}"
+    except Exception as e:
+        logger.error(f"JWT validation error: {e}")
+        return None, f"Token validation failed: {str(e)}"
+
+def validate_encrypted_auth(auth_payload: dict, handshake_hash: bytes) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Validate authentication payload from encrypted Noise-NK channel.
+    
+    Args:
+        auth_payload: Dictionary containing auth information
+        handshake_hash: Handshake hash from Noise-NK session
+        
+    Returns:
+        Tuple of (user_id, error_message)
+    """
+    try:
+        # Extract required fields
+        access_token = auth_payload.get('access_token')
+        handshake_signature = auth_payload.get('handshake_signature') 
+        dpop_public_key = auth_payload.get('dpop_public_key')
+        
+        if not access_token:
+            return None, "Missing access_token in auth payload"
+        if not handshake_signature:
+            return None, "Missing handshake_signature in auth payload"
+        if not dpop_public_key:
+            return None, "Missing dpop_public_key in auth payload"
+        
+        # 1. Validate JWT access token
+        user_id, jwt_error = validate_jwt_token(access_token)
+        if jwt_error:
+            return None, f"JWT validation failed: {jwt_error}"
+        
+        # 2. Verify handshake signature
+        try:
+            from openadp.auth.dpop import verify_handshake_signature
+            signature_valid = verify_handshake_signature(
+                handshake_hash=handshake_hash,
+                signature_b64=handshake_signature,
+                public_key_jwk=dpop_public_key
+            )
+            
+            if not signature_valid:
+                return None, "Invalid handshake signature"
+                
+        except Exception as e:
+            return None, f"Handshake signature verification failed: {str(e)}"
+        
+        # 3. Verify token contains matching public key (DPoP binding)
+        try:
+            import jwt
+            unverified_payload = jwt.decode(access_token, options={"verify_signature": False})
+            cnf_claim = unverified_payload.get('cnf', {})
+            
+            # Calculate JWK thumbprint
+            from openadp.auth.dpop import calculate_jwk_thumbprint
+            expected_thumbprint = calculate_jwk_thumbprint(dpop_public_key)
+            token_thumbprint = cnf_claim.get('jkt')
+            
+            if token_thumbprint != expected_thumbprint:
+                return None, "Token not bound to provided DPoP key"
+                
+        except Exception as e:
+            return None, f"DPoP binding verification failed: {str(e)}"
+        
+        logger.info(f"Encrypted authentication validated for user: {user_id}")
+        return user_id, None
+        
+    except Exception as e:
+        logger.error(f"Encrypted auth validation error: {e}")
+        return None, f"Authentication validation failed: {str(e)}"
 
 class RPCRequestHandler(BaseHTTPRequestHandler):
     """
@@ -70,41 +228,11 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
             
-            # Parse JSON-RPC request first to check if auth is needed
+            # Parse JSON-RPC request
             request = json.loads(post_data.decode('utf-8'))
             method = request.get('method')
             params = request.get('params', [])
             request_id = request.get('id')
-            
-            # Check if this method requires authentication
-            auth_required_methods = {'RegisterSecret', 'RecoverSecret', 'ListBackups'}
-            
-            # Perform authentication for state-changing methods
-            user_id = None
-            if method in auth_required_methods:
-                # Build full request URL for DPoP validation
-                host = self.headers.get('Host', 'localhost:8080')
-                scheme = 'https' if self.headers.get('X-Forwarded-Proto') == 'https' else 'http'
-                request_url = f"{scheme}://{host}{self.path}"
-                
-                # Validate authentication
-                user_id, auth_error = validate_auth(post_data, dict(self.headers), "POST", request_url)
-                
-                if auth_error:
-                    logger.warning(f"Authentication failed for method {method}: {auth_error}")
-                    response = {
-                        'jsonrpc': '2.0',
-                        'error': {'code': -32001, 'message': 'Unauthorized', 'data': auth_error},
-                        'id': request_id
-                    }
-                    self._send_json_response(response)
-                    return
-                
-                if user_id:
-                    logger.info(f"Authenticated request for method {method} by user {user_id}")
-            
-            # Store user context for ownership tracking
-            self.user_id = user_id
             
             # Route to appropriate method
             result, error = self._route_method(method, params)
@@ -158,8 +286,6 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             return self._noise_handshake(params)
         elif method == 'encrypted_call':
             return self._encrypted_call(params)
-        elif method == 'GetAuthStatus':
-            return self._get_auth_status(params)
         else:
             error = {'code': -32601, 'message': 'Method not found'}
             return None, error
@@ -326,7 +452,6 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
                     "ListBackups",
                     "Echo",
                     "GetServerInfo",
-                    "GetAuthStatus",
                     "noise_handshake",
                     "encrypted_call"
                 ],
@@ -422,8 +547,56 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             inner_method = decrypted_request.get('method')
             inner_params = decrypted_request.get('params', [])
             inner_id = decrypted_request.get('id')
+            auth_payload = decrypted_request.get('auth')
             
-            logger.debug(f"Decrypted call: method={inner_method}, params={inner_params}")
+            logger.debug(f"Decrypted call: method={inner_method}, params={inner_params}, auth_present={auth_payload is not None}")
+            
+            # Check if this method requires authentication
+            auth_required_methods = {'RegisterSecret', 'RecoverSecret', 'ListBackups'}
+            user_id = None
+            
+            if inner_method in auth_required_methods:
+                if not AUTH_ENABLED:
+                    logger.info(f"Authentication disabled, allowing {inner_method} without auth")
+                elif not auth_payload:
+                    logger.warning(f"Authentication required for {inner_method} but no auth payload provided")
+                    inner_response = {
+                        'jsonrpc': '2.0', 
+                        'error': {'code': -32001, 'message': 'Authentication required', 'data': 'No auth payload in encrypted request'}, 
+                        'id': inner_id
+                    }
+                    # Encrypt and return error response
+                    encrypted_response, error = session_manager.encrypt_response(session_id, inner_response)
+                    if error:
+                        return None, f"ENCRYPTION_ERROR: {error}"
+                    return {"data": base64.b64encode(encrypted_response).decode('ascii')}, None
+                else:
+                    # Get handshake hash for signature verification
+                    handshake_hash = session_manager.get_handshake_hash(session_id)
+                    if not handshake_hash:
+                        logger.error(f"No handshake hash available for session {session_id}")
+                        return None, "INTERNAL_ERROR: Handshake hash not available"
+                    
+                    # Validate authentication
+                    user_id, auth_error = validate_encrypted_auth(auth_payload, handshake_hash)
+                    
+                    if auth_error:
+                        logger.warning(f"Authentication failed for {inner_method}: {auth_error}")
+                        inner_response = {
+                            'jsonrpc': '2.0',
+                            'error': {'code': -32001, 'message': 'Authentication failed', 'data': auth_error},
+                            'id': inner_id
+                        }
+                        # Encrypt and return error response
+                        encrypted_response, error = session_manager.encrypt_response(session_id, inner_response)
+                        if error:
+                            return None, f"ENCRYPTION_ERROR: {error}"
+                        return {"data": base64.b64encode(encrypted_response).decode('ascii')}, None
+                    
+                    logger.info(f"Authenticated encrypted request for {inner_method} by user {user_id}")
+            
+            # Store user context for method handlers
+            self.user_id = user_id
             
             # Route the decrypted method call (but not encryption methods!)
             if inner_method in ['noise_handshake', 'encrypted_call']:
@@ -455,29 +628,6 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             
         except Exception as e:
             logger.error(f"Error in encrypted_call: {e}")
-            return None, f"INTERNAL_ERROR: {str(e)}"
-
-    def _get_auth_status(self, params: List[Any]) -> Tuple[Any, Optional[str]]:
-        """
-        Handle GetAuthStatus RPC method.
-        
-        Args:
-            params: Empty list (no parameters expected)
-            
-        Returns:
-            Tuple of (auth_status_dict, error_message)
-        """
-        try:
-            if len(params) != 0:
-                return None, "INVALID_ARGUMENT: GetAuthStatus expects no parameters"
-            
-            # Get authentication middleware statistics
-            auth_stats = get_auth_stats()
-            
-            return auth_stats, None
-            
-        except Exception as e:
-            logger.error(f"Error in get_auth_status: {e}")
             return None, f"INTERNAL_ERROR: {str(e)}"
 
     def log_message(self, format: str, *args) -> None:

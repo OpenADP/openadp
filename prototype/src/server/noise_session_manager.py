@@ -209,6 +209,33 @@ class NoiseSessionManager:
                 self._sessions.pop(session_id, None)
             return None, f"Internal error during encryption: {str(e)}"
     
+    def get_handshake_hash(self, session_id: str) -> Optional[bytes]:
+        """
+        Get the handshake hash for a completed session.
+        
+        Args:
+            session_id: Session identifier
+            
+        Returns:
+            Handshake hash bytes if session exists and handshake is complete, None otherwise
+        """
+        try:
+            with self._session_lock:
+                noise_session = self._sessions.get(session_id)
+                if noise_session is None:
+                    logger.error(f"Session {session_id} not found for handshake hash")
+                    return None
+                
+                if not noise_session.is_handshake_complete():
+                    logger.error(f"Handshake not complete for session {session_id}")
+                    return None
+                
+                return noise_session.get_handshake_hash()
+                
+        except Exception as e:
+            logger.error(f"Error getting handshake hash for session {session_id}: {e}")
+            return None
+    
     def cleanup_expired_sessions(self, max_age_seconds: int = 300):
         """
         Clean up sessions that have been around too long (fallback safety).

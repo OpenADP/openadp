@@ -87,7 +87,7 @@ We **do not** ship or operate the IdP; node operators point configuration at the
 
 ---
 
-## 4  Identity Provider (IdP) Compatibility
+## 9  Identity Provider (IdP) Compatibility
 
 PoP-JWT support status (mid-2025):
 
@@ -188,7 +188,7 @@ Operators behind Cloudflare set `tls.origin=unix:///var/run/cloudflared.sock`, o
 
 ---
 
-## 8  Open Questions — **Resolved**
+## 10  Open Questions — **Resolved**
 
 1. **Store OAuth `sub` in DB?** → *No.* We will include it only in the audit log, not in the operational tables.
 2. **Anonymous backups?** → *No.* All state-changing RPCs require authentication.
@@ -198,7 +198,7 @@ Operators behind Cloudflare set `tls.origin=unix:///var/run/cloudflared.sock`, o
 
 ---
 
-## 9  Next Steps
+## 11  Next Steps
 
 1. Choose reference IdP (Keycloak in Docker for dev; Cloudflare Identity for prod test).
 2. Draft the **JWT verification middleware** interface (no implementation yet).
@@ -210,14 +210,112 @@ Operators behind Cloudflare set `tls.origin=unix:///var/run/cloudflared.sock`, o
 
 *End of v0.1 — please review & comment.*
 
-## 10  Appendix A – Terminology: PoP vs DPoP
+## 8  Alternative: Noise-NK Encrypted Authentication
+
+### 8.1  Security Motivation
+
+After implementation and review, we identified significant security concerns with HTTP header-based DPoP authentication:
+
+1. **Cloudflare Visibility**: Access tokens and DPoP headers are visible to Cloudflare, creating potential for token replay attacks by privileged Cloudflare staff
+2. **Complex Attack Surface**: Multiple layers (HTTP headers, DPoP verification, JWT validation) increase complexity and potential for bugs
+3. **"Squishy" Security Model**: Trust boundaries unclear when intermediaries can inspect authentication credentials
+
+### 8.2  Proposed Architecture
+
+Instead of HTTP headers, we propose **Noise-NK encrypted authentication**:
+
+1. **Complete Noise-NK handshake** (unauthenticated, as normal)
+2. **Client signs `handshake_hash`** with DPoP private key  
+3. **Send encrypted payload** within Noise-NK channel:
+   ```json
+   {
+     "auth": {
+       "access_token": "eyJ...",
+       "handshake_signature": "base64...",
+       "dpop_public_key": {"kty": "EC", ...}
+     },
+     "method": "RegisterSecret",
+     "params": {...}
+   }
+   ```
+4. **Server processing**:
+   - Decrypt payload using Noise-NK session key
+   - Verify `handshake_signature` against DPoP public key and handshake hash
+   - Validate JWT access token
+   - Process RPC method if authentication succeeds
+
+### 8.3  Security Benefits
+
+- **End-to-End Encryption**: Tokens invisible to Cloudflare and network intermediaries
+- **Session Binding**: Authentication cryptographically bound to specific Noise-NK session
+- **Simple Trust Model**: Only client and server involved; no intermediary access to credentials
+- **Clean Reasoning**: "If you can decrypt + verify signature = you're authenticated"
+
+### 8.4  Implementation Phases
+
+This approach replaces the original HTTP header roadmap:
+
+**Phase 3.5 - Noise-NK Authentication Protocol**
+- Modify `noise_client.py` to support post-handshake authentication
+- Update JSON-RPC payload structure to include `auth` field
+- Implement handshake signature verification on server side
+- Maintain backward compatibility during transition
+
+**Phase 4 - Server Integration**  
+- Update server handlers to extract authentication from decrypted payload
+- Add ownership tracking using JWT `sub` claim
+- Implement per-user rate limiting
+
+**Phase 5 - Client Default**
+- Make authentication mandatory for all operations
+- Remove `--auth` flag; authentication always enabled
+- Clean up legacy HTTP header code
+
+### 8.5  Trade-off Analysis
+
+**Advantages**:
+- Superior security model (no token visibility to intermediaries)
+- Simpler implementation (single authentication point)
+- Session binding prevents token reuse across connections
+- Clean separation of transport security (Noise-NK) and authentication
+
+**Disadvantages**:
+- Servers must complete full handshake before rejecting invalid authentication (DDoS risk)
+- More complex integration with existing Noise-NK implementation
+- Cannot use standard HTTP authentication middleware
+
+### 8.6  DDoS Mitigation
+
+The main downside is that servers must complete the expensive Noise-NK handshake before authenticating users, similar to how TLS servers must complete handshakes before seeing HTTP authentication headers. Mitigation strategies:
+
+1. **Rate limit handshakes per IP** before authentication check
+2. **Connection pooling** on client side to amortize handshake costs
+3. **Fast-fail patterns** for obviously invalid authentication attempts
+
+This is equivalent to the security/performance trade-off made by all TLS-protected authentication systems.
+
+### 8.7  Migration Strategy
+
+1. **Phase 1-2**: Complete current Device Flow + token acquisition (reusable)
+2. **Phase 3**: Implement Noise-NK authentication (new approach)
+3. **Phase 4**: Deploy server-side support with `auth.method=noise-nk`
+4. **Phase 5**: Update clients to use new protocol
+5. **Phase 6**: Remove legacy HTTP header authentication code
+
+The OAuth2 Device Flow and DPoP key management work completed in Phases 1-2 remains fully applicable—only the transport mechanism changes.
+
+---
+
+## 12  Appendix A – Terminology: PoP vs DPoP
 
 * **PoP (Proof-of-Possession) Token** – Generic term for any access token that tells the resource server *which* public key the client must prove it controls. The proof can happen at TLS layer, in an HTTP header, etc.
 * **DPoP (Demonstration of Proof-of-Possession)** – A specific OAuth 2 draft (now RFC 9449) that defines **how** the client proves possession: it signs a small JWS (the "DPoP header") for every HTTP request. That header includes a nonce (`jti`), the HTTP method, URL, and the current timestamp. The server verifies the signature using the JWK from the token's `cnf` claim. 
 
 In our design *all* PoP tokens use the **DPoP** mechanism for the proof step. 
 
-## 11  Implementation Roadmap
+## 13  Implementation Roadmap (Original HTTP Header Approach)
+
+**⚠️ NOTE: This roadmap describes the original HTTP header-based DPoP approach. See Section 8 for the preferred Noise-NK encrypted authentication approach that replaces this implementation plan.**
 
 Each phase is sized to fit a single pull-request and can be tested independently.
 

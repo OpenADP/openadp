@@ -249,4 +249,146 @@ def validate_dpop_claims(dpop_header: str, expected_method: str, expected_url: s
     except json.JSONDecodeError as e:
         raise ValueError(f"Invalid JSON in DPoP payload: {e}")
     except Exception as e:
-        raise ValueError(f"Failed to validate DPoP claims: {e}") 
+        raise ValueError(f"Failed to validate DPoP claims: {e}")
+
+
+def calculate_jwk_thumbprint(jwk_dict: Dict[str, Any]) -> str:
+    """
+    Calculate JWK thumbprint (jkt) according to RFC 7638.
+    
+    Args:
+        jwk_dict: JWK dictionary containing the public key
+        
+    Returns:
+        Base64url-encoded SHA-256 thumbprint
+    """
+    import json
+    import hashlib
+    import base64
+    from cryptography.hazmat.primitives import serialization
+    
+    def base64url_encode(data: bytes) -> str:
+        """Encode bytes as base64url (no padding)."""
+        return base64.urlsafe_b64encode(data).decode('ascii').rstrip('=')
+    
+    # Extract required members for thumbprint (RFC 7638)
+    if jwk_dict.get('kty') == 'EC':
+        # For EC keys: crv, kty, x, y (in lexicographic order)
+        thumbprint_dict = {
+            'crv': jwk_dict['crv'],
+            'kty': jwk_dict['kty'],
+            'x': jwk_dict['x'],
+            'y': jwk_dict['y']
+        }
+    elif jwk_dict.get('kty') == 'RSA':
+        # For RSA keys: e, kty, n (in lexicographic order)
+        thumbprint_dict = {
+            'e': jwk_dict['e'],
+            'kty': jwk_dict['kty'],
+            'n': jwk_dict['n']
+        }
+    else:
+        raise ValueError(f"Unsupported key type: {jwk_dict.get('kty')}")
+    
+    # Serialize to JSON with no whitespace, sorted keys
+    json_str = json.dumps(thumbprint_dict, separators=(',', ':'), sort_keys=True)
+    
+    # Calculate SHA-256 hash
+    hash_bytes = hashlib.sha256(json_str.encode('utf-8')).digest()
+    
+    # Return base64url-encoded thumbprint
+    return base64url_encode(hash_bytes)
+
+
+def verify_handshake_signature(handshake_hash: bytes, signature_b64: str, public_key_jwk: Dict[str, Any]) -> bool:
+    """
+    Verify a signature over the Noise-NK handshake hash using DPoP public key.
+    
+    Args:
+        handshake_hash: The Noise-NK handshake hash bytes
+        signature_b64: Base64url-encoded signature
+        public_key_jwk: JWK dictionary containing the public key
+        
+    Returns:
+        True if signature is valid, False otherwise
+    """
+    try:
+        import logging
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.exceptions import InvalidSignature
+        
+        logger = logging.getLogger(__name__)
+        
+        def base64url_decode(data: str) -> bytes:
+            """Decode base64url string to bytes."""
+            import base64
+            # Add padding if needed
+            padding = 4 - len(data) % 4
+            if padding != 4:
+                data += '=' * padding
+            return base64.urlsafe_b64decode(data)
+        
+        # Decode signature
+        signature_bytes = base64url_decode(signature_b64)
+        
+        # Convert JWK to cryptography public key
+        public_key = jwk_to_public_key(public_key_jwk)
+        
+        # Verify signature over handshake hash
+        public_key.verify(
+            signature_bytes,
+            handshake_hash,
+            ec.ECDSA(hashes.SHA256())
+        )
+        
+        return True
+        
+    except InvalidSignature:
+        return False
+    except Exception as e:
+        logger.error(f"Error verifying handshake signature: {e}")
+        return False
+
+
+def jwk_to_public_key(jwk_dict: Dict[str, Any]):
+    """
+    Convert JWK dictionary to cryptography public key object.
+    
+    Args:
+        jwk_dict: JWK dictionary
+        
+    Returns:
+        cryptography public key object
+    """
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives import serialization
+    
+    if jwk_dict.get('kty') != 'EC':
+        raise ValueError(f"Unsupported key type: {jwk_dict.get('kty')}")
+    
+    if jwk_dict.get('crv') != 'P-256':
+        raise ValueError(f"Unsupported curve: {jwk_dict.get('crv')}")
+    
+    def base64url_decode(data: str) -> bytes:
+        """Decode base64url string to bytes."""
+        import base64
+        # Add padding if needed
+        padding = 4 - len(data) % 4
+        if padding != 4:
+            data += '=' * padding
+        return base64.urlsafe_b64decode(data)
+    
+    # Decode x and y coordinates
+    x_bytes = base64url_decode(jwk_dict['x'])
+    y_bytes = base64url_decode(jwk_dict['y'])
+    
+    # Convert to integers
+    x = int.from_bytes(x_bytes, byteorder='big')
+    y = int.from_bytes(y_bytes, byteorder='big')
+    
+    # Create EC public key
+    public_numbers = ec.EllipticCurvePublicNumbers(x, y, ec.SECP256R1())
+    public_key = public_numbers.public_key()
+    
+    return public_key 
