@@ -18,7 +18,14 @@ from typing import Dict, Any, Optional, Tuple, Set
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
-import jwt
+# Make JWT import optional for servers without PyJWT installed
+try:
+    import jwt
+    JWT_AVAILABLE = True
+except ImportError:
+    JWT_AVAILABLE = False
+    jwt = None
+
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 import base64
@@ -50,7 +57,11 @@ class AuthConfig:
         if self.issuer and not self.jwks_url:
             self.jwks_url = f"{self.issuer.rstrip('/')}/.well-known/jwks.json"
             
-        logger.info(f"Auth config: enabled={self.enabled}, issuer={self.issuer}, jwks_url={self.jwks_url}")
+        # Warn if JWT package is not available but auth is enabled
+        if self.enabled and not JWT_AVAILABLE:
+            logger.warning("Authentication enabled but PyJWT package not available - authentication will fail")
+            
+        logger.info(f"Auth config: enabled={self.enabled}, issuer={self.issuer}, jwks_url={self.jwks_url}, jwt_available={JWT_AVAILABLE}")
 
 
 def get_jwks(jwks_url: str, cache_ttl: int = 3600) -> Dict[str, Any]:
@@ -109,6 +120,9 @@ def validate_jwt_token(token: str, jwks_url: str, expected_issuer: str) -> Dict[
     Raises:
         Exception: If token validation fails
     """
+    if not JWT_AVAILABLE:
+        raise Exception("JWT validation not available: PyJWT package not installed")
+    
     try:
         # Get JWKS for signature verification
         jwks = get_jwks(jwks_url)
@@ -263,6 +277,10 @@ def validate_auth(request_body: bytes, headers: Dict[str, str], request_method: 
         if not config.issuer:
             return None, "Server misconfiguration: AUTH_ISSUER not set"
         
+        # Check if JWT package is available when auth is enabled
+        if not JWT_AVAILABLE:
+            return None, "Server misconfiguration: PyJWT package not installed but authentication is enabled"
+        
         # Extract Authorization header
         auth_header = headers.get('Authorization', '').strip()
         if not auth_header:
@@ -315,6 +333,7 @@ def get_auth_stats() -> Dict[str, Any]:
         'jti_cache_size': len(_jti_cache),
         'jwks_cache_expired': time.time() >= _jwks_cache_expiry,
         'jwks_cache_ttl_remaining': max(0, _jwks_cache_expiry - time.time()),
+        'jwt_available': JWT_AVAILABLE,
         'config': {
             'enabled': AuthConfig().enabled,
             'issuer': AuthConfig().issuer,
