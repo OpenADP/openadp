@@ -15,7 +15,7 @@ src_path = os.path.join(os.path.dirname(__file__), 'src')
 sys.path.insert(0, src_path)
 
 # Import and run the server
-from server.jsonrpc_server import main
+from server.noise_jsonrpc_server import main
 
 if __name__ == "__main__":
     main() 

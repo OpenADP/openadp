@@ -46,23 +46,8 @@ from openadp.auth.device_flow import DeviceFlowError
 NONCE_SIZE: int = 12
 
 # Authentication configuration
-# Production Auth0 settings (default)
-AUTH0_DOMAIN = "dev-ofq24vi3c6obh8fz.us.auth0.com"
-AUTH0_CLIENT_ID = "r1A7UEYuVIKO8fP3Oe8dAmRsLyJkgK08"
-AUTH0_ISSUER_URL = f"https://{AUTH0_DOMAIN}/"
-
-# Local development Keycloak settings (fallback)
-KEYCLOAK_ISSUER_URL = "http://localhost:8080/realms/openadp"
-KEYCLOAK_CLIENT_ID = "cli-test"
-
-# Configuration priority: 
-# 1. Command line arguments
-# 2. Environment variables
-# 3. Auth0 production defaults
-DEFAULT_ISSUER_URL = os.getenv("OPENADP_ISSUER_URL", AUTH0_ISSUER_URL)
-DEFAULT_CLIENT_ID = os.getenv("OPENADP_CLIENT_ID", AUTH0_CLIENT_ID)
-
-# File paths
+DEFAULT_ISSUER_URL = "http://localhost:8080/realms/openadp"
+DEFAULT_CLIENT_ID = "cli-test"
 TOKEN_CACHE_DIR = os.path.expanduser("~/.openadp")
 PRIVATE_KEY_PATH = os.path.join(TOKEN_CACHE_DIR, "dpop_key.pem")
 TOKEN_CACHE_PATH = os.path.join(TOKEN_CACHE_DIR, "tokens.json")
@@ -319,19 +304,13 @@ def main() -> NoReturn:
     parser.add_argument(
         '--issuer',
         default=DEFAULT_ISSUER_URL,
-        help=f'OAuth issuer URL (default: Auth0 production)'
+        help=f'OAuth issuer URL (default: {DEFAULT_ISSUER_URL})'
     )
     
     parser.add_argument(
         '--client-id',
         default=DEFAULT_CLIENT_ID,
-        help=f'OAuth client ID (default: Auth0 production)'
-    )
-    
-    parser.add_argument(
-        '--local-dev',
-        action='store_true',
-        help='Use local development Keycloak instead of Auth0 production'
+        help=f'OAuth client ID (default: {DEFAULT_CLIENT_ID})'
     )
     
     parser.add_argument(
@@ -348,23 +327,12 @@ def main() -> NoReturn:
     
     args = parser.parse_args()
     
-    # Handle local-dev flag
-    issuer_url = args.issuer
-    client_id = args.client_id
-    
-    if args.local_dev:
-        issuer_url = KEYCLOAK_ISSUER_URL
-        client_id = KEYCLOAK_CLIENT_ID
-        print("🔧 Using local development Keycloak for authentication")
-    else:
-        print("🌐 Using Auth0 production for authentication")
-    
     # Get password securely without echoing it to the terminal
     user_password = get_password_securely()
     
     # Perform encryption
     encrypt_file(args.filename, user_password, servers=args.servers, 
-                 servers_url=args.servers_url, issuer_url=issuer_url, client_id=client_id)
+                 servers_url=args.servers_url, issuer_url=args.issuer, client_id=args.client_id)
     
     sys.exit(0)
 
