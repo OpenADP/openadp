@@ -127,23 +127,30 @@ def run_pkce_flow(
     # Calculate JWK thumbprint for DPoP binding
     jwk_thumbprint = calculate_jwk_thumbprint(public_jwk)
     
-    # Discover endpoints
+    # Discover endpoints (with fallback for Keycloak 22.0 .well-known issue)
     well_known_url = urljoin(issuer_url.rstrip('/') + '/', '.well-known/openid-configuration')
+    
+    auth_endpoint = None
+    token_endpoint = None
     
     try:
         response = requests.get(well_known_url, timeout=10)
         response.raise_for_status()
         discovery = response.json()
+        auth_endpoint = discovery.get('authorization_endpoint')
+        token_endpoint = discovery.get('token_endpoint')
+        print("✅ Discovered endpoints via .well-known")
     except requests.RequestException as e:
-        raise PKCEFlowError(f"Failed to discover OAuth endpoints: {e}")
+        print(f"⚠️  .well-known discovery failed: {e}")
+        print("🔧 Using direct endpoint construction (Keycloak 22.0 workaround)")
     
-    auth_endpoint = discovery.get('authorization_endpoint')
-    token_endpoint = discovery.get('token_endpoint')
-    
-    if not auth_endpoint:
-        raise PKCEFlowError("Authorization endpoint not found in discovery document")
-    if not token_endpoint:
-        raise PKCEFlowError("Token endpoint not found in discovery document")
+    # Fallback to direct endpoint construction if discovery failed
+    if not auth_endpoint or not token_endpoint:
+        base_url = issuer_url.rstrip('/')
+        auth_endpoint = f"{base_url}/protocol/openid-connect/auth"
+        token_endpoint = f"{base_url}/protocol/openid-connect/token"
+        print(f"🔗 Auth endpoint: {auth_endpoint}")
+        print(f"🔗 Token endpoint: {token_endpoint}")
     
     # Generate PKCE parameters
     code_verifier, code_challenge = generate_pkce_challenge()
@@ -273,19 +280,24 @@ def refresh_access_token_pkce(
     Raises:
         PKCEFlowError: If refresh fails
     """
-    # Discover token endpoint
+    # Discover token endpoint (with fallback for Keycloak 22.0 .well-known issue)
     well_known_url = urljoin(issuer_url.rstrip('/') + '/', '.well-known/openid-configuration')
+    
+    token_endpoint = None
     
     try:
         response = requests.get(well_known_url, timeout=10)
         response.raise_for_status()
         discovery = response.json()
+        token_endpoint = discovery.get('token_endpoint')
     except requests.RequestException as e:
-        raise PKCEFlowError(f"Failed to discover OAuth endpoints: {e}")
+        print(f"⚠️  .well-known discovery failed: {e}")
+        print("🔧 Using direct endpoint construction (Keycloak 22.0 workaround)")
     
-    token_endpoint = discovery.get('token_endpoint')
+    # Fallback to direct endpoint construction if discovery failed
     if not token_endpoint:
-        raise PKCEFlowError("Token endpoint not found in discovery document")
+        base_url = issuer_url.rstrip('/')
+        token_endpoint = f"{base_url}/protocol/openid-connect/token"
     
     # Prepare refresh request
     token_data = {

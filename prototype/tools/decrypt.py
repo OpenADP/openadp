@@ -37,8 +37,8 @@ from openadp import keygen
 # These must match the values used during encryption
 NONCE_SIZE: int = 12
 
-# Authentication configuration (same as encrypt.py)
-DEFAULT_ISSUER_URL = "http://localhost:8080/realms/openadp"
+# Authentication configuration - Global IdP (same as encrypt.py)
+DEFAULT_ISSUER_URL = "http://localhost:8081/realms/openadp"
 DEFAULT_CLIENT_ID = "cli-test"
 TOKEN_CACHE_DIR = os.path.expanduser("~/.openadp")
 PRIVATE_KEY_PATH = os.path.join(TOKEN_CACHE_DIR, "dpop_key.pem")

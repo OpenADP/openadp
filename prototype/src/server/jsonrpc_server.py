@@ -43,14 +43,15 @@ logger = logging.getLogger(__name__)
 # Global server state
 db_connection = None
 
-# Authentication configuration
+# Authentication configuration - Global IdP
 AUTH_ENABLED = os.environ.get('OPENADP_AUTH_ENABLED', '1') == '1'
-AUTH_ISSUER = os.environ.get('OPENADP_AUTH_ISSUER', 'http://localhost:8080/realms/openadp')
+AUTH_ISSUER = os.environ.get('OPENADP_AUTH_ISSUER', 'http://localhost:8081/realms/openadp')
 AUTH_JWKS_URL = os.environ.get('OPENADP_AUTH_JWKS_URL')
 
-# Auto-derive JWKS URL if not provided
+# Auto-derive JWKS URL if not provided (with Keycloak 22.0 workaround)
 if not AUTH_JWKS_URL:
-    AUTH_JWKS_URL = f"{AUTH_ISSUER}/.well-known/jwks.json"
+    # Try .well-known first, fallback to direct endpoint
+    AUTH_JWKS_URL = f"{AUTH_ISSUER}/protocol/openid-connect/certs"
 
 # JWKS cache
 jwks_cache = {}

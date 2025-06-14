@@ -45,8 +45,8 @@ from openadp.auth.pkce_flow import PKCEFlowError
 # encryption operation with the same key. 12 bytes is the standard size.
 NONCE_SIZE: int = 12
 
-# Authentication configuration
-DEFAULT_ISSUER_URL = "http://localhost:8080/realms/openadp"
+# Authentication configuration - Global IdP
+DEFAULT_ISSUER_URL = "http://localhost:8081/realms/openadp"
 DEFAULT_CLIENT_ID = "cli-test"
 TOKEN_CACHE_DIR = os.path.expanduser("~/.openadp")
 PRIVATE_KEY_PATH = os.path.join(TOKEN_CACHE_DIR, "dpop_key.pem")
