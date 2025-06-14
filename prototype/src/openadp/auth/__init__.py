@@ -12,6 +12,7 @@ Phase 1: Client key & token handling
 
 from .keys import generate_keypair, load_private_key, save_private_key
 from .device_flow import run_device_flow
+from .pkce_flow import run_pkce_flow
 from .dpop import make_dpop_header
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     'load_private_key', 
     'save_private_key',
     'run_device_flow',
+    'run_pkce_flow',
     'make_dpop_header'
 ] 

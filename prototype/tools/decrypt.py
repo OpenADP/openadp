@@ -241,7 +241,7 @@ def get_password_securely() -> str:
 def get_auth_token(issuer_url: str = DEFAULT_ISSUER_URL, 
                   client_id: str = DEFAULT_CLIENT_ID) -> Optional[Dict[str, Any]]:
     """
-    Get authentication token using Device Code flow.
+    Get authentication token using PKCE flow with DPoP.
     
     Args:
         issuer_url: OAuth issuer URL
@@ -253,8 +253,8 @@ def get_auth_token(issuer_url: str = DEFAULT_ISSUER_URL,
     print("🔐 Starting authentication flow...")
     
     try:
-        from openadp.auth import run_device_flow, make_dpop_header, save_private_key, load_private_key
-        from openadp.auth.device_flow import DeviceFlowError
+        from openadp.auth import run_pkce_flow, make_dpop_header, save_private_key, load_private_key
+        from openadp.auth.pkce_flow import PKCEFlowError
         
         # Try to load existing private key
         private_key = None
@@ -266,8 +266,8 @@ def get_auth_token(issuer_url: str = DEFAULT_ISSUER_URL,
                 print(f"⚠️  Failed to load existing key: {e}")
                 print("🔑 Will generate new key")
         
-        # Run device flow
-        token_data = run_device_flow(
+        # Run PKCE flow
+        token_data = run_pkce_flow(
             issuer_url=issuer_url,
             client_id=client_id,
             private_key=private_key

@@ -37,8 +37,8 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from openadp import keygen
-from openadp.auth import run_device_flow, make_dpop_header, save_private_key, load_private_key
-from openadp.auth.device_flow import DeviceFlowError
+from openadp.auth import run_pkce_flow, make_dpop_header, save_private_key, load_private_key
+from openadp.auth.pkce_flow import PKCEFlowError
 
 # --- Configuration ---
 # Nonce (Number used once) is required for ChaCha20. It must be unique for each
@@ -78,11 +78,12 @@ def get_auth_token(issuer_url: str = DEFAULT_ISSUER_URL,
                 print(f"⚠️  Failed to load existing key: {e}")
                 print("🔑 Will generate new key")
         
-        # Run device flow
-        token_data = run_device_flow(
+        # Run PKCE flow with DPoP support
+        token_data = run_pkce_flow(
             issuer_url=issuer_url,
             client_id=client_id,
-            private_key=private_key
+            private_key=private_key,
+            redirect_port=8889  # Use a different port to avoid conflicts
         )
         
         # Save private key if it's new
@@ -110,7 +111,7 @@ def get_auth_token(issuer_url: str = DEFAULT_ISSUER_URL,
         print("✅ Authentication successful!")
         return token_data
         
-    except DeviceFlowError as e:
+    except PKCEFlowError as e:
         print(f"❌ Authentication failed: {e}")
         return None
     except Exception as e:
