@@ -32,30 +32,26 @@ from openadp import sharing
 from client.client import Client
 
 
-def derive_identifiers(filename: str, username: Optional[str] = None, 
+def derive_identifiers(filename: str, user_id: str, 
                       hostname: Optional[str] = None) -> Tuple[str, str, str]:
     """
-    Derive UID, DID, and BID from file and system context.
+    Derive UID, DID, and BID for OpenADP operations.
     
     Args:
         filename: Name of file being encrypted/decrypted
-        username: Override username (auto-detected if None)
+        user_id: Authenticated user ID (JWT sub claim - UUID)
         hostname: Override hostname (auto-detected if None)
         
     Returns:
         Tuple of (uid, did, bid) identifiers
     """
-    # Auto-detect username if not provided
-    if username is None:
-        username = os.getenv('USER') or os.getenv('USERNAME') or 'unknown'
-    
     # Auto-detect hostname if not provided  
     if hostname is None:
         import socket
         hostname = socket.gethostname()
     
-    # Create identifiers
-    uid = f"{username}@{hostname}"  # User@device identifier
+    # Phase 4: Use JWT sub (UUID) as UID directly
+    uid = user_id  # This is now the JWT sub claim (UUID)
     did = hostname  # Device identifier
     bid = f"file://{os.path.basename(filename)}"  # Backup identifier for this file
     
@@ -77,14 +73,14 @@ def password_to_pin(password: str) -> bytes:
     return hash_bytes[:2]  # Use first 2 bytes as PIN
 
 
-def generate_encryption_key(filename: str, password: str, max_guesses: int = 10,
+def generate_encryption_key(filename: str, password: str, user_id: str, max_guesses: int = 10,
                            expiration: int = 0, auth_data: Optional[Dict] = None,
                            servers: Optional[List[str]] = None, servers_url: str = "https://servers.openadp.org") -> Tuple[bytes, Optional[str], Optional[List[str]], int]:
     """
     Generate an encryption key using OpenADP distributed secret sharing.
     
     This function:
-    1. Derives UID/DID/BID from file and system context
+    1. Derives UID/DID/BID using authenticated user_id (JWT sub)
     2. Converts password to PIN for cryptographic operations
     3. Generates random secret and splits into shares
     4. Registers shares with live OpenADP servers
@@ -93,6 +89,7 @@ def generate_encryption_key(filename: str, password: str, max_guesses: int = 10,
     Args:
         filename: File being encrypted (used for BID)
         password: User password 
+        user_id: Authenticated user ID (JWT sub claim - UUID)
         max_guesses: Maximum recovery attempts allowed
         expiration: Expiration timestamp (0 for no expiration)
         auth_data: Optional authentication data for Phase 3.5 encrypted auth
@@ -103,8 +100,8 @@ def generate_encryption_key(filename: str, password: str, max_guesses: int = 10,
         Tuple of (encryption_key, error_message, server_urls, threshold). 
         If successful, error_message is None and server_urls contains the URLs used.
     """
-    # Step 1: Derive identifiers
-    uid, did, bid = derive_identifiers(filename)
+    # Step 1: Derive identifiers using authenticated user_id
+    uid, did, bid = derive_identifiers(filename, user_id)
     print(f"OpenADP: UID={uid}, DID={did}, BID={bid}")
     
     # Step 2: Convert password to PIN
@@ -154,7 +151,7 @@ def generate_encryption_key(filename: str, password: str, max_guesses: int = 10,
         y_str = str(y)
         
         try:
-            result, error = server_client.register_secret(uid, did, bid, version, x, y_str, max_guesses, expiration, auth_data)
+            result, error = server_client.register_secret(uid, did, bid, version, x, y_str, max_guesses, expiration, encrypted=True, auth_data=auth_data)
             
             if error:
                 registration_errors.append(f"Server {i+1}: {error}")
@@ -176,13 +173,13 @@ def generate_encryption_key(filename: str, password: str, max_guesses: int = 10,
     return enc_key, None, server_urls_used, threshold
 
 
-def recover_encryption_key(filename: str, password: str, server_urls: Optional[List[str]] = None, 
+def recover_encryption_key(filename: str, password: str, user_id: str, server_urls: Optional[List[str]] = None, 
                           auth_data: Optional[Dict] = None, threshold: int = 2) -> Tuple[bytes, Optional[str]]:
     """
     Recover an encryption key from OpenADP servers for decryption.
     
     This function:
-    1. Derives same UID/DID/BID from file and system context
+    1. Derives same UID/DID/BID using authenticated user_id (JWT sub)
     2. Converts password to same PIN 
     3. Recovers secret shares from OpenADP servers (using specific URLs if provided)
     4. Reconstructs original secret using threshold cryptography
@@ -191,6 +188,7 @@ def recover_encryption_key(filename: str, password: str, server_urls: Optional[L
     Args:
         filename: File being decrypted (used for BID)
         password: User password (must match encryption password)
+        user_id: Authenticated user ID (JWT sub claim - UUID, must match encryption)
         server_urls: List of server URLs from metadata
         auth_data: Optional authentication data for Phase 3.5 encrypted auth
         threshold: Threshold required for recovery (from metadata)
@@ -199,8 +197,8 @@ def recover_encryption_key(filename: str, password: str, server_urls: Optional[L
         Tuple of (encryption_key, error_message). If successful, error_message is None.
     """
     # Step 1: Derive same identifiers as during encryption
-    uid, did, bid = derive_identifiers(filename)
-    print(f"OpenADP: Recovering for UID={uid}, DID={did}, BID={bid}")
+    uid, did, bid = derive_identifiers(filename, user_id)
+    print(f"OpenADP: Recovering with UID={uid}, DID={did}, BID={bid}")
     
     # Step 2: Convert password to same PIN
     pin = password_to_pin(password)
@@ -208,11 +206,11 @@ def recover_encryption_key(filename: str, password: str, server_urls: Optional[L
     # Step 3: Initialize OpenADP client with servers from metadata
     if server_urls:
         # Use the specific servers that were used during encryption
-        from client.jsonrpc_client import OpenADPClient
+        from client.jsonrpc_client import EncryptedOpenADPClient
         live_servers = []
         for url in server_urls:
             try:
-                server_client = OpenADPClient(url)
+                server_client = EncryptedOpenADPClient(url)
                 live_servers.append(server_client)
             except Exception as e:
                 print(f"Failed to connect to {url}: {e}")
@@ -248,7 +246,7 @@ def recover_encryption_key(filename: str, password: str, server_urls: Optional[L
     for i, server_client in enumerate(client.live_servers):
         try:
             # Get current guess number for this backup from this specific server
-            backups, error = server_client.list_backups(uid)
+            backups, error = server_client.list_backups(uid, encrypted=True, auth_data=auth_data)
             if error:
                 print(f"Warning: Could not list backups from server {i+1}: {error}")
                 guess_num = 0  # Start with 0 if we can't determine current state
@@ -262,7 +260,7 @@ def recover_encryption_key(filename: str, password: str, server_urls: Optional[L
                         break
             
             # Attempt recovery from this specific server
-            result, error = server_client.recover_secret(uid, did, bid, crypto.unexpand(B), guess_num, auth_data)
+            result, error = server_client.recover_secret(uid, did, bid, crypto.unexpand(B), guess_num, encrypted=True, auth_data=auth_data)
             
             if error:
                 print(f"Server {i+1} recovery failed: {error}")
@@ -300,7 +298,7 @@ def main():
     
     # Test key generation
     print("\n1. Generating encryption key...")
-    enc_key, error, server_urls, threshold = generate_encryption_key(test_filename, test_password)
+    enc_key, error, server_urls, threshold = generate_encryption_key(test_filename, test_password, "test_user")
     
     if error:
         print(f"❌ Key generation failed: {error}")
@@ -311,7 +309,7 @@ def main():
     
     # Test key recovery
     print("\n2. Recovering encryption key...")
-    recovered_key, error = recover_encryption_key(test_filename, test_password, server_urls)
+    recovered_key, error = recover_encryption_key(test_filename, test_password, "test_user", server_urls)
     
     if error:
         print(f"❌ Key recovery failed: {error}")

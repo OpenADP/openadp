@@ -275,7 +275,7 @@ def validate_auth(request_body: bytes, headers: Dict[str, str], request_method: 
         
         # Check required configuration
         if not config.issuer:
-            return None, "Server misconfiguration: AUTH_ISSUER not set"
+            return None, "Server misconfiguration: OPENADP_AUTH_ISSUER not set"
         
         # Check if JWT package is available when auth is enabled
         if not JWT_AVAILABLE:

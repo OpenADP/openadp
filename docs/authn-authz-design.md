@@ -475,4 +475,145 @@ Each phase is sized to fit a single pull-request and can be tested independently
 
 Token lifetime parameters (see §7) remain: access 5 min, refresh 90 days.
 
+---
+
+## 14  Future Enhancement: Offline IdP Key Validation
+
+**Status**: Future enhancement (post-Phase 4)  
+**Goal**: Eliminate network dependencies for JWT validation while maintaining compatibility with major IdPs
+
+### 14.1  Current Limitation
+
+The current design requires network calls to fetch JWKS during JWT validation:
+```python
+# Current approach - requires network call
+jwks_response = requests.get(f"{issuer}/.well-known/jwks.json")
+public_keys = jwks_response.json()
+```
+
+**Problems**:
+- Network dependency reveals OpenADP server to IdP
+- Potential privacy/anonymity compromise for operators
+- Latency and availability issues
+- Creates targetable infrastructure
+
+### 14.2  Proposed Solution: Aggressive JWKS Caching
+
+Implement aggressive caching of IdP public keys with fallback mechanisms:
+
+```python
+# Enhanced validation with caching
+async def validate_jwt_token(token: str) -> Optional[str]:
+    # 1. Extract kid from JWT header
+    header = jwt.get_unverified_header(token)
+    kid = header.get('kid')
+    issuer = jwt.decode(token, options={"verify_signature": False}).get('iss')
+    
+    # 2. Check cache first
+    cached_key = get_cached_jwks_key(issuer, kid)
+    if cached_key:
+        return validate_with_key(token, cached_key)
+    
+    # 3. Fallback: fetch fresh JWKS (minimal network calls)
+    fresh_keys = await fetch_and_cache_jwks(issuer)
+    key = fresh_keys.get(kid)
+    
+    if key:
+        return validate_with_key(token, key)
+    
+    return None  # Unknown key
+```
+
+### 14.3  Caching Strategy
+
+**Cache Duration**: 24 hours (recommended by major IdPs)
+**Cache Keys**: `{issuer}:{kid}` pairs
+**Storage**: In-memory with persistent backup
+**Refresh**: Lazy refresh on unknown `kid` or cache expiry
+
+```python
+JWKS_CACHE = {
+    "appleid.apple.com": {
+        "keys": {
+            "AIDOPK1": {
+                "key": rsa_public_key_object,
+                "algorithm": "RS256",
+                "expires": timestamp + 86400
+            }
+        },
+        "last_fetch": timestamp,
+        "next_refresh": timestamp + 86400
+    }
+}
+```
+
+### 14.4  Network Call Minimization
+
+Network calls only occur:
+1. **Server startup** - populate cache for configured issuers
+2. **Unknown kid** - JWT uses key not in cache (rare)
+3. **Cache expiry** - after 24 hours of no refresh
+4. **Explicit refresh** - administrative cache invalidation
+
+**Typical operation**: 99.9% of JWT validations happen offline
+
+### 14.5  Big Tech Compatibility
+
+This approach works seamlessly with major IdPs:
+
+| IdP | JWKS Endpoint | Rotation Frequency | Cache Compatibility |
+|-----|---------------|-------------------|-------------------|
+| **Apple** | `appleid.apple.com/auth/keys` | Weeks/Months | ✅ Excellent |
+| **Google** | `www.googleapis.com/oauth2/v3/certs` | Days/Weeks | ✅ Good |
+| **Microsoft** | `login.microsoftonline.com/common/discovery/v2.0/keys` | Weeks | ✅ Excellent |
+| **Auth0** | `{tenant}.auth0.com/.well-known/jwks.json` | Configurable | ✅ Excellent |
+
+**Key Insight**: All major IdPs support multiple concurrent signing keys, making caching safe and effective.
+
+### 14.6  Configuration
+
+```bash
+# Enable aggressive caching
+OPENADP_JWKS_CACHE_TTL=86400          # 24 hours
+OPENADP_JWKS_PRELOAD_ISSUERS=true     # Fetch keys on startup
+OPENADP_JWKS_OFFLINE_MODE=false       # Set true to disable all network calls
+
+# Per-issuer settings
+OPENADP_JWKS_APPLE_TTL=172800         # 48 hours for Apple (slower rotation)
+OPENADP_JWKS_GOOGLE_TTL=21600         # 6 hours for Google (faster rotation)
+```
+
+### 14.7  Privacy Benefits
+
+**Before**: Every JWT validation reveals OpenADP server to IdP
+```
+OpenADP Server → IdP: "I'm validating tokens for my users"
+```
+
+**After**: Minimal, batched network fingerprint
+```
+OpenADP Server → IdP: "Getting public keys" (once per day)
+```
+
+The network pattern becomes indistinguishable from any other API server using standard OAuth practices.
+
+### 14.8  Implementation Plan
+
+**Phase A**: Basic caching infrastructure
+- Implement in-memory JWKS cache with TTL
+- Add cache miss fallback to current network fetch
+- Metrics for cache hit/miss rates
+
+**Phase B**: Aggressive caching
+- Increase cache TTL to 24 hours
+- Add startup preloading of configured issuers
+- Implement persistent cache backup
+
+**Phase C**: Offline mode
+- Add configuration option to disable network calls entirely
+- Operator tooling for manual key updates
+- Graceful degradation when cache is stale
+
+This enhancement maintains full compatibility with existing IdPs while dramatically improving privacy and reducing network dependencies.
+
 *End of v0.3 — phase details expanded.* 

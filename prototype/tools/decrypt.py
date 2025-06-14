@@ -146,6 +146,21 @@ def decrypt_file(input_filename: str, password: str,
             print("❌ Authentication required for decryption but failed. Exiting.")
             sys.exit(1)
         
+        # Extract user_id from JWT token for Phase 4
+        try:
+            import jwt
+            # Decode token to extract user_id (sub claim) - don't verify signature here
+            # as we'll send the full token to the server for verification
+            payload = jwt.decode(token_data['access_token'], options={"verify_signature": False})
+            user_id = payload.get('sub')
+            if not user_id:
+                print("❌ JWT token missing 'sub' claim. Invalid token.")
+                sys.exit(1)
+            print(f"🔐 Authenticated as user: {user_id}")
+        except Exception as e:
+            print(f"❌ Failed to extract user ID from token: {e}")
+            sys.exit(1)
+        
         # Create auth_data for Phase 3.5 encrypted authentication
         auth_data = {
             "needs_signing": True,
@@ -164,8 +179,8 @@ def decrypt_file(input_filename: str, password: str,
     original_filename = output_filename
     print("Recovering encryption key from the original OpenADP servers...")
     
-    enc_key, error = keygen.recover_encryption_key(original_filename, password, server_urls, 
-                                                   auth_data=auth_data, threshold=threshold)
+    enc_key, error = keygen.recover_encryption_key(original_filename, password, user_id, server_urls, 
+                                                   auth_data, threshold)
     
     if error:
         print(f"❌ Failed to recover encryption key: {error}")

@@ -256,17 +256,21 @@ class EncryptedOpenADPClient(OpenADPClient):
         
         Args:
             server_url: URL of the JSON-RPC server
-            server_public_key: Server's Noise-NK public key (32 bytes). Required for encryption.
+            server_public_key: Server's Noise-NK public key (32 bytes). If None, will auto-discover from server.
         """
         super().__init__(server_url)
-        self.server_public_key = server_public_key
         
-        if server_public_key and len(server_public_key) != 32:
-            raise ValueError("Server public key must be exactly 32 bytes")
+        # Only override auto-discovered key if explicitly provided
+        if server_public_key is not None:
+            if len(server_public_key) != 32:
+                raise ValueError("Server public key must be exactly 32 bytes")
+            self.server_public_key = server_public_key
         
         logger.debug(f"Initialized encrypted client for {server_url}")
-        if server_public_key:
-            logger.debug(f"Server public key: {server_public_key.hex()[:32]}...")
+        if self.server_public_key:
+            logger.debug(f"Server public key: {self.server_public_key.hex()[:32]}...")
+        else:
+            logger.warning("No server public key available - encryption not supported")
     
     def _make_encrypted_request(self, method: str, params: List[Any], request_id: int, auth_data: Optional[Dict] = None) -> Tuple[Any, Optional[str]]:
         """
@@ -659,33 +663,33 @@ if __name__ == "__main__":
 
 
 # Convenience functions for backward compatibility
-def create_client(server_url: str = "http://localhost:8080") -> OpenADPClient:
+def create_client(server_url: str = "http://localhost:8080") -> EncryptedOpenADPClient:
     """Create and return a new OpenADP client instance."""
-    return OpenADPClient(server_url)
+    return EncryptedOpenADPClient(server_url)
 
 
 def register_secret(uid: str, did: str, bid: str, version: int, 
                    x: str, y: str, max_guesses: int, expiration: int,
                    server_url: str = "http://localhost:8080") -> Tuple[bool, Optional[str]]:
     """Register a secret using a one-shot client."""
-    client = OpenADPClient(server_url)
+    client = EncryptedOpenADPClient(server_url)
     return client.register_secret(uid, did, bid, version, x, y, max_guesses, expiration, encrypted=True)
 
 
 def recover_secret(uid: str, did: str, bid: str, b: str, guess_num: int,
                   server_url: str = "http://localhost:8080") -> Tuple[Optional[str], Optional[str]]:
     """Recover a secret using a one-shot client."""
-    client = OpenADPClient(server_url)
+    client = EncryptedOpenADPClient(server_url)
     return client.recover_secret(uid, did, bid, b, guess_num, encrypted=True)
 
 
 def list_backups(uid: str, server_url: str = "http://localhost:8080") -> Tuple[Optional[List[Dict]], Optional[str]]:
     """List backups using a one-shot client."""
-    client = OpenADPClient(server_url)
+    client = EncryptedOpenADPClient(server_url)
     return client.list_backups(uid, encrypted=True)
 
 
 def echo(message: str, server_url: str = "http://localhost:8080") -> Tuple[Optional[str], Optional[str]]:
     """Echo a message using a one-shot client."""
-    client = OpenADPClient(server_url)
+    client = EncryptedOpenADPClient(server_url)
     return client.echo(message) 

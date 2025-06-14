@@ -169,9 +169,10 @@ def encrypt_file(input_filename: str, password: str,
     Args:
         input_filename: Path to the file to encrypt
         password: Password for OpenADP key derivation
-        use_auth: Whether to use DPoP authentication
         servers: Optional list of custom server URLs (bypasses scraping)
         servers_url: URL to scrape for server list if servers not provided
+        issuer_url: OAuth issuer URL for authentication
+        client_id: OAuth client ID for authentication
         
     Raises:
         SystemExit: If file operations fail or key generation fails
@@ -189,6 +190,21 @@ def encrypt_file(input_filename: str, password: str,
         print("❌ Authentication required but failed. Exiting.")
         sys.exit(1)
     
+    # Extract user_id from JWT token for Phase 4
+    try:
+        import jwt
+        # Decode token to extract user_id (sub claim) - don't verify signature here
+        # as we'll send the full token to the server for verification
+        payload = jwt.decode(token_data['access_token'], options={"verify_signature": False})
+        user_id = payload.get('sub')
+        if not user_id:
+            print("❌ JWT token missing 'sub' claim. Invalid token.")
+            sys.exit(1)
+        print(f"🔐 Authenticated as user: {user_id}")
+    except Exception as e:
+        print(f"❌ Failed to extract user ID from token: {e}")
+        sys.exit(1)
+    
     # Create auth_data for Phase 3.5 encrypted authentication
     auth_data = {
         "needs_signing": True,
@@ -198,21 +214,25 @@ def encrypt_file(input_filename: str, password: str,
     }
     print("🔐 Using Phase 3.5 encrypted authentication")
 
-    # 3. Generate encryption key using OpenADP
-    print("Generating encryption key using OpenADP distributed servers...")
+    # 3. Generate encryption key using OpenADP with user_id from JWT
+    print("Generating encryption key from distributed OpenADP servers...")
     
-    enc_key, error, server_urls, threshold = keygen.generate_encryption_key(input_filename, password, 
-                                                                auth_data=auth_data, servers=servers, servers_url=servers_url)
+    enc_key, error, actual_server_urls, threshold = keygen.generate_encryption_key(
+        input_filename, password, user_id, 10, 0, auth_data, servers, servers_url
+    )
     
     if error:
         print(f"❌ Failed to generate encryption key: {error}")
-        print("Make sure OpenADP servers are running and accessible.")
+        print("Check that:")
+        print("  • OpenADP servers are running and accessible")
+        print("  • Password is correct")
+        print("  • Authentication credentials are valid")
         sys.exit(1)
         
     # 4. Create metadata with server information
     metadata = {
         "version": 1,
-        "servers": server_urls,
+        "servers": actual_server_urls,
         "threshold": threshold,
         "filename": os.path.basename(input_filename),
         "auth_enabled": True
@@ -254,7 +274,7 @@ def encrypt_file(input_filename: str, password: str,
         print(f"   Original size: {len(plaintext)} bytes")
         print(f"   Metadata size: {metadata_length} bytes")
         print(f"   Total encrypted size: {4 + metadata_length + len(nonce) + len(ciphertext)} bytes")
-        print(f"   Used servers: {len(server_urls)} servers")
+        print(f"   Used servers: {len(actual_server_urls)} servers")
         print(f"   Authentication: Enabled (DPoP)")
     except IOError as e:
         print(f"Error writing to '{output_filename}': {e}")

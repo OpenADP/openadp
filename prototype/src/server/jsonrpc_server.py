@@ -539,7 +539,7 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
         Handle encrypted_call RPC method to process encrypted JSON-RPC requests.
         
         Args:
-            params: List containing [session_id, encrypted_data_base64]
+            params: List containing [session_id, encrypted_request_base64]
             
         Returns:
             Tuple of (encrypted_response_dict, error_message)
@@ -548,110 +548,88 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             if len(params) != 2:
                 return None, "INVALID_ARGUMENT: encrypted_call expects exactly 2 parameters"
             
-            session_id, encrypted_data_b64 = params
+            session_id, encrypted_request_b64 = params
             
             # Validate session ID format
             if not validate_session_id(session_id):
                 return None, "INVALID_ARGUMENT: Invalid session ID format"
             
-            # Decode encrypted data
-            try:
-                encrypted_data = base64.b64decode(encrypted_data_b64)
-            except Exception as e:
-                return None, f"INVALID_ARGUMENT: Invalid base64 encrypted data: {str(e)}"
-            
-            # Get session manager and decrypt the call
+            # Get session manager and decrypt request
             session_manager = get_session_manager()
-            decrypted_request, error = session_manager.decrypt_call(session_id, encrypted_data)
+            decrypted_request, error = session_manager.decrypt_call(session_id, base64.b64decode(encrypted_request_b64))
             
             if error:
                 return None, f"DECRYPTION_ERROR: {error}"
             
-            # Extract the actual method and params from decrypted request
-            inner_method = decrypted_request.get('method')
-            inner_params = decrypted_request.get('params', [])
-            inner_id = decrypted_request.get('id')
-            auth_payload = decrypted_request.get('auth')
+            # Extract method and params from decrypted request
+            method = decrypted_request.get("method")
+            rpc_params = decrypted_request.get("params", [])
+            request_id = decrypted_request.get("id", 1)
             
-            logger.debug(f"Decrypted call: method={inner_method}, params={inner_params}, auth_present={auth_payload is not None}")
+            if not method:
+                return None, "INVALID_JSON: Missing method field"
             
-            # Check if this method requires authentication
-            auth_required_methods = {'RegisterSecret', 'RecoverSecret', 'ListBackups'}
+            # Handle authentication for state-changing methods
             user_id = None
+            if AUTH_ENABLED and method in ["RegisterSecret", "RecoverSecret", "ListBackups"]:
+                auth_payload = decrypted_request.get("auth")
+                if not auth_payload:
+                    return None, "AUTHENTICATION_REQUIRED: Method requires authentication"
+                
+                # Get handshake hash for signature verification
+                handshake_hash = session_manager.get_handshake_hash(session_id)
+                if not handshake_hash:
+                    return None, "SESSION_ERROR: No handshake hash available"
+                
+                # Validate encrypted authentication
+                user_id, auth_error = validate_encrypted_auth(auth_payload, handshake_hash)
+                if auth_error:
+                    return None, f"AUTHENTICATION_FAILED: {auth_error}"
+                
+                logger.info(f"Authenticated encrypted request for {method} by user {user_id}")
+                
+                # For Phase 4: Use JWT sub as UID for ownership validation
+                if method in ["RegisterSecret", "RecoverSecret", "ListBackups"]:
+                    # Replace user-provided UID with authenticated JWT sub
+                    if method == "RegisterSecret" and len(rpc_params) >= 1:
+                        # Replace first parameter (UID) with authenticated user_id
+                        rpc_params[0] = user_id
+                    elif method == "RecoverSecret" and len(rpc_params) >= 1:
+                        # Replace first parameter (UID) with authenticated user_id
+                        rpc_params[0] = user_id
+                    elif method == "ListBackups" and len(rpc_params) >= 1:
+                        # Replace first parameter (UID) with authenticated user_id
+                        rpc_params[0] = user_id
             
-            if inner_method in auth_required_methods:
-                if not AUTH_ENABLED:
-                    logger.info(f"Authentication disabled, allowing {inner_method} without auth")
-                elif not auth_payload:
-                    logger.warning(f"Authentication required for {inner_method} but no auth payload provided")
-                    inner_response = {
-                        'jsonrpc': '2.0', 
-                        'error': {'code': -32001, 'message': 'Authentication required', 'data': 'No auth payload in encrypted request'}, 
-                        'id': inner_id
-                    }
-                    # Encrypt and return error response
-                    encrypted_response, error = session_manager.encrypt_response(session_id, inner_response)
-                    if error:
-                        return None, f"ENCRYPTION_ERROR: {error}"
-                    return {"data": base64.b64encode(encrypted_response).decode('ascii')}, None
-                else:
-                    # Get handshake hash for signature verification
-                    handshake_hash = session_manager.get_handshake_hash(session_id)
-                    if not handshake_hash:
-                        logger.error(f"No handshake hash available for session {session_id}")
-                        return None, "INTERNAL_ERROR: Handshake hash not available"
-                    
-                    # Validate authentication
-                    user_id, auth_error = validate_encrypted_auth(auth_payload, handshake_hash)
-                    
-                    if auth_error:
-                        logger.warning(f"Authentication failed for {inner_method}: {auth_error}")
-                        inner_response = {
-                            'jsonrpc': '2.0',
-                            'error': {'code': -32001, 'message': 'Authentication failed', 'data': auth_error},
-                            'id': inner_id
-                        }
-                        # Encrypt and return error response
-                        encrypted_response, error = session_manager.encrypt_response(session_id, inner_response)
-                        if error:
-                            return None, f"ENCRYPTION_ERROR: {error}"
-                        return {"data": base64.b64encode(encrypted_response).decode('ascii')}, None
-                    
-                    logger.info(f"Authenticated encrypted request for {inner_method} by user {user_id}")
+            # Route the method call
+            result, error = self._route_method(method, rpc_params)
             
-            # Store user context for method handlers
-            self.user_id = user_id
-            
-            # Route the decrypted method call (but not encryption methods!)
-            if inner_method in ['noise_handshake', 'encrypted_call']:
-                # Prevent recursive encryption calls
-                inner_result = None
-                inner_error = "INVALID_METHOD: Cannot encrypt encryption methods"
-            else:
-                inner_result, inner_error = self._route_method(inner_method, inner_params)
-            
-            # Build the inner response
-            if inner_error is None:
-                inner_response = {'jsonrpc': '2.0', 'result': inner_result, 'id': inner_id}
-            else:
-                inner_response = {'jsonrpc': '2.0', 'error': {'code': -32600, 'message': inner_error}, 'id': inner_id}
-            
-            # Encrypt the response
-            encrypted_response, error = session_manager.encrypt_response(session_id, inner_response)
-            
+            # Create JSON-RPC response
             if error:
-                return None, f"ENCRYPTION_ERROR: {error}"
+                response_data = {
+                    "jsonrpc": "2.0",
+                    "error": {"code": -32000, "message": error},
+                    "id": request_id
+                }
+            else:
+                response_data = {
+                    "jsonrpc": "2.0", 
+                    "result": result,
+                    "id": request_id
+                }
             
-            # Return base64-encoded encrypted response
-            response = {
-                "data": base64.b64encode(encrypted_response).decode('ascii')
-            }
+            # Encrypt and return response
+            encrypted_response, encrypt_error = session_manager.encrypt_response(session_id, response_data)
             
-            logger.info(f"Successfully processed encrypted call for session {session_id[:16]}...")
-            return response, None
+            if encrypt_error:
+                return None, f"ENCRYPTION_ERROR: {encrypt_error}"
+            
+            return {"message": base64.b64encode(encrypted_response).decode('ascii')}, None
             
         except Exception as e:
             logger.error(f"Error in encrypted_call: {e}")
+            import traceback 
+            traceback.print_exc()
             return None, f"INTERNAL_ERROR: {str(e)}"
 
     def log_message(self, format: str, *args) -> None:

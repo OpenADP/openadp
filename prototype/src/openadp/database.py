@@ -11,6 +11,15 @@ The main class `Database` provides methods for:
 - Inserting/updating secret shares  
 - Querying shares by user, device, and backup identifiers
 - Listing all backups for a user
+
+Database Schema:
+- UID: User identifier (JWT 'sub' claim - UUID format)
+- DID: Device identifier (hostname)
+- BID: Backup identifier (file:// URLs)
+- version: Version number for backup
+- x, y: Secret sharing coordinates
+- num_guesses, max_guesses: Guess tracking
+- expiration: Expiration timestamp
 """
 
 import sqlite3

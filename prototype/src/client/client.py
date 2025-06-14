@@ -18,7 +18,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from client import scrape
-from client.jsonrpc_client import OpenADPClient
+from client.jsonrpc_client import EncryptedOpenADPClient as OpenADPClient
 
 
 class Client:
@@ -107,6 +107,7 @@ class Client:
             """Test a single server and return client if live."""
             try:
                 print(f"Testing server: {url}")
+                # Create encrypted client directly - it will auto-discover server info
                 client = OpenADPClient(url)
                 
                 # Test with echo - use a simple test message
@@ -116,12 +117,17 @@ class Client:
                 if error:
                     print(f"  ❌ {url}: {error}")
                     return None
-                elif result == test_message:
-                    print(f"  ✅ {url}: Live")
-                    return client
-                else:
+                elif result != test_message:
                     print(f"  ❌ {url}: Echo returned unexpected result: {result}")
                     return None
+                
+                # Check if server has public key for encryption
+                if client.server_public_key:
+                    print(f"  ✅ {url}: Live (encrypted)")
+                else:
+                    print(f"  ✅ {url}: Live (no encryption)")
+                
+                return client
                     
             except Exception as e:
                 print(f"  ❌ {url}: Exception during test: {str(e)}")
@@ -148,21 +154,20 @@ class Client:
             url: Server URL to test
             
         Returns:
-            OpenADPClient instance if server is live, None otherwise
+            EncryptedOpenADPClient instance if server is live, None otherwise
         """
         try:
+            # Create encrypted client directly - it will auto-discover server info
             client = OpenADPClient(url)
             
             # Test with echo
             test_message = f"liveness_test_{int(time.time())}"
             result, error = client.echo(test_message)
             
-            if error:
+            if error or result != test_message:
                 return None
-            elif result == test_message:
-                return client
-            else:
-                return None
+            
+            return client
                 
         except Exception:
             return None
