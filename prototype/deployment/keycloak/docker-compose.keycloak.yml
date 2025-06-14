@@ -1,74 +1,28 @@
 version: '3.8'
 
 services:
-  keycloak-db:
-    image: postgres:15-alpine
-    container_name: keycloak-postgres
-    environment:
-      POSTGRES_DB: keycloak
-      POSTGRES_USER: keycloak
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-keycloak-secure-password-change-me}
-    volumes:
-      - keycloak_db_data:/var/lib/postgresql/data
-    networks:
-      - keycloak-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U keycloak"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
   keycloak:
     image: quay.io/keycloak/keycloak:22.0
     container_name: keycloak-server
     environment:
-      # Database configuration
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
-      KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: ${DB_PASSWORD:-keycloak-secure-password-change-me}
-      
-      # Admin user
+      # Admin user (required)
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin-change-me}
       
-      # Hostname and proxy configuration for Cloudflare
-      KC_HOSTNAME: auth.openadp.org
-      KC_HOSTNAME_STRICT: "false"
-      KC_HOSTNAME_STRICT_HTTPS: "false"
+      # Basic configuration
       KC_HTTP_ENABLED: "true"
-      KC_PROXY: edge
-      
-      # Performance and security
-      KC_HEALTH_ENABLED: "true"
-      KC_METRICS_ENABLED: "true"
-      KC_LOG_LEVEL: INFO
-      
-      # Java heap size for Pi (adjust based on your Pi's RAM)
-      JAVA_OPTS_APPEND: "-Xms512m -Xmx1024m"
+      KC_HOSTNAME_STRICT: "false"
       
     ports:
-      - "8081:8080"  # Map to port 8081 on Pi
+      - "8081:8080"
     volumes:
       - keycloak_data:/opt/keycloak/data
     networks:
       - keycloak-network
-    depends_on:
-      keycloak-db:
-        condition: service_healthy
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-    command: start --optimized
+    command: start-dev
 
 volumes:
-  keycloak_db_data:
-    driver: local
   keycloak_data:
     driver: local
 
