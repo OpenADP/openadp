@@ -128,8 +128,8 @@ def get_fallback_servers() -> List[Dict[str, str]]:
     """
     return [
         {
-            "url": "https://xyzzybill.openadp.org",
-            "public_key": "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder1XyZzyBillServer12345TestKey",
+                    "url": "https://xyzzy.openadp.org",
+        "public_key": "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder1XyzzyServer12345TestKey",
             "country": "US"
         },
         {

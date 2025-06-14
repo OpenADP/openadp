@@ -3,7 +3,7 @@
   "updated": "2024-01-15T10:30:00Z",
   "servers": [
     {
-      "url": "https://xyzzybill.openadp.org",
+              "url": "https://xyzzy.openadp.org",
       "public_key": "ed25519:ZCcXAp6wjREVQ9c+31V59aWWOu9u7HdsCIchCiocNyY=",
       "country": "US"
     },

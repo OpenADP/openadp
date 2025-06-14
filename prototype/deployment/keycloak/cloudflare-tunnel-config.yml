@@ -1,0 +1,29 @@
+# Cloudflare Tunnel Configuration for OpenADP
+# Copy this to ~/.cloudflared/config.yml on your Pi
+
+tunnel: YOUR_TUNNEL_ID_HERE
+credentials-file: /home/pi/.cloudflared/YOUR_TUNNEL_ID_HERE.json
+
+ingress:
+  # Keycloak IdP service
+  - hostname: auth.openadp.org
+    service: http://localhost:8081
+    originRequest:
+      httpHostHeader: auth.openadp.org
+      
+  # OpenADP server (optional - if you want it publicly accessible)
+  - hostname: xyzzy.openadp.org
+    service: http://localhost:8080
+    originRequest:
+      httpHostHeader: xyzzy.openadp.org
+      
+  # Health check endpoint
+  - hostname: health.openadp.org
+    service: http://localhost:8081/health
+    
+  # Catch-all rule (required)
+  - service: http_status:404
+
+# Optional: Logging configuration
+logLevel: info
+logFile: /var/log/cloudflared.log 

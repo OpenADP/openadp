@@ -12,7 +12,7 @@ Distributed Password) system. It provides endpoints for:
 Example curl command to test:
     $ curl -H "Content-Type: application/json" -d \
       '{"jsonrpc":"2.0","method":"Echo","params":["Hello, World!"],"id":1}' \
-      https://xyzzybill.openadp.org
+      https://xyzzy.openadp.org
 
 Note: HTTPS is required for production servers.
 """
