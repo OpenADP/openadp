@@ -235,8 +235,9 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             request_id = request.get('id')
             
             # Check authentication for state-changing methods (Phase 4)
-            # Echo, GetServerInfo, and handshake methods remain unauthenticated
-            unauthenticated_methods = {'Echo', 'GetServerInfo', 'noise_handshake'}
+            # Echo, GetServerInfo, handshake methods, and encrypted_call remain unauthenticated
+            # encrypted_call handles authentication internally via Phase 3.5 encrypted auth
+            unauthenticated_methods = {'Echo', 'GetServerInfo', 'noise_handshake', 'encrypted_call'}
             
             if AUTH_ENABLED and method not in unauthenticated_methods:
                 from server.auth_middleware import validate_auth

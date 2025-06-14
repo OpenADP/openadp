@@ -23,7 +23,7 @@ from typing import Dict, Any, Optional
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'prototype', 'src'))
 
-from client.encrypted_jsonrpc_client import EncryptedOpenADPClient
+from client.jsonrpc_client import EncryptedOpenADPClient
 from openadp.auth import generate_keypair, load_private_key
 from openadp.auth.keys import private_key_to_jwk
 import server.jsonrpc_server as server_module
