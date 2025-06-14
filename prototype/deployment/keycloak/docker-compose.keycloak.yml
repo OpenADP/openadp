@@ -35,14 +35,14 @@ services:
       
       # Hostname and proxy configuration for Cloudflare
       KC_HOSTNAME: auth.openadp.org
-      KC_HOSTNAME_STRICT: false
-      KC_HOSTNAME_STRICT_HTTPS: false
-      KC_HTTP_ENABLED: true
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_ENABLED: "true"
       KC_PROXY: edge
       
       # Performance and security
-      KC_HEALTH_ENABLED: true
-      KC_METRICS_ENABLED: true
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
       KC_LOG_LEVEL: INFO
       
       # Java heap size for Pi (adjust based on your Pi's RAM)
