@@ -100,7 +100,7 @@ class NoiseNK:
             remote_public_key: The other party's static public key as bytes
         """
         # Convert bytes to public key object
-        self.remote_static_key = self.dh.public_key_from_bytes(remote_public_key)
+        self.remote_static_key = self.dh.create_public(remote_public_key)
         self._initialize_handshake()
     
     def write_handshake_message(self, payload: bytes = b'') -> bytes:

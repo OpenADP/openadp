@@ -46,18 +46,24 @@ class TestSecretSharing(unittest.TestCase):
         self.assertEqual(x_coords, [1, 2, 3])
 
     def test_make_random_shares_edge_cases(self):
-        """Test secret sharing edge cases."""
-        # Test with threshold = 1 (trivial case)
-        secret = secrets.randbelow(crypto.q)
-        shares = sharing.make_random_shares(secret, 1, 3)
-        self.assertEqual(len(shares), 3)
+        """Test edge cases in make_random_shares function."""
+        # Test minimum = shares (threshold equals total shares)
+        secret = 12345
+        minimum = 3
+        shares = 3
+        result = sharing.make_random_shares(secret, minimum, shares)
+        self.assertEqual(len(result), shares)
         
-        # With threshold 1, any single share should allow recovery
-        # (though we'd need a recovery function for raw integers)
+        # Test minimum = 1 (any single share can recover)
+        result = sharing.make_random_shares(secret, 1, 5)
+        self.assertEqual(len(result), 5)
         
-        # Test with threshold = num_shares
-        shares = sharing.make_random_shares(secret, 3, 3)
-        self.assertEqual(len(shares), 3)
+        # Test with different prime
+        custom_prime = 97  # Small prime for testing
+        result = sharing.make_random_shares(secret % custom_prime, 2, 4, custom_prime)
+        self.assertEqual(len(result), 4)
+        for x, y in result:
+            self.assertLess(y, custom_prime)
 
     def test_make_random_shares_invalid_params(self):
         """Test secret sharing with invalid parameters."""
@@ -389,6 +395,354 @@ class TestSecretSharing(unittest.TestCase):
                 self.assertEqual(len(share), 2)
                 self.assertEqual(share[0], i + 1)  # x coordinate should be i+1
                 self.assertIsInstance(share[1], int)  # y coordinate should be int
+
+    def test_make_random_shares_error_conditions(self):
+        """Test error conditions in make_random_shares."""
+        # Test minimum > shares (should raise ValueError)
+        with self.assertRaises(ValueError) as context:
+            sharing.make_random_shares(123, 5, 3)  # minimum=5, shares=3
+        
+        self.assertIn("irrecoverable", str(context.exception))
+
+    def test_eval_at_comprehensive(self):
+        """Test eval_at function comprehensively."""
+        # Test simple polynomial: f(x) = 3 + 2x + x^2
+        poly = [3, 2, 1]  # coefficients [a0, a1, a2]
+        
+        # Test at x=0: should be 3
+        result = sharing.eval_at(poly, 0, crypto.q)
+        self.assertEqual(result, 3)
+        
+        # Test at x=1: should be 3 + 2 + 1 = 6
+        result = sharing.eval_at(poly, 1, crypto.q)
+        self.assertEqual(result, 6)
+        
+        # Test at x=2: should be 3 + 4 + 4 = 11
+        result = sharing.eval_at(poly, 2, crypto.q)
+        self.assertEqual(result, 11)
+        
+        # Test with different prime
+        small_prime = 7
+        result = sharing.eval_at(poly, 2, small_prime)
+        self.assertEqual(result, 11 % small_prime)
+
+    def test_recover_sb_edge_cases(self):
+        """Test edge cases in recover_sb function."""
+        # Test with minimum threshold (2 shares)
+        secret = 98765
+        shares = sharing.make_random_shares(secret, 2, 5)
+        
+        # Convert to point shares
+        point_shares = []
+        for x, y in shares[:2]:  # Use only first 2 shares
+            y_point = crypto.unexpand(crypto.point_mul(y, crypto.G))
+            point_shares.append((x, y_point))
+        
+        # Recover and verify
+        recovered_point = sharing.recover_sb(point_shares)
+        expected_point = crypto.unexpand(crypto.point_mul(secret, crypto.G))
+        self.assertEqual(recovered_point, expected_point)
+
+    def test_recover_sb_lagrange_weights(self):
+        """Test Lagrange interpolation weights calculation in recover_sb."""
+        # Create shares with known values to test weight calculation
+        secret = 42
+        threshold = 3
+        shares = sharing.make_random_shares(secret, threshold, 5)
+        
+        # Test with different combinations of shares
+        combinations = [
+            shares[:3],  # First 3 shares
+            shares[1:4],  # Middle 3 shares  
+            shares[2:5],  # Last 3 shares
+        ]
+        
+        for share_combo in combinations:
+            with self.subTest(shares=[(x, y) for x, y in share_combo]):
+                # Convert to point shares
+                point_shares = []
+                for x, y in share_combo:
+                    y_point = crypto.unexpand(crypto.point_mul(y, crypto.G))
+                    point_shares.append((x, y_point))
+                
+                # Recover should give same result
+                recovered_point = sharing.recover_sb(point_shares)
+                expected_point = crypto.unexpand(crypto.point_mul(secret, crypto.G))
+                self.assertEqual(recovered_point, expected_point)
+
+    def test_recover_sb_with_custom_prime(self):
+        """Test recover_sb with custom prime."""
+        secret = 123
+        custom_prime = 101  # Small prime
+        
+        # Create shares with custom prime
+        shares = sharing.make_random_shares(secret % custom_prime, 2, 4, custom_prime)
+        
+        # Convert to point shares (still using crypto.G and crypto.q for points)
+        point_shares = []
+        for x, y in shares[:2]:
+            y_point = crypto.unexpand(crypto.point_mul(y, crypto.G))
+            point_shares.append((x, y_point))
+        
+        # Recover with custom prime
+        recovered_point = sharing.recover_sb(point_shares, custom_prime)
+        
+        # Verify it's a valid point
+        self.assertEqual(len(recovered_point), 2)
+        self.assertIsInstance(recovered_point[0], int)
+        self.assertIsInstance(recovered_point[1], int)
+
+    def test_sharing_with_zero_secret(self):
+        """Test sharing with zero secret."""
+        secret = 0
+        shares = sharing.make_random_shares(secret, 2, 3)
+        
+        # Convert to point shares
+        point_shares = []
+        for x, y in shares[:2]:
+            y_point = crypto.unexpand(crypto.point_mul(y, crypto.G))
+            point_shares.append((x, y_point))
+        
+        # Recover should give zero point (identity element)
+        recovered_point = sharing.recover_sb(point_shares)
+        expected_point = crypto.unexpand(crypto.point_mul(0, crypto.G))
+        self.assertEqual(recovered_point, expected_point)
+
+    def test_sharing_with_large_secret(self):
+        """Test sharing with large secret values."""
+        # Test with secret close to prime modulus
+        large_secret = crypto.q - 1
+        shares = sharing.make_random_shares(large_secret, 3, 5)
+        
+        # Convert to point shares
+        point_shares = []
+        for x, y in shares[:3]:
+            y_point = crypto.unexpand(crypto.point_mul(y, crypto.G))
+            point_shares.append((x, y_point))
+        
+        # Recover and verify
+        recovered_point = sharing.recover_sb(point_shares)
+        expected_point = crypto.unexpand(crypto.point_mul(large_secret, crypto.G))
+        self.assertEqual(recovered_point, expected_point)
+
+    def test_sharing_deterministic_behavior(self):
+        """Test that sharing is deterministic for same inputs."""
+        secret = 54321
+        
+        # Note: make_random_shares uses secrets.randbelow, so it's NOT deterministic
+        # But we can test that the mathematical properties hold
+        shares1 = sharing.make_random_shares(secret, 2, 4)
+        shares2 = sharing.make_random_shares(secret, 2, 4)
+        
+        # Shares will be different due to randomness
+        self.assertNotEqual(shares1, shares2)
+        
+        # But recovery should give same result
+        point_shares1 = [(x, crypto.unexpand(crypto.point_mul(y, crypto.G))) for x, y in shares1[:2]]
+        point_shares2 = [(x, crypto.unexpand(crypto.point_mul(y, crypto.G))) for x, y in shares2[:2]]
+        
+        recovered1 = sharing.recover_sb(point_shares1)
+        recovered2 = sharing.recover_sb(point_shares2)
+        
+        expected = crypto.unexpand(crypto.point_mul(secret, crypto.G))
+        self.assertEqual(recovered1, expected)
+        self.assertEqual(recovered2, expected)
+
+    def test_sharing_polynomial_properties(self):
+        """Test mathematical properties of the polynomial construction."""
+        secret = 777
+        threshold = 4
+        shares = sharing.make_random_shares(secret, threshold, 6)
+        
+        # The constant term of the polynomial should be the secret
+        # We can verify this by checking that f(0) = secret
+        # But since we don't expose the polynomial directly, we test via recovery
+        
+        # Any threshold number of shares should recover the same secret
+        for i in range(3):  # Test 3 different combinations
+            start_idx = i
+            test_shares = shares[start_idx:start_idx + threshold]
+            
+            point_shares = []
+            for x, y in test_shares:
+                y_point = crypto.unexpand(crypto.point_mul(y, crypto.G))
+                point_shares.append((x, y_point))
+            
+            recovered_point = sharing.recover_sb(point_shares)
+            expected_point = crypto.unexpand(crypto.point_mul(secret, crypto.G))
+            self.assertEqual(recovered_point, expected_point)
+
+    def test_sharing_main_function_coverage(self):
+        """Test the main function to ensure it runs without errors."""
+        # Import and run the main function to cover those lines
+        import io
+        import sys
+        from contextlib import redirect_stdout
+        
+        # Capture output to avoid cluttering test results
+        captured_output = io.StringIO()
+        
+        try:
+            with redirect_stdout(captured_output):
+                sharing.main()
+            
+            # Verify that main() ran successfully
+            output = captured_output.getvalue()
+            self.assertIn("Testing Shamir Secret Sharing", output)
+            self.assertIn("All tests passed", output)
+            
+        except Exception as e:
+            self.fail(f"sharing.main() failed: {e}")
+
+    def test_eval_at_comprehensive_edge_cases(self):
+        """Test eval_at function with comprehensive edge cases."""
+        # Test with empty polynomial (should be 0)
+        result = sharing.eval_at([], 5, crypto.q)
+        self.assertEqual(result, 0)
+        
+        # Test with single coefficient (constant polynomial)
+        result = sharing.eval_at([42], 100, crypto.q)
+        self.assertEqual(result, 42)
+        
+        # Test with large coefficients
+        large_poly = [crypto.q - 1, crypto.q - 2, crypto.q - 3]
+        result = sharing.eval_at(large_poly, 1, crypto.q)
+        expected = ((crypto.q - 1) + (crypto.q - 2) + (crypto.q - 3)) % crypto.q
+        self.assertEqual(result, expected)
+        
+        # Test with x = 0 (should return constant term)
+        poly = [123, 456, 789]
+        result = sharing.eval_at(poly, 0, crypto.q)
+        self.assertEqual(result, 123)
+
+    def test_make_random_shares_comprehensive_validation(self):
+        """Test make_random_shares with comprehensive parameter validation."""
+        # Test minimum = shares (edge case)
+        secret = 12345
+        shares = sharing.make_random_shares(secret, 3, 3)
+        self.assertEqual(len(shares), 3)
+        
+        # Verify all x coordinates are unique and in expected range
+        x_coords = [x for x, y in shares]
+        self.assertEqual(len(set(x_coords)), len(x_coords))  # All unique
+        self.assertEqual(sorted(x_coords), [1, 2, 3])  # Should be 1, 2, 3
+        
+        # Test with minimum = 1 (any single share can recover)
+        shares = sharing.make_random_shares(secret, 1, 5)
+        self.assertEqual(len(shares), 5)
+        
+        # With minimum=1, all y values should equal the secret
+        for x, y in shares:
+            self.assertEqual(y, secret)
+
+    def test_recover_sb_edge_cases_comprehensive(self):
+        """Test recover_sb with comprehensive edge cases."""
+        # Test with minimum number of shares (threshold = 1)
+        secret = 98765
+        shares = sharing.make_random_shares(secret, 1, 3)
+        
+        # Convert to point shares
+        point_shares = []
+        for x, y in shares:
+            y_point = crypto.unexpand(crypto.point_mul(y, crypto.G))
+            point_shares.append((x, y_point))
+        
+        # Should be able to recover with just one share when threshold=1
+        recovered = sharing.recover_sb(point_shares[:1])
+        expected = crypto.unexpand(crypto.point_mul(secret, crypto.G))
+        self.assertEqual(recovered, expected)
+        
+        # Test with exactly threshold number of shares
+        secret2 = 54321
+        shares2 = sharing.make_random_shares(secret2, 3, 5)
+        point_shares2 = []
+        for x, y in shares2:
+            y_point = crypto.unexpand(crypto.point_mul(y, crypto.G))
+            point_shares2.append((x, y_point))
+        
+        # Should work with exactly 3 shares
+        recovered2 = sharing.recover_sb(point_shares2[:3])
+        expected2 = crypto.unexpand(crypto.point_mul(secret2, crypto.G))
+        self.assertEqual(recovered2, expected2)
+
+    def test_sharing_with_different_primes(self):
+        """Test sharing with different prime moduli."""
+        # Test with a smaller prime
+        small_prime = 97  # Small prime for testing
+        secret = 42
+        
+        shares = sharing.make_random_shares(secret, 2, 4, small_prime)
+        self.assertEqual(len(shares), 4)
+        
+        # All y values should be less than the prime
+        for x, y in shares:
+            self.assertLess(y, small_prime)
+            self.assertGreaterEqual(y, 0)
+
+    def test_polynomial_evaluation_properties(self):
+        """Test mathematical properties of polynomial evaluation."""
+        # Test that eval_at correctly implements polynomial evaluation
+        # For polynomial a0 + a1*x + a2*x^2, verify manually
+        poly = [5, 3, 2]  # 5 + 3x + 2x^2
+        
+        # At x=0: should be 5
+        self.assertEqual(sharing.eval_at(poly, 0, crypto.q), 5)
+        
+        # At x=1: should be 5 + 3 + 2 = 10
+        self.assertEqual(sharing.eval_at(poly, 1, crypto.q), 10)
+        
+        # At x=2: should be 5 + 6 + 8 = 19
+        self.assertEqual(sharing.eval_at(poly, 2, crypto.q), 19)
+
+    def test_lagrange_interpolation_weights(self):
+        """Test that Lagrange interpolation weights are computed correctly."""
+        # Create a simple case where we can verify weights manually
+        secret = 100
+        shares = sharing.make_random_shares(secret, 2, 3)  # Linear polynomial
+        
+        # Convert to point shares
+        point_shares = []
+        for x, y in shares:
+            y_point = crypto.unexpand(crypto.point_mul(y, crypto.G))
+            point_shares.append((x, y_point))
+        
+        # Test recovery with different combinations
+        for i in range(len(shares)):
+            for j in range(i + 1, len(shares)):
+                subset = [point_shares[i], point_shares[j]]
+                recovered = sharing.recover_sb(subset)
+                expected = crypto.unexpand(crypto.point_mul(secret, crypto.G))
+                self.assertEqual(recovered, expected)
+
+    def test_sharing_deterministic_properties(self):
+        """Test deterministic properties of the sharing scheme."""
+        secret = 777
+        
+        # Same secret with same parameters should give different shares (randomness)
+        shares1 = sharing.make_random_shares(secret, 3, 5)
+        shares2 = sharing.make_random_shares(secret, 3, 5)
+        
+        # X coordinates should be the same (1,2,3,4,5)
+        x_coords1 = [x for x, y in shares1]
+        x_coords2 = [x for x, y in shares2]
+        self.assertEqual(x_coords1, x_coords2)
+        
+        # But Y coordinates should be different (due to randomness)
+        y_coords1 = [y for x, y in shares1]
+        y_coords2 = [y for x, y in shares2]
+        self.assertNotEqual(y_coords1, y_coords2)
+        
+        # But both should recover to the same secret
+        point_shares1 = [(x, crypto.unexpand(crypto.point_mul(y, crypto.G))) for x, y in shares1]
+        point_shares2 = [(x, crypto.unexpand(crypto.point_mul(y, crypto.G))) for x, y in shares2]
+        
+        recovered1 = sharing.recover_sb(point_shares1[:3])
+        recovered2 = sharing.recover_sb(point_shares2[:3])
+        
+        expected = crypto.unexpand(crypto.point_mul(secret, crypto.G))
+        self.assertEqual(recovered1, expected)
+        self.assertEqual(recovered2, expected)
+        self.assertEqual(recovered1, recovered2)
 
 
 if __name__ == '__main__':

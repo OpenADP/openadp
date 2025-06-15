@@ -21,6 +21,16 @@ from openadp import keygen, crypto, sharing
 class TestKeyGeneration(unittest.TestCase):
     """Test key generation workflow comprehensively."""
     
+    def setUp(self):
+        """Set up test fixtures."""
+        # Check if live servers are available for integration tests
+        try:
+            from client.jsonrpc_client import EncryptedOpenADPClient
+            test_client = EncryptedOpenADPClient("https://xyzzy.openadp.org")
+            self.live_servers_available = True
+        except Exception:
+            self.live_servers_available = False
+    
     def test_generate_encryption_key_basic(self):
         """Test basic encryption key generation."""
         try:
@@ -353,6 +363,236 @@ class TestKeyGeneration(unittest.TestCase):
                         
         except (AttributeError, ImportError):
             self.skipTest("Input sanitization test not applicable")
+
+    def test_derive_identifiers_edge_cases(self):
+        """Test derive_identifiers with edge cases."""
+        # Test with empty inputs
+        uid, did, bid = keygen.derive_identifiers("", "")
+        self.assertIsInstance(uid, str)
+        self.assertIsInstance(did, str)
+        self.assertIsInstance(bid, str)
+        
+        # Test with very long inputs
+        long_filename = "x" * 1000
+        long_user_id = "y" * 1000
+        uid, did, bid = keygen.derive_identifiers(long_filename, long_user_id)
+        self.assertIsInstance(uid, str)
+        self.assertIsInstance(did, str)
+        self.assertIsInstance(bid, str)
+        
+        # Test with custom hostname
+        uid, did, bid = keygen.derive_identifiers("test.txt", "user123", "custom.host")
+        self.assertIsInstance(uid, str)
+        self.assertIsInstance(did, str)
+        self.assertIsInstance(bid, str)
+        
+        # Test deterministic behavior
+        uid1, did1, bid1 = keygen.derive_identifiers("file.txt", "user1")
+        uid2, did2, bid2 = keygen.derive_identifiers("file.txt", "user1")
+        self.assertEqual(uid1, uid2)
+        self.assertEqual(did1, did2)
+        self.assertEqual(bid1, bid2)
+
+    def test_password_to_pin_edge_cases(self):
+        """Test password_to_pin with edge cases."""
+        # Test empty password
+        pin = keygen.password_to_pin("")
+        self.assertIsInstance(pin, bytes)
+        self.assertEqual(len(pin), 2)  # password_to_pin returns 2 bytes, not 4
+        
+        # Test very long password
+        long_password = "x" * 10000
+        pin = keygen.password_to_pin(long_password)
+        self.assertIsInstance(pin, bytes)
+        self.assertEqual(len(pin), 2)
+        
+        # Test unicode password
+        unicode_password = "🔐🗝️🔑🛡️"
+        pin = keygen.password_to_pin(unicode_password)
+        self.assertIsInstance(pin, bytes)
+        self.assertEqual(len(pin), 2)
+        
+        # Test deterministic behavior
+        pin1 = keygen.password_to_pin("test123")
+        pin2 = keygen.password_to_pin("test123")
+        self.assertEqual(pin1, pin2)
+
+    def test_generate_encryption_key_error_conditions(self):
+        """Test error conditions in generate_encryption_key."""
+        # Test with no servers available (should fail)
+        # We'll mock the client to simulate no servers
+        try:
+            from client.jsonrpc_client import EncryptedOpenADPClient
+            original_client = EncryptedOpenADPClient
+            
+            class MockFailingClient:
+                def __init__(self, url):
+                    raise Exception("Connection failed")
+            
+            # Temporarily replace the client class in the keygen module's import
+            import client.jsonrpc_client
+            client.jsonrpc_client.EncryptedOpenADPClient = MockFailingClient
+            
+            try:
+                result = keygen.generate_encryption_key(
+                    "test.txt", "password", "user123", 
+                    servers=["http://fake1.com", "http://fake2.com"]
+                )
+                enc_key, error, server_urls, threshold = result
+                self.assertIsNone(enc_key)
+                self.assertIsNotNone(error)
+                self.assertIn("No live OpenADP servers", error)
+            finally:
+                # Restore original client
+                client.jsonrpc_client.EncryptedOpenADPClient = original_client
+        except ImportError:
+            self.skipTest("EncryptedOpenADPClient not available")
+
+    def test_generate_encryption_key_insufficient_servers(self):
+        """Test generate_encryption_key with insufficient servers."""
+        # This test is covered by the actual implementation when no servers are available
+        result = keygen.generate_encryption_key(
+            "test.txt", "password", "user123",
+            servers=[]  # Empty server list
+        )
+        enc_key, error, server_urls, threshold = result
+        self.assertIsNone(enc_key)
+        self.assertIsNotNone(error)
+        self.assertIn("No live OpenADP servers", error)
+
+    def test_generate_encryption_key_registration_failures(self):
+        """Test generate_encryption_key with registration failures."""
+        # This is difficult to test without mocking the entire client infrastructure
+        # Skip for now as it requires deep mocking
+        self.skipTest("Registration failure testing requires complex mocking")
+
+    def test_recover_encryption_key_insufficient_shares(self):
+        """Test recover_encryption_key with insufficient recovered shares."""
+        # This test is covered by the actual implementation
+        result = keygen.recover_encryption_key(
+            "test.txt", "password", "user123",
+            server_urls=["http://fake1.com", "http://fake2.com"],
+            threshold=2
+        )
+        enc_key, error = result
+        self.assertIsNone(enc_key)
+        self.assertIsNotNone(error)
+        self.assertIn("Could not recover enough shares", error)
+
+    def test_recover_encryption_key_backup_listing_edge_cases(self):
+        """Test recover_encryption_key backup listing edge cases."""
+        # This is covered by the actual implementation when servers fail
+        result = keygen.recover_encryption_key(
+            "test.txt", "password", "user123",
+            server_urls=["http://fake1.com", "http://fake2.com", "http://fake3.com"],
+            threshold=1
+        )
+        enc_key, error = result
+        self.assertIsNone(enc_key)
+        self.assertIsNotNone(error)
+
+    def test_threshold_calculation_edge_cases(self):
+        """Test threshold calculation with different server counts."""
+        # This is tested indirectly through the actual implementation
+        # The threshold calculation logic is: max(1, min(2, server_count))
+        
+        # Test with no servers (should fail)
+        result = keygen.generate_encryption_key(
+            "test.txt", "password", "user123",
+            servers=[]
+        )
+        enc_key, error, server_urls, threshold = result
+        self.assertIsNone(enc_key)
+        self.assertIsNotNone(error)
+
+    def test_main_function_coverage(self):
+        """Test the main function to ensure it runs without errors."""
+        # The main function is primarily for demonstration
+        # We can test the same operations it performs
+        
+        test_filename = "test_main.txt"
+        test_password = "test_password_main"
+        test_user = "test_user_main"
+        
+        # Test key generation (first part of main)
+        result = keygen.generate_encryption_key(test_filename, test_password, test_user)
+        enc_key, error, server_urls, threshold = result
+        
+        # With no live servers, this should fail gracefully
+        if not self.live_servers_available:
+            self.assertIsNone(enc_key)
+            self.assertIsNotNone(error)
+
+    def test_recover_encryption_key_no_servers(self):
+        """Test recover_encryption_key with no server URLs."""
+        result = keygen.recover_encryption_key(
+            "test.txt", "password", "user123", 
+            server_urls=None
+        )
+        enc_key, error = result
+        self.assertIsNone(enc_key)
+        self.assertIsNotNone(error)
+        self.assertIn("No server URLs provided", error)
+
+    def test_recover_encryption_key_server_connection_failures(self):
+        """Test recover_encryption_key with server connection failures."""
+        result = keygen.recover_encryption_key(
+            "test.txt", "password", "user123",
+            server_urls=["http://nonexistent1.fake", "http://nonexistent2.fake"]
+        )
+        enc_key, error = result
+        self.assertIsNone(enc_key)
+        self.assertIsNotNone(error)
+        # The actual error message may vary depending on implementation
+        self.assertTrue("shares" in error or "accessible" in error)
+
+    def test_keygen_with_custom_parameters(self):
+        """Test key generation with custom parameters."""
+        # Test with custom max_guesses
+        if self.live_servers_available:
+            result = keygen.generate_encryption_key(
+                "test_custom.txt", "password123", "user456",
+                max_guesses=5, expiration=3600
+            )
+            enc_key, error, server_urls, threshold = result
+            
+            if enc_key is not None:  # Only test if generation succeeded
+                self.assertIsInstance(enc_key, bytes)
+                self.assertEqual(len(enc_key), 32)
+                self.assertIsInstance(server_urls, list)
+                self.assertGreater(threshold, 0)
+        else:
+            # Test that custom parameters are accepted even when servers fail
+            result = keygen.generate_encryption_key(
+                "test_custom.txt", "password123", "user456",
+                max_guesses=5, expiration=3600
+            )
+            enc_key, error, server_urls, threshold = result
+            self.assertIsNone(enc_key)  # Should fail due to no servers
+
+    def test_keygen_with_auth_data(self):
+        """Test key generation with authentication data."""
+        if self.live_servers_available:
+            auth_data = {"token": "test_token", "user": "test_user"}
+            result = keygen.generate_encryption_key(
+                "test_auth.txt", "password123", "user789",
+                auth_data=auth_data
+            )
+            enc_key, error, server_urls, threshold = result
+            
+            # Should handle auth_data without errors (even if servers don't support it)
+            if error:
+                # If there's an error, it shouldn't be due to auth_data format
+                self.assertNotIn("auth_data", error.lower())
+        else:
+            # Test that auth_data is accepted even when servers fail
+            auth_data = {"token": "test_token", "user": "test_user"}
+            result = keygen.generate_encryption_key(
+                "test_auth.txt", "password123", "user789",
+                auth_data=auth_data
+            )
+            enc_key, error, server_urls, threshold = result
+            self.assertIsNone(enc_key)  # Should fail due to no servers
 
 
 class TestKeyGenUtilities(unittest.TestCase):

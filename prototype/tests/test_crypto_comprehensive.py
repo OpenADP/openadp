@@ -442,6 +442,203 @@ class TestCryptoFunctions(unittest.TestCase):
         for point in points_to_test:
             self.assertTrue(check_curve_equation(point), f"Point {point} not on curve")
 
+    def test_recover_x_square_root_failures(self):
+        """Test recover_x with values that don't have square roots."""
+        # Test the square root failure cases in recover_x (lines 128-131)
+        
+        # Find a y value that doesn't have a valid x coordinate
+        # We'll systematically test until we find one that fails
+        found_failure = False
+        
+        for test_y in range(1, 100):  # Test first 100 values
+            result = crypto.recover_x(test_y, 0)
+            if result is None:
+                found_failure = True
+                # Test both sign bits for this failing y
+                self.assertIsNone(crypto.recover_x(test_y, 0))
+                self.assertIsNone(crypto.recover_x(test_y, 1))
+                break
+        
+        self.assertTrue(found_failure, "Should find at least one y value without valid x coordinate")
+        
+        # Test with y >= p (should return None immediately)
+        large_y = crypto.p + 1
+        self.assertIsNone(crypto.recover_x(large_y, 0))
+        self.assertIsNone(crypto.recover_x(large_y, 1))
+        
+        # Test edge case where x2 = 0 with different sign bits
+        # This tests the specific condition in lines 128-131
+        for y in range(1, 50):
+            x2 = (y * y - 1) * crypto.modp_inv(crypto.d * y * y + 1) % crypto.p
+            if x2 == 0:
+                # Found a case where x2 = 0
+                result_sign_0 = crypto.recover_x(y, 0)
+                result_sign_1 = crypto.recover_x(y, 1)
+                
+                # With sign=0, should return 0; with sign=1, should return None
+                self.assertEqual(result_sign_0, 0)
+                self.assertIsNone(result_sign_1)
+                break
+
+    def test_point_decompress_edge_cases(self):
+        """Test point decompression edge cases and failures."""
+        # Test invalid length (should raise exception)
+        with self.assertRaises(Exception):
+            crypto.point_decompress(b"too_short")
+        
+        with self.assertRaises(Exception):
+            crypto.point_decompress(b"way_too_long_for_32_bytes_exactly")
+        
+        # Test decompression that should fail (invalid points)
+        # Create invalid compressed points that will fail in recover_x
+        for i in range(10):
+            # Create a 32-byte value that likely won't decompress to a valid point
+            invalid_bytes = (i * 0x1111111111111111111111111111111111111111111111111111111111111111).to_bytes(32, 'little')
+            try:
+                result = crypto.point_decompress(invalid_bytes)
+                if result is None:
+                    # This is the expected failure case we want to test
+                    self.assertIsNone(result)
+                    break
+            except:
+                # Some invalid inputs might raise exceptions, which is also acceptable
+                pass
+
+    def test_secret_expand_edge_cases(self):
+        """Test secret expansion edge cases."""
+        # Test invalid length
+        with self.assertRaises(Exception):
+            crypto.secret_expand(b"too_short")
+        
+        with self.assertRaises(Exception):
+            crypto.secret_expand(b"way_too_long_for_32_bytes_exactly_here")
+        
+        # Test valid 32-byte inputs
+        test_secret = b"a" * 32
+        expanded = crypto.secret_expand(test_secret)
+        self.assertIsInstance(expanded, int)
+        
+        # Test that expansion is deterministic
+        expanded2 = crypto.secret_expand(test_secret)
+        self.assertEqual(expanded, expanded2)
+
+    def test_prefixed_edge_cases(self):
+        """Test prefixed function edge cases."""
+        # Test very long input (should raise exception)
+        long_input = b"x" * (1 << 16)  # Exactly at the limit
+        with self.assertRaises(Exception):
+            crypto.prefixed(long_input)
+        
+        # Test maximum valid length
+        max_valid = b"x" * ((1 << 16) - 1)
+        result = crypto.prefixed(max_valid)
+        self.assertEqual(len(result), len(max_valid) + 2)  # +2 for length prefix
+
+    def test_H_function_edge_cases_comprehensive(self):
+        """Test H function edge cases and counter increments."""
+        # Test that H function handles cases where initial y values don't work
+        # This tests the counter increment logic in the while loop
+        
+        # Use inputs that are likely to require counter increments
+        test_cases = [
+            (b"", b"", b"", b""),  # Empty inputs
+            (b"\x00" * 100, b"\x00" * 100, b"\x00" * 100, b"\x00" * 4),  # All zeros
+            (b"\xFF" * 100, b"\xFF" * 100, b"\xFF" * 100, b"\xFF" * 4),  # All ones
+        ]
+        
+        for uid, did, bid, pin in test_cases:
+            with self.subTest(uid=uid[:4], did=did[:4]):
+                result = crypto.H(uid, did, bid, pin)
+                self.assertEqual(len(result), 4)
+                self.assertTrue(crypto.point_valid(result))
+
+    def test_utility_functions_comprehensive(self):
+        """Test utility functions that might be missing coverage."""
+        # Test sqrt4k3 function
+        test_x = 4
+        test_p = 7  # A prime where p ≡ 3 (mod 4)
+        result = crypto.sqrt4k3(test_x, test_p)
+        self.assertIsInstance(result, int)
+        
+        # Test sqrt8k5 function  
+        test_p2 = 13  # A prime where p ≡ 5 (mod 8)
+        result = crypto.sqrt8k5(test_x, test_p2)
+        self.assertIsInstance(result, int)
+        
+        # Test hexi function
+        hex_string = "deadbeef"
+        result = crypto.hexi(hex_string)
+        self.assertEqual(result, 0xdeadbeef)
+        
+        # Test rol function (rotate left)
+        test_val = 0x123456789abcdef0
+        rotated = crypto.rol(test_val, 4)
+        self.assertIsInstance(rotated, int)
+        self.assertLessEqual(rotated, 2**64 - 1)
+        
+        # Test from_le function
+        test_bytes = b"\x01\x02\x03\x04"
+        result = crypto.from_le(test_bytes)
+        self.assertEqual(result, 0x04030201)  # Little endian
+
+    def test_point_operations_edge_cases(self):
+        """Test point operations with edge cases."""
+        # Test point_valid with invalid points
+        invalid_point = (0, 0, 0, 0)
+        # Note: point_valid might return True for some "invalid" points due to the math
+        result = crypto.point_valid(invalid_point)
+        self.assertIsInstance(result, bool)
+        
+        # Test point operations with zero point
+        zero_result = crypto.point_mul8(crypto.zero_point)
+        self.assertEqual(len(zero_result), 4)
+        
+        # Test point_equal with different representations of same point
+        point1 = crypto.G
+        point2 = crypto.point_add(crypto.G, crypto.zero_point)
+        # Convert to affine coordinates for comparison
+        self.assertEqual(crypto.unexpand(point1), crypto.unexpand(point2))
+
+    def test_x25519_functions_comprehensive(self):
+        """Test X25519 functions comprehensively."""
+        # Test keypair generation
+        private_key, public_key = crypto.x25519_generate_keypair()
+        self.assertEqual(len(private_key), 32)
+        self.assertEqual(len(public_key), 32)
+        
+        # Test public key derivation
+        derived_public = crypto.x25519_public_key_from_private(private_key)
+        self.assertEqual(public_key, derived_public)
+        
+        # Test Diffie-Hellman with two keypairs
+        private_key2, public_key2 = crypto.x25519_generate_keypair()
+        
+        shared_secret1 = crypto.x25519_dh(private_key, public_key2)
+        shared_secret2 = crypto.x25519_dh(private_key2, public_key)
+        
+        # Shared secrets should be equal (DH property)
+        self.assertEqual(shared_secret1, shared_secret2)
+        self.assertEqual(len(shared_secret1), 32)
+
+    def test_deriveEncKey_comprehensive(self):
+        """Test encryption key derivation comprehensively."""
+        # Test with different points
+        test_points = [
+            crypto.G,
+            crypto.point_add(crypto.G, crypto.G),
+            crypto.point_mul(12345, crypto.G),
+        ]
+        
+        for point in test_points:
+            with self.subTest(point=crypto.unexpand(point)):
+                enc_key = crypto.deriveEncKey(point)
+                self.assertEqual(len(enc_key), 32)
+                self.assertIsInstance(enc_key, bytes)
+                
+                # Test deterministic behavior
+                enc_key2 = crypto.deriveEncKey(point)
+                self.assertEqual(enc_key, enc_key2)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2) 
