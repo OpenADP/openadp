@@ -44,7 +44,7 @@ def make_request(base_url, token, method, endpoint, data=None):
     return response
 
 def main():
-    KEYCLOAK_URL = "http://localhost:8081"
+    KEYCLOAK_URL = os.getenv('KEYCLOAK_URL', "https://auth.openadp.org")
     ADMIN_USER = "admin"
     ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'mZMENyzLWI0g')
     REALM_NAME = "openadp"

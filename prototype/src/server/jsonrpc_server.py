@@ -45,7 +45,7 @@ db_connection = None
 
 # Authentication configuration - Global IdP
 AUTH_ENABLED = os.environ.get('OPENADP_AUTH_ENABLED', '1') == '1'
-AUTH_ISSUER = os.environ.get('OPENADP_AUTH_ISSUER', 'http://localhost:8081/realms/openadp')
+AUTH_ISSUER = os.environ.get('OPENADP_AUTH_ISSUER', 'https://auth.openadp.org/realms/openadp')
 AUTH_JWKS_URL = os.environ.get('OPENADP_AUTH_JWKS_URL')
 
 # Auto-derive JWKS URL if not provided (with Keycloak 22.0 workaround)

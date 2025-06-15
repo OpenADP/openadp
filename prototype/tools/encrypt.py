@@ -46,7 +46,7 @@ from openadp.auth.pkce_flow import PKCEFlowError
 NONCE_SIZE: int = 12
 
 # Authentication configuration - Global IdP
-DEFAULT_ISSUER_URL = "http://localhost:8081/realms/openadp"
+DEFAULT_ISSUER_URL = "https://auth.openadp.org/realms/openadp"
 DEFAULT_CLIENT_ID = "cli-test"
 TOKEN_CACHE_DIR = os.path.expanduser("~/.openadp")
 PRIVATE_KEY_PATH = os.path.join(TOKEN_CACHE_DIR, "dpop_key.pem")
@@ -320,7 +320,10 @@ def main() -> NoReturn:
         help='File to encrypt'
     )
     
-
+    parser.add_argument(
+        '--password',
+        help='Password for OpenADP key derivation (if not provided, will prompt securely)'
+    )
     
     parser.add_argument(
         '--issuer',
@@ -348,8 +351,11 @@ def main() -> NoReturn:
     
     args = parser.parse_args()
     
-    # Get password securely without echoing it to the terminal
-    user_password = get_password_securely()
+    # Get password from command line or prompt securely
+    if args.password:
+        user_password = args.password
+    else:
+        user_password = get_password_securely()
     
     # Perform encryption
     encrypt_file(args.filename, user_password, servers=args.servers, 

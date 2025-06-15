@@ -18,7 +18,7 @@ from openadp.auth import run_pkce_flow, save_private_key, load_private_key
 from openadp.auth.pkce_flow import PKCEFlowError
 
 # Global IdP configuration
-GLOBAL_ISSUER_URL = "http://localhost:8081/realms/openadp"
+GLOBAL_ISSUER_URL = "https://auth.openadp.org/realms/openadp"
 GLOBAL_CLIENT_ID = "cli-test"
 GLOBAL_CLIENT_SECRET = "openadp-cli-secret-change-in-production"
 
@@ -114,38 +114,45 @@ def test_file_encryption_with_global_auth():
             f.write(test_content)
         print(f"📝 Created test file: {test_file}")
         
-        # Test encryption
+        # Test encryption using subprocess (since direct imports are complex)
         print("\n🔐 Testing encryption...")
-        from prototype.tools.encrypt import encrypt_file
+        import subprocess
         
-        encrypt_file(
-            input_filename=test_file,
-            password="test123",
-            servers=["http://localhost:8080"],  # Assuming local server for testing
-            issuer_url=GLOBAL_ISSUER_URL,
-            client_id=GLOBAL_CLIENT_ID
-        )
+        encrypt_cmd = [
+            sys.executable, 
+            os.path.join(os.path.dirname(__file__), "encrypt.py"),
+            test_file,
+            "--password", "test123",
+            "--servers", "http://localhost:8080",  # Assuming local server for testing
+        ]
+        
+        result = subprocess.run(encrypt_cmd, capture_output=True, text=True)
         
         encrypted_file = test_file + ".enc"
-        if os.path.exists(encrypted_file):
+        if result.returncode == 0 and os.path.exists(encrypted_file):
             print(f"✅ Encryption successful: {encrypted_file}")
         else:
-            print("❌ Encryption failed - no output file")
+            print(f"❌ Encryption failed: {result.stderr}")
             return False
         
         # Test decryption
         print("\n🔓 Testing decryption...")
-        from prototype.tools.decrypt import decrypt_file
         
         # Remove original file to test decryption
         os.remove(test_file)
         
-        decrypt_file(
-            input_filename=encrypted_file,
-            password="test123",
-            issuer_url=GLOBAL_ISSUER_URL,
-            client_id=GLOBAL_CLIENT_ID
-        )
+        decrypt_cmd = [
+            sys.executable,
+            os.path.join(os.path.dirname(__file__), "decrypt.py"), 
+            encrypted_file,
+            "--password", "test123"
+        ]
+        
+        result = subprocess.run(decrypt_cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"❌ Decryption failed: {result.stderr}")
+            return False
         
         # Verify content
         if os.path.exists(test_file):

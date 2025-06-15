@@ -99,7 +99,11 @@ class KeycloakAdmin:
             "otpPolicyPeriod": 30,
             "sslRequired": "external",
             "attributes": {
-                "frontendUrl": "https://auth.openadp.org"
+                "frontendUrl": "https://auth.openadp.org",
+                "forceBackendUrlToFrontendUrl": "true",
+                "hostname": "auth.openadp.org",
+                "hostnameStrict": "true",
+                "hostnameStrictHttps": "true"
             }
         }
         
@@ -223,9 +227,9 @@ class KeycloakAdmin:
 
 def main():
     # Configuration
-    KEYCLOAK_URL = "http://localhost:8081"
+    KEYCLOAK_URL = os.getenv('KEYCLOAK_URL', "https://auth.openadp.org")
     ADMIN_USER = "admin"
-    ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'admin-change-me')
+    ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'mZMENyzLWI0g')
     REALM_NAME = "openadp"
     CLIENT_ID = "cli-test"
     

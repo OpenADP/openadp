@@ -38,7 +38,7 @@ from openadp import keygen
 NONCE_SIZE: int = 12
 
 # Authentication configuration - Global IdP (same as encrypt.py)
-DEFAULT_ISSUER_URL = "http://localhost:8081/realms/openadp"
+DEFAULT_ISSUER_URL = "https://auth.openadp.org/realms/openadp"
 DEFAULT_CLIENT_ID = "cli-test"
 TOKEN_CACHE_DIR = os.path.expanduser("~/.openadp")
 PRIVATE_KEY_PATH = os.path.join(TOKEN_CACHE_DIR, "dpop_key.pem")
@@ -318,7 +318,11 @@ def main() -> NoReturn:
         "filename", 
         help="Path to the encrypted file to decrypt"
     )
-
+    
+    parser.add_argument(
+        '--password',
+        help='Password for OpenADP key recovery (if not provided, will prompt securely)'
+    )
     
     parser.add_argument(
         '--issuer',
@@ -345,8 +349,11 @@ def main() -> NoReturn:
         
     args = parser.parse_args()
     
-    # Get password securely without echoing it to the terminal
-    user_password = get_password_securely()
+    # Get password from command line or prompt securely
+    if args.password:
+        user_password = args.password
+    else:
+        user_password = get_password_securely()
     
     # Perform decryption
     decrypt_file(args.filename, user_password, 

@@ -47,7 +47,7 @@ def make_request(base_url, token, method, endpoint, data=None):
     return response
 
 def main():
-    KEYCLOAK_URL = "http://localhost:8081"
+    KEYCLOAK_URL = os.getenv('KEYCLOAK_URL', "https://auth.openadp.org")
     ADMIN_USER = "admin"
     ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'mZMENyzLWI0g')
     REALM_NAME = "openadp"
@@ -80,7 +80,7 @@ def main():
             "realm": REALM_NAME,
             "displayName": "OpenADP Authentication",
             "enabled": True,
-            "sslRequired": "none",  # Important for development
+            "sslRequired": "external",  # Required for HTTPS proxy
             "registrationAllowed": False,
             "loginWithEmailAllowed": True,
             "duplicateEmailsAllowed": False,
@@ -89,7 +89,14 @@ def main():
             "bruteForceProtected": True,
             "defaultRoles": ["default-roles-openadp"],
             "requiredCredentials": ["password"],
-            "passwordPolicy": "length(8) and digits(1) and lowerCase(1) and upperCase(1)"
+            "passwordPolicy": "length(8) and digits(1) and lowerCase(1) and upperCase(1)",
+            "attributes": {
+                "frontendUrl": "https://auth.openadp.org",
+                "forceBackendUrlToFrontendUrl": "true",
+                "hostname": "auth.openadp.org",
+                "hostnameStrict": "true",
+                "hostnameStrictHttps": "true"
+            }
         }
         
         response = make_request(KEYCLOAK_URL, token, 'POST', '/realms', realm_config)
