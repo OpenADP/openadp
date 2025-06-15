@@ -300,7 +300,8 @@ def x25519_dh(private_key_bytes: bytes, public_key_bytes: bytes) -> bytes:
     """Performs X25519 Diffie-Hellman key exchange."""
     private_key = nacl.public.PrivateKey(private_key_bytes)
     public_key = nacl.public.PublicKey(public_key_bytes)
-    shared_secret = private_key.diffie_hellman(public_key)
+    box = nacl.public.Box(private_key, public_key)
+    shared_secret = box.shared_key()
     return shared_secret
 
 if __name__ == '__main__':

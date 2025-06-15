@@ -340,6 +340,301 @@ class TestJSONRPCServer(unittest.TestCase):
             self.assertGreater(len(header), 0)
             self.assertGreater(len(expected_value), 0)
 
+    def test_max_guess_limit_enforcement_detailed(self):
+        """Test detailed max guess limit enforcement scenarios."""
+        try:
+            import sys, os
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+            from server import server
+            from openadp import database, crypto, sharing
+            import secrets
+            
+            # Create test database
+            db = database.Database(":memory:")
+            
+            # Test data
+            uid = "test_user"
+            did = "test_device" 
+            bid = "test_backup"
+            version = 1
+            x = 1
+            y = secrets.token_bytes(32)
+            max_guesses = 3
+            expiration = 2000000000
+            
+            # Register a secret
+            result = server.register_secret(db, uid, did, bid, version, x, y, max_guesses, expiration)
+            self.assertTrue(result)
+            
+            # Create a valid point B for recovery
+            secret = secrets.randbelow(crypto.q)
+            u = crypto.point_mul(secret, crypto.G)
+            r = secrets.randbelow(crypto.q - 1) + 1
+            b = crypto.point_mul(r, u)
+            
+            # Test successful recoveries up to the limit
+            for guess_num in range(max_guesses):
+                result = server.recover_secret(db, uid, did, bid, b, guess_num)
+                if isinstance(result, Exception):
+                    # Recovery might fail due to cryptographic mismatch, but should not be due to guess limit
+                    self.assertNotIn("Too many guesses", str(result))
+                else:
+                    # If recovery succeeds, verify the guess count increments
+                    version_r, x_r, si_b, num_guesses, max_guesses_r, expiration_r = result
+                    self.assertEqual(num_guesses, guess_num + 1)
+                    self.assertEqual(max_guesses_r, max_guesses)
+            
+            # Test that exceeding max_guesses is blocked
+            result = server.recover_secret(db, uid, did, bid, b, max_guesses)
+            self.assertIsInstance(result, Exception)
+            self.assertIn("Too many guesses", str(result))
+            
+            # Test that further attempts are still blocked
+            result = server.recover_secret(db, uid, did, bid, b, max_guesses)
+            self.assertIsInstance(result, Exception)
+            self.assertIn("Too many guesses", str(result))
+            
+        except (ImportError, AttributeError):
+            self.skipTest("Server module not available for testing")
+
+    def test_server_input_validation(self):
+        """Test server input validation edge cases."""
+        try:
+            import sys, os
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+            from server import server
+            from openadp import database
+            import secrets
+            
+            # Test max_guesses validation
+            db = database.Database(":memory:")
+            uid = "test_user"
+            did = "test_device"
+            bid = "test_backup"
+            version = 1
+            x = 1
+            y = secrets.token_bytes(32)
+            expiration = 2000000000
+            
+            # Test max_guesses > 1000 (should be rejected)
+            result = server.register_secret(db, uid, did, bid, version, x, y, 1001, expiration)
+            self.assertIsInstance(result, Exception)
+            self.assertIn("max", str(result).lower())
+            
+            # Test valid max_guesses (should succeed)
+            result = server.register_secret(db, uid, did, bid, version, x, y, 1000, expiration)
+            self.assertTrue(result)
+            
+            # Test very long strings (should be rejected)
+            long_string = "x" * 1000
+            result = server.register_secret(db, long_string, did, bid, version, x, y, 10, expiration)
+            self.assertIsInstance(result, Exception)
+            self.assertIn("too long", str(result).lower())
+            
+        except (ImportError, AttributeError):
+            self.skipTest("Server module not available for testing")
+
+    def test_database_edge_cases(self):
+        """Test database edge cases and error conditions."""
+        try:
+            from openadp import database
+            import tempfile
+            import os
+            
+            # Test database creation in non-existent directory
+            with tempfile.TemporaryDirectory() as temp_dir:
+                db_path = os.path.join(temp_dir, "subdir", "test.db")
+                
+                # This should work (SQLite creates directories)
+                db = database.Database(db_path)
+                self.assertIsNotNone(db)
+                
+                # Test basic operations
+                uid = b"test_user"
+                did = b"test_device"
+                bid = b"test_backup"
+                
+                # Test lookup of non-existent share
+                result = db.lookup(uid, did, bid)
+                self.assertIsNone(result)
+                
+                # Test find_guess_number of non-existent share
+                guess_num = db.find_guess_number(uid, did, bid)
+                self.assertIsNone(guess_num)
+                
+                # Test list_backups for non-existent user
+                backups = db.list_backups(uid)
+                self.assertEqual(len(backups), 0)
+                
+                # Test with string input (should work)
+                backups = db.list_backups("test_user")
+                self.assertEqual(len(backups), 0)
+                
+                db.close()
+                
+        except (ImportError, AttributeError):
+            self.skipTest("Database module not available for testing")
+
+    def test_concurrent_database_access(self):
+        """Test concurrent database access scenarios."""
+        try:
+            from openadp import database
+            import threading
+            import tempfile
+            import secrets
+            
+            with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as temp_file:
+                db_path = temp_file.name
+            
+            try:
+                # Create shared database
+                db = database.Database(db_path)
+                
+                # Test data
+                uid = b"concurrent_user"
+                did = b"concurrent_device"
+                
+                results = []
+                errors = []
+                
+                def concurrent_operation(thread_id):
+                    try:
+                        # Each thread works with different backup IDs
+                        bid = f"backup_{thread_id}".encode()
+                        
+                        # Insert a share
+                        db.insert(uid, did, bid, 1, thread_id, secrets.token_bytes(32), 0, 10, 2000000000)
+                        
+                        # Look it up
+                        result = db.lookup(uid, did, bid)
+                        results.append((thread_id, result))
+                        
+                    except Exception as e:
+                        errors.append((thread_id, e))
+                
+                # Start multiple threads
+                threads = []
+                for i in range(5):
+                    thread = threading.Thread(target=concurrent_operation, args=(i,))
+                    threads.append(thread)
+                    thread.start()
+                
+                # Wait for completion
+                for thread in threads:
+                    thread.join()
+                
+                # Check results
+                self.assertEqual(len(errors), 0, f"Concurrent access errors: {errors}")
+                self.assertEqual(len(results), 5)
+                
+                # Verify each thread's data
+                for thread_id, result in results:
+                    self.assertIsNotNone(result)
+                    version, x, y, num_guesses, max_guesses, expiration = result
+                    self.assertEqual(x, thread_id)
+                    self.assertEqual(num_guesses, 0)
+                    self.assertEqual(max_guesses, 10)
+                
+                db.close()
+                
+            finally:
+                # Clean up
+                try:
+                    os.unlink(db_path)
+                except:
+                    pass
+                    
+        except (ImportError, AttributeError):
+            self.skipTest("Concurrent database test not available")
+
+    def test_server_recovery_idempotency(self):
+        """Test that recovery operations are idempotent."""
+        try:
+            import sys, os
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+            from server import server
+            from openadp import database, crypto
+            import secrets
+            
+            db = database.Database(":memory:")
+            
+            # Test data
+            uid = "idempotent_user"
+            did = "idempotent_device"
+            bid = "idempotent_backup"
+            version = 1
+            x = 1
+            y = secrets.token_bytes(32)
+            max_guesses = 5
+            expiration = 2000000000
+            
+            # Register secret
+            result = server.register_secret(db, uid, did, bid, version, x, y, max_guesses, expiration)
+            self.assertTrue(result)
+            
+            # Create point B
+            secret = secrets.randbelow(crypto.q)
+            u = crypto.point_mul(secret, crypto.G)
+            r = secrets.randbelow(crypto.q - 1) + 1
+            b = crypto.point_mul(r, u)
+            
+            # First recovery attempt
+            result1 = server.recover_secret(db, uid, did, bid, b, 0)
+            
+            # Same recovery attempt (should fail due to wrong guess_num)
+            result2 = server.recover_secret(db, uid, did, bid, b, 0)
+            self.assertIsInstance(result2, Exception)
+            self.assertIn("Expecting guess_num", str(result2))
+            
+            # Correct next recovery attempt
+            if not isinstance(result1, Exception):
+                _, _, _, num_guesses, _, _ = result1
+                result3 = server.recover_secret(db, uid, did, bid, b, num_guesses)
+                # This should work (either succeed or fail for crypto reasons, not guess_num)
+                if isinstance(result3, Exception):
+                    self.assertNotIn("Expecting guess_num", str(result3))
+            
+        except (ImportError, AttributeError):
+            self.skipTest("Server recovery idempotency test not available")
+
+    def test_expiration_handling(self):
+        """Test share expiration handling."""
+        try:
+            from openadp import database
+            import time
+            
+            db = database.Database(":memory:")
+            
+            # Test data
+            uid = b"expiring_user"
+            did = b"expiring_device"
+            bid = b"expiring_backup"
+            version = 1
+            x = 1
+            y = b"test_share_data_32_bytes_long!!"
+            max_guesses = 10
+            
+            # Test with past expiration
+            past_expiration = int(time.time()) - 3600  # 1 hour ago
+            db.insert(uid, did, bid, version, x, y, 0, max_guesses, past_expiration)
+            
+            result = db.lookup(uid, did, bid)
+            self.assertIsNotNone(result)
+            version_r, x_r, y_r, num_guesses, max_guesses_r, expiration_r = result
+            self.assertEqual(expiration_r, past_expiration)
+            
+            # Test with future expiration
+            future_expiration = int(time.time()) + 3600  # 1 hour from now
+            db.insert(uid, did, b"future_backup", version, x, y, 0, max_guesses, future_expiration)
+            
+            result = db.lookup(uid, did, b"future_backup")
+            self.assertIsNotNone(result)
+            version_r, x_r, y_r, num_guesses, max_guesses_r, expiration_r = result
+            self.assertEqual(expiration_r, future_expiration)
+            
+        except (ImportError, AttributeError):
+            self.skipTest("Expiration handling test not available")
+
 
 class TestServerUtilities(unittest.TestCase):
     """Test server utility functions."""

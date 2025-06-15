@@ -383,6 +383,215 @@ class TestDatabase(unittest.TestCase):
                         self.assertIsInstance(session_id, str)
                 except AttributeError:
                     self.skipTest("create_session method not implemented")
+    
+    def test_server_config_operations(self):
+        """Test server configuration storage and retrieval."""
+        # Test get/set server config
+        key = "test_key"
+        value = b"test_value_data"
+        
+        # Test setting and getting config
+        self.db.set_server_config(key, value)
+        retrieved_value = self.db.get_server_config(key)
+        self.assertEqual(retrieved_value, value)
+        
+        # Test getting non-existent key
+        non_existent = self.db.get_server_config("non_existent_key")
+        self.assertIsNone(non_existent)
+        
+        # Test updating existing key
+        new_value = b"updated_value_data"
+        self.db.set_server_config(key, new_value)
+        retrieved_value = self.db.get_server_config(key)
+        self.assertEqual(retrieved_value, new_value)
+        
+        # Test with binary data
+        binary_data = bytes(range(256))
+        self.db.set_server_config("binary_key", binary_data)
+        retrieved_binary = self.db.get_server_config("binary_key")
+        self.assertEqual(retrieved_binary, binary_data)
+
+    def test_database_table_creation(self):
+        """Test database table creation scenarios."""
+        import tempfile
+        import os
+        
+        # Test creating database in new file
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as temp_file:
+            temp_path = temp_file.name
+        
+        try:
+            # Remove the file so we test creation from scratch
+            os.unlink(temp_path)
+            
+            # Create new database (should create tables)
+            from openadp.database import Database
+            new_db = Database(temp_path)
+            
+            # Test that we can perform basic operations
+            uid = b"table_test_user"
+            did = b"table_test_device"
+            bid = b"table_test_backup"
+            
+            # This should work without errors (tables exist)
+            new_db.insert(uid, did, bid, 1, 1, b"test_data_32_bytes_long_enough!!", 0, 10, 2000000000)
+            
+            result = new_db.lookup(uid, did, bid)
+            self.assertIsNotNone(result)
+            
+            # Test server config table
+            new_db.set_server_config("test", b"data")
+            config_data = new_db.get_server_config("test")
+            self.assertEqual(config_data, b"data")
+            
+            new_db.close()
+            
+        finally:
+            # Clean up
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
+
+    def test_database_connection_edge_cases(self):
+        """Test database connection edge cases."""
+        import tempfile
+        import os
+        
+        # Test with read-only directory (should handle gracefully)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create a subdirectory
+            subdir = os.path.join(temp_dir, "readonly")
+            os.makedirs(subdir)
+            
+            # Make it read-only
+            os.chmod(subdir, 0o444)
+            
+            try:
+                # Try to create database in read-only directory
+                readonly_path = os.path.join(subdir, "readonly.db")
+                
+                # This might fail or succeed depending on system
+                try:
+                    readonly_db = Database(readonly_path)
+                    # If it succeeds, test basic operations
+                    readonly_db.close()
+                except Exception:
+                    # It's acceptable to fail on read-only directories
+                    pass
+                    
+            finally:
+                # Restore permissions for cleanup
+                os.chmod(subdir, 0o755)
+
+    def test_database_string_bytes_handling(self):
+        """Test handling of string vs bytes parameters."""
+        uid_str = "string_user"
+        uid_bytes = b"bytes_user"
+        did = b"test_device"
+        bid = b"test_backup"
+        
+        # Insert with bytes
+        self.db.insert(uid_bytes, did, bid, 1, 1, b"test_data_32_bytes_long_enough!!", 0, 10, 2000000000)
+        
+        # Test list_backups with string input
+        backups_str = self.db.list_backups(uid_str)
+        self.assertEqual(len(backups_str), 0)  # Different user
+        
+        backups_bytes = self.db.list_backups(uid_bytes)
+        self.assertEqual(len(backups_bytes), 1)
+        
+        # Test list_backups with bytes input
+        backups_bytes2 = self.db.list_backups(uid_bytes)
+        self.assertEqual(len(backups_bytes2), 1)
+        
+        # Test with string that matches bytes when encoded
+        uid_matching = "bytes_user"  # This should match uid_bytes when encoded
+        backups_matching = self.db.list_backups(uid_matching)
+        self.assertEqual(len(backups_matching), 1)
+
+    def test_database_error_conditions(self):
+        """Test database error conditions and edge cases."""
+        uid = b"error_test_user"
+        did = b"error_test_device"
+        bid = b"error_test_backup"
+        
+        # Test with invalid data types (should handle gracefully)
+        try:
+            # Test with very large numbers
+            large_version = 2**63 - 1  # Max int64
+            self.db.insert(uid, did, bid, large_version, 1, b"test_data_32_bytes_long_enough!!", 0, 10, 2000000000)
+            
+            result = self.db.lookup(uid, did, bid)
+            self.assertIsNotNone(result)
+            version, x, y, num_guesses, max_guesses, expiration = result
+            self.assertEqual(version, large_version)
+            
+        except Exception as e:
+            # Some edge cases might legitimately fail
+            self.assertIsInstance(e, (ValueError, OverflowError))
+
+    def test_database_cleanup_and_close(self):
+        """Test database cleanup and close operations."""
+        import tempfile
+        import os
+        
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as temp_file:
+            temp_path = temp_file.name
+        
+        try:
+            # Create database
+            from openadp.database import Database
+            test_db = Database(temp_path)
+            
+            # Add some data
+            uid = b"cleanup_user"
+            did = b"cleanup_device"
+            bid = b"cleanup_backup"
+            test_db.insert(uid, did, bid, 1, 1, b"test_data_32_bytes_long_enough!!", 0, 10, 2000000000)
+            
+            # Test explicit close
+            test_db.close()
+            
+            # Test that we can still create a new connection to the same file
+            test_db2 = Database(temp_path)
+            result = test_db2.lookup(uid, did, bid)
+            self.assertIsNotNone(result)  # Data should persist
+            test_db2.close()
+            
+            # Test double close (should be safe)
+            test_db.close()  # Should not raise an error
+            
+        finally:
+            # Clean up
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
+
+    def test_database_large_data_handling(self):
+        """Test database handling of large data."""
+        uid = b"large_data_user"
+        did = b"large_data_device"
+        bid = b"large_data_backup"
+        
+        # Test with maximum size y data (32 bytes is typical)
+        large_y = b"x" * 32
+        self.db.insert(uid, did, bid, 1, 1, large_y, 0, 10, 2000000000)
+        
+        result = self.db.lookup(uid, did, bid)
+        self.assertIsNotNone(result)
+        version, x, y, num_guesses, max_guesses, expiration = result
+        self.assertEqual(y, large_y)
+        
+        # Test with very large expiration timestamp
+        large_expiration = 2**32 - 1  # Year 2106
+        self.db.insert(uid, did, b"large_exp_backup", 1, 1, b"test_data_32_bytes_long_enough!!", 0, 10, large_expiration)
+        
+        result = self.db.lookup(uid, did, b"large_exp_backup")
+        self.assertIsNotNone(result)
+        version, x, y, num_guesses, max_guesses, expiration = result
+        self.assertEqual(expiration, large_expiration)
 
 
 class TestDatabaseUtilities(unittest.TestCase):
