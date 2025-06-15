@@ -3,48 +3,37 @@
 
 import sys
 import os
+import pytest
+import uuid
 
 # Add the src directory to Python path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from openadp import keygen
 
-def test_fresh_openadp():
-    """Test OpenADP key generation with a fresh backup ID."""
-    print("Testing OpenADP with fresh backup ID...")
-    
-    test_filename = "fresh_test_file.txt"
+def test_fresh_openadp(tmp_path):
+    """Integration: Test OpenADP key generation and recovery with a fresh backup ID."""
+    # Create a temporary file to simulate a new backup
+    test_file = tmp_path / "fresh_test_file.txt"
+    test_file.write_text("OpenADP integration test data.")
     test_password = "my_secure_password123"
-    
-    # Test key generation
-    print("\n1. Generating encryption key...")
-    enc_key, error, server_urls = keygen.generate_encryption_key(test_filename, test_password)
-    
-    if error:
-        print(f"❌ Key generation failed: {error}")
-        return
-    
-    print(f"✅ Generated key: {enc_key.hex()[:32]}...")
-    
-    # Test key recovery
-    print("\n2. Recovering encryption key...")
-    recovered_key, error = keygen.recover_encryption_key(test_filename, test_password, server_urls)
-    
-    if error:
-        print(f"❌ Key recovery failed: {error}")
-        return
-    
-    print(f"✅ Recovered key: {recovered_key.hex()[:32]}...")
-    
-    # Verify keys match
-    if enc_key == recovered_key:
-        print("✅ Keys match! OpenADP key generation working correctly.")
-        return True
-    else:
-        print("❌ Keys don't match - there's still a bug in the implementation.")
-        print(f"   Generated:  {enc_key.hex()}")
-        print(f"   Recovered:  {recovered_key.hex()}")
-        return False
+    # Simulate a fresh user_id (UUID)
+    user_id = str(uuid.uuid4())
 
-if __name__ == "__main__":
-    test_fresh_openadp() 
+    # Generate encryption key
+    enc_key, error, server_urls, threshold = keygen.generate_encryption_key(
+        str(test_file), test_password, user_id
+    )
+    assert error is None, f"Key generation failed: {error}"
+    assert enc_key is not None, "Encryption key should not be None"
+    assert server_urls is not None and len(server_urls) >= threshold, "Not enough servers used"
+
+    # Recover encryption key
+    recovered_key, error = keygen.recover_encryption_key(
+        str(test_file), test_password, user_id, server_urls, threshold=threshold
+    )
+    assert error is None, f"Key recovery failed: {error}"
+    assert recovered_key is not None, "Recovered key should not be None"
+    assert enc_key == recovered_key, (
+        f"Keys don't match!\nGenerated:  {enc_key.hex()}\nRecovered:  {recovered_key.hex()}"
+    ) 

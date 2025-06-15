@@ -288,3 +288,40 @@ OpenADP.
 When a compromised node returns invalid points rather than `s[i]*B`,  then all
 subsets of `T` responses should be checked to see if they result in a valid
 solution.  Reporting bad nodes needs to be supported, and is TBD.
+
+## Fake Keycloak (OIDC) Server for Integration Testing
+
+A minimal OpenID Connect (OIDC) server is provided in `tests/fake_keycloak.py` for use in integration tests. It implements enough of the OIDC protocol to allow OpenADP clients to authenticate using the password grant, and issues real ES256-signed JWTs.
+
+### Features
+- Implements endpoints:
+  - `/.well-known/openid-configuration`
+  - `/protocol/openid-connect/token` (password grant)
+  - `/protocol/openid-connect/certs` (JWKS)
+- Configurable test users and clients (see top of `fake_keycloak.py`)
+- Static EC key for JWT signing
+- No external web frameworks required
+
+### Requirements
+- Python 3.7+
+- `PyJWT`, `cryptography` (see `requirements.txt`)
+
+### Usage
+
+To run the server manually:
+
+```bash
+python tests/fake_keycloak.py
+```
+
+The server will listen on `http://localhost:9000/realms/openadp` by default. You can use this in your integration tests by pointing your OIDC discovery and token endpoints to this URL.
+
+To use in test setup/teardown, import and start/stop the `FakeKeycloakServer` class:
+
+```python
+from tests.fake_keycloak import FakeKeycloakServer
+server = FakeKeycloakServer()
+server.start()
+# ... run tests ...
+server.stop()
+```
