@@ -16,7 +16,9 @@ The key recovery uses the specific servers from encryption metadata, providing
 more reliable decryption than re-scraping the server list.
 
 Usage:
-    python3 decrypt.py <filename_to_decrypt> [--auth]
+    python3 decrypt.py <filename_to_decrypt>
+    
+Note: Authentication is always required (Phase 5 - mandatory authentication).
 """
 
 import os
@@ -128,17 +130,17 @@ def decrypt_file(input_filename: str, password: str,
             print(f"Overriding metadata servers with {len(override_servers)} custom servers")
             server_urls = override_servers
         
-        # Always show authentication status (Phase 4: auth always enabled)
+        # Phase 5: Authentication is always mandatory
         if auth_enabled:
-            print("🔒 Authentication was enabled during encryption")
+            print("🔒 File was encrypted with authentication (standard)")
         else:
-            print("ℹ️  File was encrypted without authentication, but will use auth for decryption")
+            print("ℹ️  File was encrypted without authentication (legacy), but using auth for decryption")
             
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
         print(f"Error: Failed to parse metadata: {e}")
         sys.exit(1)
 
-    # 4. Handle authentication (always enabled in Phase 4)
+    # 4. Handle authentication (mandatory in Phase 5)
     try:
         # Get auth token for decryption
         token_data = get_auth_token(issuer_url, client_id)
@@ -211,7 +213,7 @@ def decrypt_file(input_filename: str, password: str,
         print(f"✅ Decryption successful. File saved to '{output_filename}'")
         print(f"   Encrypted size: {len(file_data)} bytes") 
         print(f"   Decrypted size: {len(plaintext)} bytes")
-        print(f"   Authentication: Enabled (DPoP)")
+        print(f"   Authentication: Mandatory (Phase 5 - DPoP)")
     except IOError as e:
         print(f"Error writing to '{output_filename}': {e}")
         sys.exit(1)

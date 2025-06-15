@@ -20,8 +20,8 @@ cryptographically bound to the encrypted data as "additional data" in the AEAD c
 Usage:
     python3 encrypt.py <filename_to_encrypt>
     
-Authentication is always enabled (Phase 4). The tool will guide you through
-OAuth authentication using the Device Code flow.
+Note: Authentication is always required (Phase 5 - mandatory authentication).
+The tool will guide you through OAuth authentication using the Device Code flow.
 """
 
 import os
@@ -185,7 +185,7 @@ def encrypt_file(input_filename: str, password: str,
     
     output_filename = input_filename + ".enc"
 
-    # 2. Handle authentication (always enabled in Phase 4)
+    # 2. Handle authentication (mandatory in Phase 5)
     token_data = get_auth_token(issuer_url, client_id)
     if not token_data:
         print("❌ Authentication required but failed. Exiting.")

@@ -166,34 +166,30 @@ def run_pkce_flow(
     server.auth_error = None
     server.timeout = 1  # Short timeout for non-blocking
     
-    server_thread = Thread(target=lambda: server.serve_forever())
-    server_thread.daemon = True
-    server_thread.start()
+    # Build authorization URL
+    auth_params = {
+        'response_type': 'code',
+        'client_id': client_id,
+        'redirect_uri': redirect_uri,
+        'scope': scopes,
+        'state': state,
+        'code_challenge': code_challenge,
+        'code_challenge_method': 'S256'
+        # Note: dpop_jkt parameter removed - will bind token via DPoP header in token request
+    }
+    
+    auth_url = f"{auth_endpoint}?{urlencode(auth_params)}"
+    
+    print("🔑 Generated keypair for DPoP")
+    print(f"🔗 Opening browser for authorization...")
+    print(f"   URL: {auth_url}")
+    print(f"⏱️  Waiting up to {timeout} seconds for authorization...")
+    
+    # Open browser
+    webbrowser.open(auth_url)
     
     try:
-        # Build authorization URL
-        auth_params = {
-            'response_type': 'code',
-            'client_id': client_id,
-            'redirect_uri': redirect_uri,
-            'scope': scopes,
-            'state': state,
-            'code_challenge': code_challenge,
-            'code_challenge_method': 'S256'
-            # Note: dpop_jkt parameter removed - will bind token via DPoP header in token request
-        }
-        
-        auth_url = f"{auth_endpoint}?{urlencode(auth_params)}"
-        
-        print("🔑 Generated keypair for DPoP")
-        print(f"🔗 Opening browser for authorization...")
-        print(f"   URL: {auth_url}")
-        print(f"⏱️  Waiting up to {timeout} seconds for authorization...")
-        
-        # Open browser
-        webbrowser.open(auth_url)
-        
-        # Wait for callback
+        # Wait for callback - use handle_request() only, no background thread
         start_time = time.time()
         while time.time() - start_time < timeout:
             server.handle_request()  # Process one request
@@ -255,7 +251,6 @@ def run_pkce_flow(
         return result
         
     finally:
-        server.shutdown()
         server.server_close()
 
 

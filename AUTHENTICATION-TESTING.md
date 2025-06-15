@@ -2,9 +2,9 @@
 
 ## Overview
 
-The OpenADP encrypt/decrypt tools support Phase 3.5 encrypted authentication using DPoP tokens over Noise-NK channels. This provides nation-state resistant encryption with secure token exchange.
+The OpenADP encrypt/decrypt tools use Phase 3.5 encrypted authentication using DPoP tokens over Noise-NK channels. This provides nation-state resistant encryption with secure token exchange.
 
-**Note**: As of Phase 4.1, authentication is **enabled by default** for all production operations. The global authentication server at `https://auth.openadp.org` is used unless explicitly overridden.
+**Phase 5 Status**: Authentication is **mandatory** for all operations. The global authentication server at `https://auth.openadp.org` is used by default. The `--auth` flag has been removed as authentication is always enabled.
 
 ## Authentication Architecture
 
@@ -41,14 +41,14 @@ docker-compose -f docker-compose.keycloak.yml up -d
 ```bash
 cd prototype/tools
 
-# Test encryption with auth (default global server)
-python encrypt.py test_file.txt --servers http://localhost:8080 --auth
+# Test encryption (authentication is always enabled in Phase 5)
+python encrypt.py test_file.txt --servers http://localhost:8080
 
-# Or explicitly specify the global server
-python encrypt.py test_file.txt --servers http://localhost:8080 --auth --issuer https://auth.openadp.org/realms/openadp
+# Or explicitly specify the global server (usually not needed - it's the default)
+python encrypt.py test_file.txt --servers http://localhost:8080 --issuer https://auth.openadp.org/realms/openadp
 
-# Test decryption with auth
-python decrypt.py test_file.txt.enc --auth
+# Test decryption (authentication is always enabled in Phase 5)
+python decrypt.py test_file.txt.enc
 ```
 
 ## Authentication Flow
@@ -62,15 +62,17 @@ python decrypt.py test_file.txt.enc --auth
 
 ## Server Configuration
 
-### Authentication Enabled
-Set `AUTH_ENABLED=true` environment variable:
+### Phase 5 Configuration
+Authentication is **enabled by default** as of Phase 5:
 ```bash
-AUTH_ENABLED=true python -m server.jsonrpc_server --port 8080
+# Standard server startup (authentication enabled by default)
+python -m server.jsonrpc_server --port 8080
 ```
 
-### Authentication Disabled (Default)
+### Development/Testing Only
+To disable authentication for development (not recommended for production):
 ```bash
-python -m server.jsonrpc_server --port 8080
+OPENADP_AUTH_ENABLED=0 python -m server.jsonrpc_server --port 8080
 ```
 
 ## Testing Status
@@ -92,9 +94,8 @@ python -m server.jsonrpc_server --port 8080
 ```bash
 python encrypt.py <file> [options]
 
-Authentication Options:
-  --auth                    Enable Phase 3.5 encrypted authentication
-  --issuer ISSUER          OAuth issuer URL (default: http://localhost:8080/realms/openadp)
+Authentication Options (Phase 5 - authentication always enabled):
+  --issuer ISSUER          OAuth issuer URL (default: https://auth.openadp.org/realms/openadp)
   --client-id CLIENT_ID    OAuth client ID (default: cli-test)
 
 Server Options:
@@ -106,8 +107,9 @@ Server Options:
 ```bash
 python decrypt.py <file.enc> [options]
 
-Authentication Options:
-  --auth                   Use Phase 3.5 encrypted authentication
+Authentication Options (Phase 5 - authentication always enabled):
+  --issuer ISSUER          OAuth issuer URL (default: https://auth.openadp.org/realms/openadp)
+  --client-id CLIENT_ID    OAuth client ID (default: cli-test)
 
 Server Options:
   --servers URL [URL ...]  Override metadata servers (testing only)

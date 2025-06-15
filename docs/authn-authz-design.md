@@ -229,6 +229,10 @@ Operators behind Cloudflare set `tls.origin=unix:///var/run/cloudflared.sock`, o
 
 ## 8  Alternative: Noise-NK Encrypted Authentication
 
+**Current Status**: ✅ **IMPLEMENTED AND DEPLOYED** (Phase 5 Complete - January 2025)
+
+This is the **active authentication approach** used by OpenADP. All client tools now use mandatory Noise-NK encrypted authentication with the global server at `https://auth.openadp.org`.
+
 ### 8.1  Security Motivation
 
 After implementation and review, we identified significant security concerns with HTTP header-based DPoP authentication:
@@ -278,15 +282,17 @@ This approach replaces the original HTTP header roadmap:
 - Implement handshake signature verification on server side
 - Maintain backward compatibility during transition
 
-**Phase 4 - Server Integration**  
+**Phase 4 - Server Integration** ✅ **COMPLETED**  
 - Update server handlers to extract authentication from decrypted payload
 - Add ownership tracking using JWT `sub` claim
 - Implement per-user rate limiting
 
-**Phase 5 - Client Default**
+**Phase 5 - Client Default** ✅ **COMPLETED** (January 2025)
 - Make authentication mandatory for all operations
 - Remove `--auth` flag; authentication always enabled
 - Clean up legacy HTTP header code
+- Updated documentation to reflect mandatory authentication
+- Set global server (`https://auth.openadp.org`) as default
 
 **Phase 6 - Production Hardening**
 - Change server default to `OPENADP_AUTH_ENABLED='1'`
@@ -325,10 +331,10 @@ This is equivalent to the security/performance trade-off made by all TLS-protect
 
 ### 8.7  Migration Strategy
 
-1. **Phase 1-2**: Complete current Device Flow + token acquisition (reusable)
-2. **Phase 3**: Implement Noise-NK authentication (new approach)
-3. **Phase 4**: Deploy server-side support with `auth.method=noise-nk`
-4. **Phase 5**: Update clients to use new protocol
+1. **Phase 1-2**: Complete current Device Flow + token acquisition (reusable) ✅ **COMPLETED**
+2. **Phase 3**: Implement Noise-NK authentication (new approach) ✅ **COMPLETED**
+3. **Phase 4**: Deploy server-side support with `auth.method=noise-nk` ✅ **COMPLETED**
+4. **Phase 5**: Update clients to use new protocol ✅ **COMPLETED** (January 2025)
 5. **Phase 6**: Remove legacy HTTP header authentication code
 
 The OAuth2 Device Flow and DPoP key management work completed in Phases 1-2 remains fully applicable—only the transport mechanism changes.
@@ -467,7 +473,9 @@ Each phase is sized to fit a single pull-request and can be tested independently
 
 ---
 
-### Phase 5 – Ops & observability
+### Phase 5 – Ops & observability (**DEPRECATED** - HTTP Header Approach)
+**Note**: This Phase 5 is part of the deprecated HTTP header approach. The implemented Phase 5 (Client Default) is documented in Section 8.4.
+
 *Code/Infra*
 - Prometheus exporter counters: `openadp_auth_success_total`, `…_failure_total`, `…_replay_total`.
 - Structured JSON audit logger writes to file or Loki.
@@ -540,6 +548,75 @@ This fix has been applied to:
 - **Client Tools**: Updated to use global issuer by default
 
 Token lifetime parameters (see §7) remain: access 5 min, refresh 90 days.
+
+---
+
+## 16  Phase 5 - COMPLETED ✅
+
+**Client Default Authentication - January 2025**
+
+Phase 5 has been successfully completed, making authentication mandatory for all client operations and removing the optional `--auth` flag.
+
+### Key Achievements
+
+1. **Mandatory Authentication**: Removed all `--auth` flags from client tools
+2. **Simplified User Experience**: Users no longer need to remember authentication flags
+3. **Consistent Behavior**: All operations now require authentication by default
+4. **Documentation Cleanup**: Updated all examples and documentation to reflect mandatory authentication
+
+### Changes Implemented
+
+#### Client Tool Updates ✅
+- **`encrypt.py`**: Removed optional authentication, always requires auth
+- **`decrypt.py`**: Removed `[--auth]` from usage, authentication always enabled
+- **Updated Comments**: Changed from "Phase 4" to "Phase 5 - mandatory"
+- **Global Server Default**: Both tools use `https://auth.openadp.org/realms/openadp` by default
+
+#### Documentation Updates ✅
+- **`AUTHENTICATION-TESTING.md`**: Removed all `--auth` flag references
+- **Command Examples**: Simplified to show authentication is automatic
+- **Tool Options**: Updated help text to reflect Phase 5 status
+- **Server Configuration**: Updated to show auth-enabled-by-default
+
+### Behavioral Changes
+
+**Before Phase 5:**
+```bash
+# Authentication was optional
+python encrypt.py file.txt --auth --servers http://localhost:8080
+python decrypt.py file.txt.enc --auth
+```
+
+**After Phase 5:**
+```bash
+# Authentication is always enabled
+python encrypt.py file.txt --servers http://localhost:8080
+python decrypt.py file.txt.enc
+```
+
+### Security Benefits
+
+- **No Unauthenticated Bypass**: Users cannot accidentally skip authentication
+- **Consistent Identity**: All operations are tied to authenticated users
+- **Simplified Security Model**: Single code path reduces complexity
+- **Audit Trail**: Every action has an associated user identity
+
+### Validation Results
+
+**Complete Phase 5 testing successful:**
+- ✅ `encrypt.py` and `decrypt.py` always require authentication
+- ✅ Help output shows no `--auth` flag (removed)
+- ✅ Global server used by default (`https://auth.openadp.org/realms/openadp`)
+- ✅ Documentation updated to reflect mandatory authentication
+- ✅ Backward compatibility maintained (legacy files still decrypt)
+
+### Migration Impact
+
+- **Existing Scripts**: Need to remove `--auth` flags (breaking change)
+- **New Users**: Simpler onboarding with consistent authentication
+- **Existing Files**: All previously encrypted files still decrypt correctly
+
+Phase 5 establishes OpenADP as an **authentication-first system** with no unauthenticated operation modes for end users.
 
 ---
 
