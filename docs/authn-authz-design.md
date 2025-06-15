@@ -101,6 +101,23 @@ PoP-JWT support status (mid-2025):
 
 Take-away: **at least one solid OSS option (Keycloak)** and one mainstream SaaS (Auth0) already ship PoP-JWT. Others are catching up. Since OpenADP nodes only verify tokens, they will automatically work as vendors add support.
 
+### 9.1  Cloudflare Proxy Considerations
+
+**Important**: When deploying IdPs behind Cloudflare proxy, JWKS endpoint requests require User-Agent headers to avoid 403 Forbidden responses.
+
+**Required Fix for Server-Side JWKS Fetching**:
+```python
+# ❌ This fails with 403 behind Cloudflare
+response = urllib.request.urlopen(jwks_url)
+
+# ✅ This works - include User-Agent header
+request = urllib.request.Request(jwks_url)
+request.add_header('User-Agent', 'OpenADP-Server/1.0')
+response = urllib.request.urlopen(request)
+```
+
+This requirement affects all HTTP clients fetching JWKS from Cloudflare-protected endpoints, not just OpenADP servers. The User-Agent header can be any valid string.
+
 ---
 
 ## 5  Request Flow Details
@@ -174,9 +191,9 @@ Rollback: set `auth.enabled=false` temporally.
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `auth.enabled` | Enforce JWT on state-changing RPCs | `false` (until Phase 3) |
-| `auth.issuer` | Expected `iss` claim (IdP URL) | — |
-| `auth.jwks_url` | JWKS endpoint (cached, refreshing) | `${issuer}/.well-known/jwks.json` |
+| `auth.enabled` | Enforce JWT on state-changing RPCs | `true` (since Phase 4.1) |
+| `auth.issuer` | Expected `iss` claim (IdP URL) | `https://auth.openadp.org/realms/openadp` |
+| `auth.jwks_url` | JWKS endpoint (cached, refreshing) | `${issuer}/protocol/openid-connect/certs` |
 | `auth.cache_ttl` | Seconds to cache JWKS | 3600 |
 | `rate.user_rps` | Requests/sec per user | 5 |
 | `rate.ip_rps` | Requests/sec per IP (pre-auth) | 20 |
@@ -332,11 +349,11 @@ The OAuth2 Device Flow and DPoP key management work completed in Phases 1-2 rema
 
 #### Server Configuration
 ```bash
-# Single issuer (current)
-OPENADP_AUTH_ISSUER="http://localhost:8081/realms/openadp"
+# Single issuer (current - Phase 4.1)
+OPENADP_AUTH_ISSUER="https://auth.openadp.org/realms/openadp"
 
 # Multiple issuers (Phase 7)
-OPENADP_AUTH_ISSUERS="http://localhost:8081/realms/openadp,https://corporate.example.com,https://community.openadp.org"
+OPENADP_AUTH_ISSUERS="https://auth.openadp.org/realms/openadp,https://corporate.example.com,https://community.openadp.org"
 ```
 
 #### Security Properties
@@ -472,6 +489,55 @@ Each phase is sized to fit a single pull-request and can be tested independently
 - Production nodes run for ≥1 week with zero unauth traffic.
 
 ---
+
+## 15  Phase 4.1 - COMPLETED ✅
+
+**Global Authentication Server Deployment - January 2025**
+
+Phase 4.1 has been successfully completed with full end-to-end authentication working using the global Keycloak server at `https://auth.openadp.org`.
+
+### Key Achievements
+
+1. **Global Server Transition**: Successfully moved from local to global authentication
+2. **Cloudflare Integration**: Resolved HTTP/HTTPS protocol mismatch with proxy configuration
+3. **Public Client Configuration**: Updated from confidential to public client for CLI tools
+4. **JWKS Access Fix**: Resolved critical User-Agent header requirement for JWKS requests
+
+### Critical Technical Discovery: JWKS User-Agent Requirement
+
+**Issue**: JWKS requests to `https://auth.openadp.org/realms/openadp/protocol/openid-connect/certs` failed with 403 Forbidden when sent without User-Agent header.
+
+**Root Cause**: Cloudflare proxy blocks requests without User-Agent headers as potential bot traffic.
+
+**Solution Applied**: Updated server JWKS fetching code:
+```python
+# Before: Failed with 403 Forbidden
+response = urllib.request.urlopen(AUTH_JWKS_URL)
+
+# After: Success with User-Agent header
+req = urllib.request.Request(AUTH_JWKS_URL)
+req.add_header('User-Agent', 'OpenADP-Server/1.0')
+response = urllib.request.urlopen(req)
+```
+
+This fix has been applied to:
+- `prototype/src/server/jsonrpc_server.py` (line 58)
+- `prototype/src/server/auth_middleware.py` (if implemented)
+
+### Validation Results
+
+**Complete end-to-end testing successful:**
+- ✅ Authentication flow working with global server
+- ✅ Encryption with 3-server threshold (2 of 3 recovery)
+- ✅ Decryption with authenticated token validation
+- ✅ DPoP token binding with handshake signature verification
+
+### Architecture Status
+
+- **Authentication Server**: https://auth.openadp.org (Keycloak on Raspberry Pi + Cloudflare)
+- **Production Servers**: 3 servers (xyzzy, sky, minime) validating global tokens
+- **Security Stack**: PKCE + DPoP + Noise-NK + Shamir secret sharing
+- **Client Tools**: Updated to use global issuer by default
 
 Token lifetime parameters (see §7) remain: access 5 min, refresh 90 days.
 

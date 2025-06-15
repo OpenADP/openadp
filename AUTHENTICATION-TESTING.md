@@ -4,6 +4,8 @@
 
 The OpenADP encrypt/decrypt tools support Phase 3.5 encrypted authentication using DPoP tokens over Noise-NK channels. This provides nation-state resistant encryption with secure token exchange.
 
+**Note**: As of Phase 4.1, authentication is **enabled by default** for all production operations. The global authentication server at `https://auth.openadp.org` is used unless explicitly overridden.
+
 ## Authentication Architecture
 
 - **Phase 3.5 Encrypted Authentication**: DPoP tokens transmitted within Noise-NK encrypted channels
@@ -39,8 +41,11 @@ docker-compose -f docker-compose.keycloak.yml up -d
 ```bash
 cd prototype/tools
 
-# Test encryption with auth
-python encrypt.py test_file.txt --servers http://localhost:8080 --auth --issuer http://localhost:8081/realms/openadp
+# Test encryption with auth (default global server)
+python encrypt.py test_file.txt --servers http://localhost:8080 --auth
+
+# Or explicitly specify the global server
+python encrypt.py test_file.txt --servers http://localhost:8080 --auth --issuer https://auth.openadp.org/realms/openadp
 
 # Test decryption with auth
 python decrypt.py test_file.txt.enc --auth
