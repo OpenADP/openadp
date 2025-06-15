@@ -90,7 +90,11 @@ def get_jwks(jwks_url: str, cache_ttl: int = 3600) -> Dict[str, Any]:
     # Fetch fresh JWKS
     logger.info(f"Fetching JWKS from {jwks_url}")
     try:
-        with urlopen(jwks_url) as response:
+        # Create request with User-Agent header (required by Cloudflare)
+        from urllib.request import Request
+        req = Request(jwks_url)
+        req.add_header('User-Agent', 'OpenADP-Server/1.0')
+        with urlopen(req) as response:
             jwks_data = json.loads(response.read().decode('utf-8'))
         
         # Cache the JWKS

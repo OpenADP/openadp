@@ -71,7 +71,10 @@ def load_jwks():
     
     try:
         logger.info(f"Fetching JWKS from {AUTH_JWKS_URL}")
-        with urllib.request.urlopen(AUTH_JWKS_URL, timeout=10) as response:
+        # Create request with User-Agent header (required by Cloudflare)
+        req = urllib.request.Request(AUTH_JWKS_URL)
+        req.add_header('User-Agent', 'OpenADP-Server/1.0')
+        with urllib.request.urlopen(req, timeout=10) as response:
             jwks_data = json.loads(response.read())
             jwks_cache = jwks_data
             jwks_cache_expiry = current_time + cache_ttl
