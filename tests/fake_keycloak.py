@@ -48,7 +48,8 @@ class FakeKeycloakHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(obj).encode("utf-8"))
 
     def do_GET(self):
-        if self.path == "/.well-known/openid-configuration":
+        # All endpoints are now under /realms/openadp
+        if self.path == "/realms/openadp/.well-known/openid-configuration":
             self._send_json({
                 "issuer": ISSUER,
                 "jwks_uri": f"{ISSUER}/protocol/openid-connect/certs",
@@ -60,14 +61,14 @@ class FakeKeycloakHandler(BaseHTTPRequestHandler):
                 "subject_types_supported": ["public"],
                 "id_token_signing_alg_values_supported": ["ES256"],
             })
-        elif self.path == "/protocol/openid-connect/certs":
+        elif self.path == "/realms/openadp/protocol/openid-connect/certs":
             self._send_json(JWKS)
         else:
             self.send_response(404)
             self.end_headers()
 
     def do_POST(self):
-        if self.path == "/protocol/openid-connect/token":
+        if self.path == "/realms/openadp/protocol/openid-connect/token":
             content_length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(content_length).decode("utf-8")
             params = dict(x.split('=') for x in body.split('&'))
@@ -99,7 +100,6 @@ class FakeKeycloakHandler(BaseHTTPRequestHandler):
                 "exp": now + 300,
                 "jti": str(uuid.uuid4()),
             }
-            # DPoP/PoP: Accept cnf from request (not implemented yet)
             token = jwt.encode(payload, EC_KEY, algorithm="ES256", headers={"kid": KID})
             self._send_json({
                 "access_token": token,

@@ -339,6 +339,7 @@ class EncryptedOpenADPClient(OpenADPClient):
                 return None, "Handshake not completed properly"
             
             logger.debug(f"Handshake completed for session {session_id[:16]}...")
+            self.last_handshake_hash = noise_client.get_handshake_hash()
             
             # Round 2: Encrypted call
             inner_request = {
