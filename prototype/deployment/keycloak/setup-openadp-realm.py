@@ -151,6 +151,8 @@ class KeycloakAdmin:
                 "backchannel.logout.session.required": "true",
                 "backchannel.logout.revoke.offline.tokens": "false",
                 "dpop.bound.access.tokens": "true",
+                "dpop.legacy.mode": "true",
+                "dpop.cnf.claim.enabled": "true",
                 "use.refresh.tokens": "true",
                 "id.token.as.detached.signature": "false",
                 "tls.client.certificate.bound.access.tokens": "false",

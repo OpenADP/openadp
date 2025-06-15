@@ -184,9 +184,8 @@ def validate_encrypted_auth(auth_payload: dict, handshake_hash: bytes) -> Tuple[
             return None, f"Handshake signature verification failed: {str(e)}"
         
         # 3. Verify token contains matching public key (DPoP binding)
-        # TODO: Keycloak 22.0 doesn't seem to properly bind tokens to DPoP keys
-        # For now, we'll skip this check and rely on handshake signature verification
-        # which provides equivalent security for our use case
+        # Using Keycloak's non-standard DPoP extension which properly includes cnf.jkt field
+        # This provides proper token binding security against theft attacks
         try:
             import jwt
             unverified_payload = jwt.decode(access_token, options={"verify_signature": False})
@@ -197,14 +196,20 @@ def validate_encrypted_auth(auth_payload: dict, handshake_hash: bytes) -> Tuple[
             expected_thumbprint = calculate_jwk_thumbprint(dpop_public_key)
             token_thumbprint = cnf_claim.get('jkt')
             
-            if token_thumbprint and token_thumbprint != expected_thumbprint:
-                return None, "Token not bound to provided DPoP key"
-            elif not token_thumbprint:
-                # Log warning but don't fail - rely on handshake signature instead
+            if True:  # Enable cnf field validation with non-standard extension
+                if not token_thumbprint:
+                    return None, "Token missing cnf.jkt claim - DPoP binding required for security"
+                elif token_thumbprint != expected_thumbprint:
+                    return None, "Token not bound to provided DPoP key"
+                else:
+                    logger.info(f"DPoP token binding validated successfully for user: {user_id}")
+            else:
+                # Fallback mode (disabled) - would rely on handshake signature only
                 logger.warning(f"Token missing cnf.jkt claim - relying on handshake signature for DPoP binding")
                 
         except Exception as e:
-            logger.warning(f"DPoP binding verification failed: {str(e)} - continuing with handshake signature")
+            logger.error(f"DPoP binding verification failed: {str(e)}")
+            return None, f"DPoP binding verification failed: {str(e)}"
         
         logger.info(f"Encrypted authentication validated for user: {user_id}")
         return user_id, None

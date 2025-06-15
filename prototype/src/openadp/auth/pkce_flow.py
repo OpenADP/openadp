@@ -2,7 +2,11 @@
 OAuth 2.0 Authorization Code flow with PKCE and DPoP support.
 
 This module implements the Authorization Code Grant with PKCE (RFC 7636)
-and DPoP token binding (RFC 9449) for secure authentication.
+and DPoP token binding using Keycloak's non-standard extension for secure authentication.
+
+Note: Uses Keycloak's non-standard DPoP extension (dpop_jkt parameter) instead of 
+RFC 9449 due to Keycloak's incomplete implementation of the cnf.jkt field in 
+standard RFC-compliant mode. This ensures proper token binding security.
 """
 
 import base64
@@ -174,8 +178,9 @@ def run_pkce_flow(
         'scope': scopes,
         'state': state,
         'code_challenge': code_challenge,
-        'code_challenge_method': 'S256'
-        # Note: dpop_jkt parameter removed - will bind token via DPoP header in token request
+        'code_challenge_method': 'S256',
+        # Use Keycloak's non-standard DPoP extension for proper cnf field binding
+        'dpop_jkt': jwk_thumbprint
     }
     
     auth_url = f"{auth_endpoint}?{urlencode(auth_params)}"

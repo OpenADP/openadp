@@ -12,7 +12,7 @@ import base64
 import uuid
 import hashlib
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlparse, urlencode
 from typing import Dict, Any, Optional, List
 import jwt
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -53,8 +53,8 @@ class FakeKeycloakConfig:
             {
                 "client_id": "cli-test",
                 "client_secret": "secret",
-                "allowed_grant_types": ["password", "client_credentials", "refresh_token"],
-                "redirect_uris": ["http://localhost:8080/callback"]
+                "allowed_grant_types": ["password", "client_credentials", "refresh_token", "authorization_code"],
+                "redirect_uris": ["http://localhost:8888/callback", "http://localhost:8889/callback"]
             },
             {
                 "client_id": "public-client",
@@ -152,11 +152,16 @@ class TokenManager:
         
         # Add DPoP confirmation if provided
         if dpop_jwk:
-            # Create JWK thumbprint for cnf claim
-            jwk_json = json.dumps(dpop_jwk, sort_keys=True, separators=(',', ':'))
-            thumbprint = base64.urlsafe_b64encode(
-                hashlib.sha256(jwk_json.encode()).digest()
-            ).decode().rstrip('=')
+            # Check if this is a mock JWK with pre-calculated thumbprint (from dpop_jkt parameter)
+            if "_jkt" in dpop_jwk:
+                # Use the pre-calculated thumbprint from dpop_jkt parameter
+                thumbprint = dpop_jwk["_jkt"]
+            else:
+                # Create JWK thumbprint for cnf claim
+                jwk_json = json.dumps(dpop_jwk, sort_keys=True, separators=(',', ':'))
+                thumbprint = base64.urlsafe_b64encode(
+                    hashlib.sha256(jwk_json.encode()).digest()
+                ).decode().rstrip('=')
             payload["cnf"] = {"jkt": thumbprint}
         
         return self.jwk_manager.sign_jwt(payload)
@@ -196,6 +201,8 @@ class FakeKeycloakHandler(BaseHTTPRequestHandler):
         self.config = config
         self.jwk_manager = jwk_manager
         self.token_manager = token_manager
+        # Store authorization codes and their associated data
+        self.auth_codes: Dict[str, Dict[str, Any]] = {}
         super().__init__(*args, **kwargs)
     
     def log_message(self, format, *args):
@@ -234,18 +241,19 @@ class FakeKeycloakHandler(BaseHTTPRequestHandler):
     
     def do_GET(self):
         """Handle GET requests."""
-        path = self.path
-        realm_prefix = f"/realms/{self.config.realm}"
+        parsed_url = urlparse(self.path)
+        path = parsed_url.path
         
-        if path == f"{realm_prefix}/.well-known/openid-configuration":
+        if path == f"/realms/{self.config.realm}/.well-known/openid_configuration":
             self._handle_discovery()
-        elif path == f"{realm_prefix}/protocol/openid-connect/certs":
+        elif path == f"/realms/{self.config.realm}/protocol/openid-connect/certs":
             self._handle_jwks()
-        elif path == f"{realm_prefix}/protocol/openid-connect/userinfo":
+        elif path == f"/realms/{self.config.realm}/protocol/openid-connect/userinfo":
             self._handle_userinfo()
+        elif path == f"/realms/{self.config.realm}/protocol/openid-connect/auth":
+            self._handle_authorization(parsed_url)
         else:
-            self.send_response(404)
-            self.end_headers()
+            self._send_error("not_found", "Endpoint not found", 404)
     
     def do_POST(self):
         """Handle POST requests."""
@@ -259,34 +267,23 @@ class FakeKeycloakHandler(BaseHTTPRequestHandler):
             self.end_headers()
     
     def _handle_discovery(self):
-        """Handle OIDC discovery endpoint."""
-        base_url = f"{self.config.issuer}/protocol/openid-connect"
-        
-        discovery = {
+        """Handle OpenID Connect discovery."""
+        discovery_doc = {
             "issuer": self.config.issuer,
-            "authorization_endpoint": f"{base_url}/auth",
-            "token_endpoint": f"{base_url}/token",
-            "userinfo_endpoint": f"{base_url}/userinfo",
-            "jwks_uri": f"{base_url}/certs",
-            "grant_types_supported": [
-                "authorization_code",
-                "password", 
-                "client_credentials",
-                "refresh_token"
-            ],
-            "response_types_supported": ["code", "token"],
+            "authorization_endpoint": f"{self.config.issuer}/protocol/openid-connect/auth",
+            "token_endpoint": f"{self.config.issuer}/protocol/openid-connect/token",
+            "userinfo_endpoint": f"{self.config.issuer}/protocol/openid-connect/userinfo",
+            "jwks_uri": f"{self.config.issuer}/protocol/openid-connect/certs",
+            "response_types_supported": ["code"],
             "subject_types_supported": ["public"],
             "id_token_signing_alg_values_supported": ["ES256"],
-            "token_endpoint_auth_methods_supported": [
-                "client_secret_post",
-                "client_secret_basic",
-                "none"
-            ],
+            "scopes_supported": ["openid", "profile", "email"],
+            "grant_types_supported": ["authorization_code", "password", "client_credentials", "refresh_token"],
+            "code_challenge_methods_supported": ["S256"],
             "dpop_signing_alg_values_supported": ["ES256"],
-            "scopes_supported": ["openid", "profile", "email"]
+            "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post"]
         }
-        
-        self._send_json(discovery)
+        self._send_json(discovery_doc)
     
     def _handle_jwks(self):
         """Handle JWKS endpoint."""
@@ -331,6 +328,74 @@ class FakeKeycloakHandler(BaseHTTPRequestHandler):
         except jwt.InvalidTokenError as e:
             self._send_error("invalid_token", str(e), 401)
     
+    def _handle_authorization(self, parsed_url):
+        """Handle authorization endpoint for PKCE flow."""
+        query_params = parse_qs(parsed_url.query)
+        
+        def get_param(name: str) -> Optional[str]:
+            values = query_params.get(name, [])
+            return values[0] if values else None
+        
+        response_type = get_param("response_type")
+        client_id = get_param("client_id")
+        redirect_uri = get_param("redirect_uri")
+        state = get_param("state")
+        code_challenge = get_param("code_challenge")
+        code_challenge_method = get_param("code_challenge_method")
+        dpop_jkt = get_param("dpop_jkt")  # Non-standard DPoP extension parameter
+        
+        # Validate required parameters
+        if response_type != "code":
+            self._send_error("unsupported_response_type", "Only authorization code flow supported")
+            return
+        
+        if not client_id or not redirect_uri:
+            self._send_error("invalid_request", "Missing required parameters")
+            return
+        
+        # Validate client
+        client = next((c for c in self.config.clients if c["client_id"] == client_id), None)
+        if not client:
+            self._send_error("invalid_client", "Unknown client")
+            return
+        
+        if redirect_uri not in client.get("redirect_uris", []):
+            self._send_error("invalid_request", "Invalid redirect_uri")
+            return
+        
+        # For testing, auto-approve with first test user
+        user = self.config.users[0] if self.config.users else None
+        if not user:
+            self._send_error("server_error", "No test users configured")
+            return
+        
+        # Generate authorization code
+        auth_code = str(uuid.uuid4())
+        
+        # Store authorization code data
+        self.auth_codes[auth_code] = {
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "user": user,
+            "code_challenge": code_challenge,
+            "code_challenge_method": code_challenge_method,
+            "dpop_jkt": dpop_jkt,  # Store dpop_jkt for token exchange
+            "created_at": time.time(),
+            "used": False
+        }
+        
+        # Build redirect response
+        redirect_params = {"code": auth_code}
+        if state:
+            redirect_params["state"] = state
+        
+        redirect_url = f"{redirect_uri}?{urlencode(redirect_params)}"
+        
+        # Send redirect response
+        self.send_response(302)
+        self.send_header("Location", redirect_url)
+        self.end_headers()
+    
     def _handle_token(self):
         """Handle token endpoint."""
         try:
@@ -374,6 +439,8 @@ class FakeKeycloakHandler(BaseHTTPRequestHandler):
                 self._handle_client_credentials_grant(params, client, dpop_jwk)
             elif grant_type == "refresh_token":
                 self._handle_refresh_token_grant(params, client, dpop_jwk)
+            elif grant_type == "authorization_code":
+                self._handle_authorization_code_grant(params, client, dpop_jwk)
             else:
                 self._send_error("unsupported_grant_type", f"Grant type {grant_type} not implemented")
                 
@@ -486,6 +553,103 @@ class FakeKeycloakHandler(BaseHTTPRequestHandler):
             "token_type": "Bearer", 
             "expires_in": self.config.token_lifetime,
             "refresh_token": new_refresh_token,
+            "scope": "openid profile email"
+        }
+        
+        self._send_json(response)
+
+    def _handle_authorization_code_grant(self, params: Dict[str, List[str]], 
+                                       client: Dict[str, Any], dpop_jwk: Optional[Dict[str, Any]]):
+        """Handle authorization code grant with PKCE and DPoP support."""
+        import base64
+        import hashlib
+        
+        def get_param(name: str) -> Optional[str]:
+            values = params.get(name, [])
+            return values[0] if values else None
+        
+        code = get_param("code")
+        redirect_uri = get_param("redirect_uri")
+        code_verifier = get_param("code_verifier")
+        
+        if not code:
+            self._send_error("invalid_request", "Missing authorization code")
+            return
+        
+        if not redirect_uri:
+            self._send_error("invalid_request", "Missing redirect_uri")
+            return
+        
+        # Validate authorization code
+        if code not in self.auth_codes:
+            self._send_error("invalid_grant", "Invalid authorization code")
+            return
+        
+        auth_data = self.auth_codes[code]
+        
+        # Check if code is already used
+        if auth_data["used"]:
+            self._send_error("invalid_grant", "Authorization code already used")
+            return
+        
+        # Check expiration (5 minutes)
+        if time.time() - auth_data["created_at"] > 300:
+            del self.auth_codes[code]
+            self._send_error("invalid_grant", "Authorization code expired")
+            return
+        
+        # Validate client and redirect_uri match
+        if auth_data["client_id"] != client["client_id"]:
+            self._send_error("invalid_grant", "Client mismatch")
+            return
+        
+        if auth_data["redirect_uri"] != redirect_uri:
+            self._send_error("invalid_grant", "Redirect URI mismatch")
+            return
+        
+        # Validate PKCE if code_challenge was provided
+        if auth_data.get("code_challenge"):
+            if not code_verifier:
+                self._send_error("invalid_request", "Missing code_verifier for PKCE")
+                return
+            
+            # Verify code challenge
+            if auth_data.get("code_challenge_method") == "S256":
+                challenge_bytes = hashlib.sha256(code_verifier.encode('ascii')).digest()
+                expected_challenge = base64.urlsafe_b64encode(challenge_bytes).decode('ascii').rstrip('=')
+                if auth_data["code_challenge"] != expected_challenge:
+                    self._send_error("invalid_grant", "Invalid code_verifier")
+                    return
+            else:
+                self._send_error("unsupported_challenge_method", "Only S256 challenge method supported")
+                return
+        
+        # Handle DPoP binding - use dpop_jkt from authorization request if no DPoP header
+        final_dpop_jwk = dpop_jwk
+        if not final_dpop_jwk and auth_data.get("dpop_jkt"):
+            # Convert dpop_jkt thumbprint back to JWK for token binding
+            # For testing, we'll create a mock JWK with the thumbprint
+            final_dpop_jwk = {
+                "kty": "EC",
+                "crv": "P-256", 
+                "x": "mock_x_coordinate",
+                "y": "mock_y_coordinate",
+                "_jkt": auth_data["dpop_jkt"]  # Store original thumbprint
+            }
+        
+        # Mark code as used
+        auth_data["used"] = True
+        
+        # Issue tokens
+        user = auth_data["user"]
+        access_token = self.token_manager.create_access_token(user, client["client_id"], final_dpop_jwk)
+        refresh_token = self.token_manager.create_refresh_token(user, client["client_id"])
+        
+        response = {
+            "access_token": access_token,
+            "token_type": "DPoP" if final_dpop_jwk else "Bearer",
+            "expires_in": self.config.token_lifetime,
+            "refresh_token": refresh_token,
             "scope": "openid profile email"
         }
         
