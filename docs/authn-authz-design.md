@@ -739,24 +739,3 @@ OpenADP Server → IdP: "Getting public keys" (once per day)
 ```
 
 The network pattern becomes indistinguishable from any other API server using standard OAuth practices.
-
-### 14.8  Implementation Plan
-
-**Phase A**: Basic caching infrastructure
-- Implement in-memory JWKS cache with TTL
-- Add cache miss fallback to current network fetch
-- Metrics for cache hit/miss rates
-
-**Phase B**: Aggressive caching
-- Increase cache TTL to 24 hours
-- Add startup preloading of configured issuers
-- Implement persistent cache backup
-
-**Phase C**: Offline mode
-- Add configuration option to disable network calls entirely
-- Operator tooling for manual key updates
-- Graceful degradation when cache is stale
-
-This enhancement maintains full compatibility with existing IdPs while dramatically improving privacy and reducing network dependencies.
-
-*End of v0.3 — phase details expanded.* 
