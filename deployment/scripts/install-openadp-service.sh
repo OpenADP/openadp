@@ -9,7 +9,7 @@ INSTALL_DIR="/opt/openadp"
 SERVICE_USER="openadp"
 SERVICE_GROUP="openadp"
 # Navigate from deployment/scripts/ back to project root
-SOURCE_DIR="$(dirname "$(dirname "$(readlink -f "$0")")")"
+SOURCE_DIR="$(dirname "$(dirname "$(dirname "$(readlink -f "$0")")")")"
 
 echo "=== OpenADP Server Installation ==="
 echo "Source directory: $SOURCE_DIR"

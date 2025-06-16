@@ -10,9 +10,9 @@ the server module directly.
 import sys
 import os
 
-# Add the src directory to Python path
-src_path = os.path.join(os.path.dirname(__file__), 'src')
-sys.path.insert(0, src_path)
+# Add the current directory to Python path
+current_path = os.path.dirname(__file__)
+sys.path.insert(0, current_path)
 
 # Import and run the server
 from server.jsonrpc_server import main
