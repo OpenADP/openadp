@@ -8,8 +8,8 @@ set -e
 INSTALL_DIR="/opt/openadp"
 SERVICE_USER="openadp"
 SERVICE_GROUP="openadp"
-# Navigate from deployment/scripts/ back to prototype root
-SOURCE_DIR="$(dirname "$(dirname "$(dirname "$(readlink -f "$0")")")")"
+# Navigate from deployment/scripts/ back to project root
+SOURCE_DIR="$(dirname "$(dirname "$(readlink -f "$0")")")"
 
 echo "=== OpenADP Server Installation ==="
 echo "Source directory: $SOURCE_DIR"
@@ -87,17 +87,23 @@ fi
 echo "Creating installation directory..."
 mkdir -p "$INSTALL_DIR"
 
-# Copy files from the correct 'prototype/src' location
+# Copy files from the new directory structure
 echo "Copying OpenADP files..."
 # Remove old directories to ensure a clean install
-if [ -d "$INSTALL_DIR/src" ]; then rm -rf "$INSTALL_DIR/src"; fi
+if [ -d "$INSTALL_DIR/openadp" ]; then rm -rf "$INSTALL_DIR/openadp"; fi
+if [ -d "$INSTALL_DIR/server" ]; then rm -rf "$INSTALL_DIR/server"; fi
+if [ -d "$INSTALL_DIR/client" ]; then rm -rf "$INSTALL_DIR/client"; fi
 if [ -d "$INSTALL_DIR/proto" ]; then rm -rf "$INSTALL_DIR/proto"; fi
 if [ -d "$INSTALL_DIR/tools" ]; then rm -rf "$INSTALL_DIR/tools"; fi
+if [ -d "$INSTALL_DIR/api" ]; then rm -rf "$INSTALL_DIR/api"; fi
 
 # Copy the necessary directories
-cp -r "$SOURCE_DIR/src" "$INSTALL_DIR/"
+cp -r "$SOURCE_DIR/openadp" "$INSTALL_DIR/"
+cp -r "$SOURCE_DIR/server" "$INSTALL_DIR/"
+cp -r "$SOURCE_DIR/client" "$INSTALL_DIR/" 2>/dev/null || echo "Note: client directory not found, skipping"
 cp -r "$SOURCE_DIR/proto" "$INSTALL_DIR/" 2>/dev/null || echo "Note: proto directory not found, skipping"
 cp -r "$SOURCE_DIR/tools" "$INSTALL_DIR/" 2>/dev/null || echo "Note: tools directory not found, skipping"
+cp -r "$SOURCE_DIR/api" "$INSTALL_DIR/" 2>/dev/null || echo "Note: api directory not found, skipping"
 cp "$SOURCE_DIR/run_server.py" "$INSTALL_DIR/" 2>/dev/null || echo "Note: run_server.py not found, skipping"
 
 # Set permissions

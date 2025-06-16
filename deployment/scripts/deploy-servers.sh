@@ -7,7 +7,7 @@ set -e
 
 # Configuration
 SERVERS=("bill@xyzzy" "bill@sky" "bill@minime")
-PROJECT_DIR="~/projects/openadp/prototype"
+PROJECT_DIR="~/projects/openadp"
 # Note: This path is relative to the PROJECT_DIR on the remote server
 INSTALL_SCRIPT="deployment/scripts/install-openadp-service.sh"
 
