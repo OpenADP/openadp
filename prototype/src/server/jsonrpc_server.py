@@ -375,8 +375,8 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
                 if y_int.bit_length() > 256:
                     return None, f"INVALID_ARGUMENT: Y integer too large ({y_int.bit_length()} bits, max 256)"
                 
-                # Convert integer to bytes with fixed 32-byte length (big-endian to match client)
-                y = y_int.to_bytes(32, "big")
+                # Convert integer to bytes with fixed 32-byte length (little-endian to match client)
+                y = y_int.to_bytes(32, "little")
                 logger.info(f"Converted y_str (len={len(y_str)}) to {len(y)} bytes, {y_int.bit_length()} bits")
                 
             except ValueError as e:
@@ -668,7 +668,7 @@ def main():
     global db_connection
     
     # Initialize database
-    db_path = "openadp.db"
+    db_path = os.environ.get('OPENADP_DB', 'openadp.db')
     db_connection = database.Database(db_path)
     logger.info(f"Database initialized at {db_path}")
 

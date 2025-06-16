@@ -61,6 +61,12 @@ class FakeKeycloakConfig:
                 "client_secret": None,  # Public client
                 "allowed_grant_types": ["authorization_code", "refresh_token"],
                 "redirect_uris": ["http://localhost:3000/callback"]
+            },
+            {
+                "client_id": "openadp-cli",
+                "client_secret": None,  # Public client for CLI tools
+                "allowed_grant_types": ["authorization_code", "refresh_token"],
+                "redirect_uris": ["http://localhost:8888/callback", "http://localhost:8889/callback"]
             }
         ]
     
@@ -197,12 +203,11 @@ class FakeKeycloakHandler(BaseHTTPRequestHandler):
     """HTTP request handler for the fake Keycloak server."""
     
     def __init__(self, config: FakeKeycloakConfig, jwk_manager: JWKManager, 
-                 token_manager: TokenManager, *args, **kwargs):
+                 token_manager: TokenManager, auth_codes: Dict[str, Dict[str, Any]], *args, **kwargs):
         self.config = config
         self.jwk_manager = jwk_manager
         self.token_manager = token_manager
-        # Store authorization codes and their associated data
-        self.auth_codes: Dict[str, Dict[str, Any]] = {}
+        self.auth_codes = auth_codes
         super().__init__(*args, **kwargs)
     
     def log_message(self, format, *args):
@@ -244,7 +249,7 @@ class FakeKeycloakHandler(BaseHTTPRequestHandler):
         parsed_url = urlparse(self.path)
         path = parsed_url.path
         
-        if path == f"/realms/{self.config.realm}/.well-known/openid_configuration":
+        if path == f"/realms/{self.config.realm}/.well-known/openid-configuration":
             self._handle_discovery()
         elif path == f"/realms/{self.config.realm}/protocol/openid-connect/certs":
             self._handle_jwks()
@@ -572,6 +577,9 @@ class FakeKeycloakHandler(BaseHTTPRequestHandler):
         redirect_uri = get_param("redirect_uri")
         code_verifier = get_param("code_verifier")
         
+        print(f"DEBUG: Token exchange request - code: {code}, redirect_uri: {redirect_uri}")
+        print(f"DEBUG: Available auth codes: {list(self.auth_codes.keys())}")
+        
         if not code:
             self._send_error("invalid_request", "Missing authorization code")
             return
@@ -582,34 +590,41 @@ class FakeKeycloakHandler(BaseHTTPRequestHandler):
         
         # Validate authorization code
         if code not in self.auth_codes:
+            print(f"DEBUG: Code {code} not found in auth_codes")
             self._send_error("invalid_grant", "Invalid authorization code")
             return
         
         auth_data = self.auth_codes[code]
+        print(f"DEBUG: Found auth_data: {auth_data}")
         
         # Check if code is already used
         if auth_data["used"]:
+            print(f"DEBUG: Code {code} already used")
             self._send_error("invalid_grant", "Authorization code already used")
             return
         
         # Check expiration (5 minutes)
         if time.time() - auth_data["created_at"] > 300:
+            print(f"DEBUG: Code {code} expired")
             del self.auth_codes[code]
             self._send_error("invalid_grant", "Authorization code expired")
             return
         
         # Validate client and redirect_uri match
         if auth_data["client_id"] != client["client_id"]:
+            print(f"DEBUG: Client mismatch - expected {auth_data['client_id']}, got {client['client_id']}")
             self._send_error("invalid_grant", "Client mismatch")
             return
         
         if auth_data["redirect_uri"] != redirect_uri:
+            print(f"DEBUG: Redirect URI mismatch - expected {auth_data['redirect_uri']}, got {redirect_uri}")
             self._send_error("invalid_grant", "Redirect URI mismatch")
             return
         
         # Validate PKCE if code_challenge was provided
         if auth_data.get("code_challenge"):
             if not code_verifier:
+                print(f"DEBUG: Missing code_verifier for PKCE")
                 self._send_error("invalid_request", "Missing code_verifier for PKCE")
                 return
             
@@ -617,6 +632,7 @@ class FakeKeycloakHandler(BaseHTTPRequestHandler):
             if auth_data.get("code_challenge_method") == "S256":
                 challenge_bytes = hashlib.sha256(code_verifier.encode('ascii')).digest()
                 expected_challenge = base64.urlsafe_b64encode(challenge_bytes).decode('ascii').rstrip('=')
+                print(f"DEBUG: PKCE validation - expected: {auth_data['code_challenge']}, got: {expected_challenge}")
                 if auth_data["code_challenge"] != expected_challenge:
                     self._send_error("invalid_grant", "Invalid code_verifier")
                     return
@@ -645,6 +661,8 @@ class FakeKeycloakHandler(BaseHTTPRequestHandler):
         access_token = self.token_manager.create_access_token(user, client["client_id"], final_dpop_jwk)
         refresh_token = self.token_manager.create_refresh_token(user, client["client_id"])
         
+        print(f"DEBUG: Successfully issued tokens for user {user['username']}")
+        
         response = {
             "access_token": access_token,
             "token_type": "DPoP" if final_dpop_jwk else "Bearer",
@@ -667,9 +685,12 @@ class FakeKeycloakServer:
         self.jwk_manager = JWKManager()
         self.token_manager = TokenManager(self.config, self.jwk_manager)
         
+        # Store authorization codes at server level so they persist between requests
+        self.auth_codes: Dict[str, Dict[str, Any]] = {}
+        
         # Create handler class with dependencies injected
         def handler_factory(*args, **kwargs):
-            return FakeKeycloakHandler(self.config, self.jwk_manager, self.token_manager, *args, **kwargs)
+            return FakeKeycloakHandler(self.config, self.jwk_manager, self.token_manager, self.auth_codes, *args, **kwargs)
         
         self.httpd = HTTPServer((host, port), handler_factory)
         self.thread = None
