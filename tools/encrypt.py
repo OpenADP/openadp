@@ -34,56 +34,79 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from openadp import keygen
 from openadp.auth_code_manager import AuthCodeManager
+from client.scrape import get_server_urls, get_fallback_servers
 
 # --- Configuration ---
 # Nonce (Number used once) is required for ChaCha20. It must be unique for each
 # encryption operation with the same key. 12 bytes is the standard size.
 NONCE_SIZE: int = 12
 
-# Default server configuration
+# Default server configuration (fallback only)
 DEFAULT_SERVERS = [
     "https://xyzzy.openadp.org",
     "https://sky.openadp.org", 
     "https://minime.openadp.org"
 ]
 
-def get_auth_codes(servers: List[str], password: str, filename: str) -> Tuple[Dict[str, str], str]:
+def get_auth_codes(servers: List[str]) -> Tuple[Dict[str, str], str]:
     """
-    Generate deterministic authentication codes for server access based on password and filename.
-    This ensures the same codes can be regenerated during decryption.
+    Generate cryptographically random authentication codes for server access.
     
     Args:
         servers: List of server URLs
-        password: User password (used as seed for deterministic generation)
-        filename: Filename being encrypted (used as additional entropy)
         
     Returns:
         Tuple of (dictionary mapping server URLs to authentication codes, base_auth_code)
     """
-    print("🔐 Generating deterministic authentication codes...")
+    print("🔐 Generating random authentication codes...")
     
-    # Create deterministic seed from password and filename
-    import hashlib
-    seed_data = f"{password}:{filename}".encode('utf-8')
-    seed_hash = hashlib.sha256(seed_data).hexdigest()
+    # Use AuthCodeManager for proper random generation
+    from openadp.auth_code_manager import AuthCodeManager
+    auth_manager = AuthCodeManager()
     
-    # Generate base auth code deterministically from seed (32 hex chars = 128 bits)
-    base_seed = f"base:{seed_hash}"
-    base_hash = hashlib.sha256(base_seed.encode()).hexdigest()
-    base_auth_code = base_hash[:32]  # Take first 32 hex chars (128 bits)
+    # Generate cryptographically random base auth code (32 hex chars = 128 bits)
+    base_auth_code = auth_manager.generate_auth_code()
     
-    # Generate server-specific codes deterministically (64 hex chars = SHA256)
-    server_auth_codes = {}
-    for server_url in servers:
-        # Use same derivation method as AuthCodeManager
-        combined = f"{base_auth_code}:{server_url}"
-        server_code = hashlib.sha256(combined.encode()).hexdigest()  # Full 64 hex chars
-        server_auth_codes[server_url] = server_code
+    # Generate server-specific codes using proper derivation
+    server_auth_codes = auth_manager.get_server_codes(base_auth_code, servers)
     
-    print(f"🔑 Generated deterministic base authentication code: {base_auth_code}")
+    print(f"🔑 Generated random base authentication code: {base_auth_code}")
     print(f"🌐 Derived {len(server_auth_codes)} server-specific codes")
     
     return server_auth_codes, base_auth_code
+
+def get_servers_list(custom_servers: Optional[List[str]] = None, servers_url: str = "https://servers.openadp.org") -> List[str]:
+    """
+    Get the list of servers to use for encryption.
+    
+    Args:
+        custom_servers: Optional list of custom server URLs (bypasses scraping)
+        servers_url: URL to scrape for server list if custom_servers not provided
+        
+    Returns:
+        List of server URLs to use
+    """
+    # If custom servers provided, use them directly
+    if custom_servers:
+        print(f"🌐 Using custom servers: {len(custom_servers)} servers")
+        return custom_servers
+    
+    # Try to scrape servers from the registry
+    print(f"🌐 Fetching server list from {servers_url}...")
+    try:
+        scraped_servers = get_server_urls(servers_url)
+        if scraped_servers:
+            print(f"✅ Successfully scraped {len(scraped_servers)} servers from registry")
+            return scraped_servers
+        else:
+            print("⚠️  No servers found in registry, falling back to defaults")
+    except Exception as e:
+        print(f"⚠️  Failed to scrape servers from {servers_url}: {e}")
+        print("⚠️  Falling back to default servers")
+    
+    # Fallback to hardcoded defaults
+    print(f"🌐 Using fallback servers: {len(DEFAULT_SERVERS)} servers")
+    return DEFAULT_SERVERS
 
 def encrypt_file(input_filename: str, password: str, 
                 servers: Optional[List[str]] = None, servers_url: str = "https://servers.openadp.org") -> None:
@@ -110,24 +133,22 @@ def encrypt_file(input_filename: str, password: str,
     
     output_filename = input_filename + ".enc"
 
-    # 2. Use default servers if none provided
-    if not servers:
-        servers = DEFAULT_SERVERS
-        print(f"🌐 Using default servers: {len(servers)} servers")
+    # 2. Get server list (scrape from registry or use custom/fallback)
+    servers_to_use = get_servers_list(servers, servers_url)
     
     # 3. Generate authentication codes
-    server_auth_codes, base_auth_code = get_auth_codes(servers, password, input_filename)
+    server_auth_codes, base_auth_code = get_auth_codes(servers_to_use)
     
-    # 4. Generate user ID from authentication codes (for consistency)
-    import hashlib
-    user_id = hashlib.sha256(base_auth_code.encode()).hexdigest()[:32]  # 32-char UUID-like ID
+    # 4. Generate user ID (random UUID for this session)
+    import uuid
+    user_id = str(uuid.uuid4()).replace('-', '')[:32]  # 32-char UUID-like ID
     print(f"🔐 Generated user ID: {user_id}")
 
-    # 5. Generate encryption key using custom OpenADP implementation with auth codes
+    # 5. Generate encryption key using custom implementation
     print("Generating encryption key using OpenADP servers...")
     
     enc_key, error, server_urls_used, threshold = generate_encryption_key_with_auth_codes(
-        input_filename, password, user_id, server_auth_codes, servers
+        input_filename, password, user_id, server_auth_codes, servers_to_use
     )
     
     if error:
@@ -150,12 +171,17 @@ def encrypt_file(input_filename: str, password: str,
     import secrets
     nonce = secrets.token_bytes(NONCE_SIZE)
 
-    # 8. Create metadata
+    # 8. Create metadata including authentication codes
     metadata = {
         "servers": server_urls_used,
         "threshold": threshold,
         "auth_enabled": True,
-        "version": "2.0"  # Version 2.0 uses authentication codes
+        "version": "2.0",  # Version 2.0 uses authentication codes
+        "auth_codes": {
+            "base_auth_code": base_auth_code,
+            "server_auth_codes": {url: server_auth_codes[url] for url in server_urls_used}
+        },
+        "user_id": user_id
     }
     metadata_json = json.dumps(metadata, separators=(',', ':')).encode('utf-8')
 

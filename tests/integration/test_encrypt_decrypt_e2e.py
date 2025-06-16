@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
-Integration test for complete encrypt/decrypt workflow with authentication codes.
+Integration test for complete encrypt/decrypt workflow using actual tools.
 
-This test demonstrates the full OpenADP system in action:
-1. Authentication code generation
-2. Real local OpenADP servers
-3. Complete encrypt/decrypt cycle
-4. Secret sharing and recovery
-5. File encryption/decryption
+This test demonstrates the full OpenADP system in action by actually running
+the encrypt.py and decrypt.py tools that users would use:
+1. Real local OpenADP servers
+2. Actual encrypt.py tool execution
+3. Actual decrypt.py tool execution
+4. Complete file integrity verification
 
-This is the ultimate end-to-end integration test.
+This is the ultimate end-to-end integration test that validates the actual
+user experience.
 """
 
 import os
@@ -18,27 +19,22 @@ import tempfile
 import pytest
 import subprocess
 import time
-import hashlib
+import json
 from pathlib import Path
 
 # Add the project root to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
-from openadp.auth_code_manager import AuthCodeManager
-from client.jsonrpc_client import OpenADPClient
-
 
 class TestEncryptDecryptE2E:
-    """Complete encrypt/decrypt integration test with real servers."""
+    """Complete encrypt/decrypt integration test using actual tools."""
     
     # Class-level state for sharing between tests
-    auth_codes = None
-    base_auth_code = None
-    user_id = None
     server_processes = []
     test_file_content = None
+    test_file_path = None
     encrypted_file_path = None
-    original_enc_key = None
+    tools_dir = None
     server_urls = [
         "http://localhost:9200",
         "http://localhost:9201", 
@@ -48,23 +44,37 @@ class TestEncryptDecryptE2E:
     @classmethod
     def setup_class(cls):
         """Set up the test environment with real servers."""
-        print("\n🚀 Setting up Encrypt/Decrypt Integration Test")
+        print("\n🚀 Setting up Encrypt/Decrypt Tools Integration Test")
         print("=" * 60)
+        
+        # Find tools directory
+        cls.tools_dir = os.path.join(os.path.dirname(__file__), '../../tools')
+        if not os.path.exists(cls.tools_dir):
+            raise FileNotFoundError(f"Tools directory not found: {cls.tools_dir}")
+        
+        # Verify tools exist
+        encrypt_tool = os.path.join(cls.tools_dir, 'encrypt.py')
+        decrypt_tool = os.path.join(cls.tools_dir, 'decrypt.py')
+        
+        if not os.path.exists(encrypt_tool):
+            raise FileNotFoundError(f"encrypt.py not found: {encrypt_tool}")
+        if not os.path.exists(decrypt_tool):
+            raise FileNotFoundError(f"decrypt.py not found: {decrypt_tool}")
+            
+        print(f"✅ Found tools directory: {cls.tools_dir}")
+        print(f"✅ Found encrypt.py: {encrypt_tool}")
+        print(f"✅ Found decrypt.py: {decrypt_tool}")
         
         # Start real OpenADP servers
         cls._start_openadp_servers()
         
-        # Generate authentication codes
-        cls._generate_auth_codes()
-        
-        print(f"✅ Authentication codes generated for user: {cls.user_id}")
-        
         # Create test file content
         cls.test_file_content = """
-This is a test file for OpenADP encrypt/decrypt integration testing.
+This is a test file for OpenADP encrypt/decrypt tools integration testing.
 
 It contains multiple lines of text to demonstrate that the complete
-encryption and decryption workflow is working correctly.
+encryption and decryption workflow is working correctly with the actual
+tools that users would run.
 
 The file includes:
 - Multiple paragraphs
@@ -74,42 +84,21 @@ The file includes:
 - Mixed content types
 
 This comprehensive test validates the entire OpenADP system from
-authentication through encryption, secret sharing, recovery, and
-final decryption back to the original content.
+the actual command-line tools through encryption, secret sharing, 
+recovery, and final decryption back to the original content.
 
-If you can read this after the full encrypt/decrypt cycle,
-then the OpenADP system is working perfectly! 🎯
-""".encode('utf-8')
+If you can read this after the full encrypt/decrypt cycle using
+the real tools, then the OpenADP system is working perfectly! 🎯
+""".strip()
         
+        # Create test file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write(cls.test_file_content)
+            cls.test_file_path = f.name
+        
+        print(f"✅ Created test file: {cls.test_file_path}")
+        print(f"✅ Test file size: {len(cls.test_file_content)} bytes")
         print("✅ Test environment setup complete")
-    
-    @classmethod
-    def _generate_auth_codes(cls):
-        """Generate authentication codes for testing."""
-        print("🔐 Generating authentication codes...")
-        
-        # Generate deterministic auth codes for testing
-        test_seed = "integration_test_seed_12345"
-        seed_hash = hashlib.sha256(test_seed.encode()).hexdigest()
-        
-        # Generate base auth code (32 hex chars = 128 bits)
-        base_seed = f"base:{seed_hash}"
-        base_hash = hashlib.sha256(base_seed.encode()).hexdigest()
-        cls.base_auth_code = base_hash[:32]
-        
-        # Generate server-specific codes (64 hex chars = SHA256)
-        cls.auth_codes = {}
-        for server_url in cls.server_urls:
-            combined = f"{cls.base_auth_code}:{server_url}"
-            server_code = hashlib.sha256(combined.encode()).hexdigest()
-            cls.auth_codes[server_url] = server_code
-        
-        # Generate user ID from base auth code
-        cls.user_id = hashlib.sha256(cls.base_auth_code.encode()).hexdigest()[:32]
-        
-        print(f"🔑 Generated base authentication code: {cls.base_auth_code}")
-        print(f"🔐 Generated user ID: {cls.user_id}")
-        print(f"🌐 Derived {len(cls.auth_codes)} server-specific codes")
     
     @classmethod
     def _start_openadp_servers(cls):
@@ -124,7 +113,7 @@ then the OpenADP system is working perfectly! 🎯
         if not os.path.exists(server_script):
             raise FileNotFoundError(f"Server script not found: {server_script}")
         
-        # Start servers on ports 9200, 9201, 9202 (different from E2E tests)
+        # Start servers on ports 9200, 9201, 9202
         for port in [9200, 9201, 9202]:
             print(f"  Starting server on port {port}...")
             
@@ -181,454 +170,259 @@ then the OpenADP system is working perfectly! 🎯
             if os.path.exists(db_file):
                 os.remove(db_file)
         
-        # Clean up encrypted file if it exists
+        # Clean up test files
+        if cls.test_file_path and os.path.exists(cls.test_file_path):
+            os.remove(cls.test_file_path)
         if cls.encrypted_file_path and os.path.exists(cls.encrypted_file_path):
             os.remove(cls.encrypted_file_path)
         
         print("✅ Cleanup complete")
     
-    def test_01_authentication_setup(self):
-        """Test that authentication codes are working."""
-        print("\n🔐 Testing Authentication Setup")
+    def test_01_tools_availability(self):
+        """Test that the encrypt/decrypt tools are available and show help."""
+        print("\n🔧 Testing Tools Availability")
         print("=" * 40)
         
-        assert self.auth_codes is not None, "Authentication codes should be available"
-        assert self.base_auth_code is not None, "Base auth code should be present"
-        assert self.user_id is not None, "User ID should be present"
+        encrypt_tool = os.path.join(self.tools_dir, 'encrypt.py')
+        decrypt_tool = os.path.join(self.tools_dir, 'decrypt.py')
         
-        # Validate auth code formats
-        auth_manager = AuthCodeManager()
-        assert auth_manager.validate_base_code_format(self.base_auth_code), "Base code format should be valid"
+        # Test encrypt.py --help
+        result = subprocess.run([
+            sys.executable, encrypt_tool, '--help'
+        ], capture_output=True, text=True, cwd=self.tools_dir)
         
-        for server_url, server_code in self.auth_codes.items():
-            assert auth_manager.validate_server_code_format(server_code), f"Server code format should be valid for {server_url}"
+        assert result.returncode == 0, f"encrypt.py --help failed: {result.stderr}"
+        assert "encrypt files using openadp" in result.stdout.lower(), "encrypt.py help text missing"
+        print("✅ encrypt.py --help working")
         
-        print(f"✅ Base auth code: {self.base_auth_code}")
-        print(f"✅ User ID: {self.user_id}")
-        print(f"✅ Server codes: {len(self.auth_codes)} generated")
-        print("✅ Authentication setup successful")
+        # Test decrypt.py --help
+        result = subprocess.run([
+            sys.executable, decrypt_tool, '--help'
+        ], capture_output=True, text=True, cwd=self.tools_dir)
+        
+        assert result.returncode == 0, f"decrypt.py --help failed: {result.stderr}"
+        assert "decrypt files" in result.stdout.lower(), "decrypt.py help text missing"
+        print("✅ decrypt.py --help working")
+        
+        print("✅ Tools availability confirmed")
     
     def test_02_server_connectivity(self):
         """Test that OpenADP servers are running and accessible."""
         print("\n🖥️  Testing Server Connectivity")
         print("=" * 40)
         
-        live_servers = []
-        
-        for server_url in self.server_urls:
+        # Test server connectivity by trying to connect
+        live_servers = 0
+        for i, server_url in enumerate(self.server_urls, 1):
             try:
-                client = OpenADPClient(server_url)
-                auth_code = self.auth_codes[server_url]
-                
-                # Test basic connectivity with list_backups
-                backups, error = client.list_backups(auth_code, encrypted=False)
-                if error:
-                    print(f"  ⚠️  {server_url}: {error}")
+                import requests
+                response = requests.get(f"{server_url}/", timeout=2)
+                # Accept any HTTP response as "server is up" - 501 is "Not Implemented" which is fine
+                if response.status_code in [200, 404, 405, 501]:
+                    print(f"  ✅ Server {i} ({server_url}): Responding (status {response.status_code})")
+                    live_servers += 1
                 else:
-                    live_servers.append(server_url)
-                    print(f"  ✅ {server_url}: Connected ({len(backups)} backups)")
-                    
+                    print(f"  ⚠️  Server {i} ({server_url}): Unexpected status {response.status_code}")
             except Exception as e:
-                print(f"  ❌ {server_url}: Connection failed - {e}")
+                print(f"  ❌ Server {i} ({server_url}): Not responding - {e}")
         
-        assert len(live_servers) >= 2, f"Need at least 2 live servers for threshold crypto, got {len(live_servers)}"
+        assert live_servers >= 2, f"Need at least 2 live servers for threshold crypto, got {live_servers}"
         
-        print(f"✅ Live servers: {len(live_servers)}")
+        print(f"✅ Live servers: {live_servers}")
         print("✅ Server connectivity confirmed")
     
     def test_03_file_encryption(self):
-        """Test file encryption with secret sharing."""
-        print("\n🔒 Testing File Encryption")
+        """Test file encryption using the actual encrypt.py tool."""
+        print("\n🔒 Testing File Encryption with Real Tool")
         print("=" * 40)
         
-        # Create temporary file with test content
-        with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix='.txt') as temp_file:
-            temp_file.write(self.test_file_content)
-            temp_file_path = temp_file.name
+        encrypt_tool = os.path.join(self.tools_dir, 'encrypt.py')
+        password = "integration_test_password_123"
         
-        try:
-            # Import required modules
-            from openadp import keygen
-            from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
-            import json
-            import secrets
-            
-            # Set up encryption parameters
-            filename = os.path.basename(temp_file_path)
-            pin = "1234"
-            
-            print(f"📁 Input file: {temp_file_path}")
-            print(f"📊 File size: {len(self.test_file_content)} bytes")
-            print(f"👤 User ID: {self.user_id}")
-            print(f"📁 Filename: {filename}")
-            
-            # Derive identifiers
-            uid, did, bid = keygen.derive_identifiers(filename, self.user_id)
-            print(f"🔑 UID: {uid}")
-            print(f"📱 DID: {did}")
-            print(f"💾 BID: {bid}")
-            
-            # Generate encryption key using custom implementation
-            print("🔑 Generating encryption key using OpenADP...")
-            enc_key, error, server_urls_used, threshold = self._generate_encryption_key_with_auth_codes(
-                filename, pin, self.user_id, self.auth_codes, self.server_urls
-            )
-            
-            if error:
-                pytest.fail(f"Failed to generate encryption key: {error}")
-            
-            assert enc_key is not None, "Encryption key should be generated"
-            print(f"✅ Encryption key generated: {len(enc_key)} bytes")
-            print(f"✅ Used {len(server_urls_used)} servers with threshold {threshold}")
-            print(f"🔍 Encryption key (first 16 bytes): {enc_key[:16].hex()}")
-            
-            # Store the encryption key for comparison during decryption
-            TestEncryptDecryptE2E.original_enc_key = enc_key
-            
-            # Create metadata for the encrypted file
-            metadata = {
-                "servers": server_urls_used,
-                "auth_enabled": True,
-                "threshold": threshold,
-                "version": "2.0"
-            }
-            metadata_json = json.dumps(metadata, separators=(',', ':')).encode('utf-8')
-            
-            # Generate random nonce for ChaCha20
-            nonce = secrets.token_bytes(12)  # 12 bytes for ChaCha20
-            
-            # Encrypt the file content
-            chacha = ChaCha20Poly1305(enc_key)
-            ciphertext = chacha.encrypt(nonce, self.test_file_content, metadata_json)
-            
-            # Create encrypted file with format: [metadata_length][metadata][nonce][encrypted_data]
-            encrypted_file_path = temp_file_path + ".enc"
-            with open(encrypted_file_path, 'wb') as f:
-                # Write metadata length (4 bytes, little-endian)
-                f.write(len(metadata_json).to_bytes(4, 'little'))
-                # Write metadata
-                f.write(metadata_json)
-                # Write nonce
-                f.write(nonce)
-                # Write encrypted data
-                f.write(ciphertext)
-            
-            # Store for later use
-            TestEncryptDecryptE2E.encrypted_file_path = encrypted_file_path
-            
-            # Verify encrypted file was created
-            assert os.path.exists(encrypted_file_path), "Encrypted file should be created"
-            
-            # Verify encrypted file is different from original
-            with open(encrypted_file_path, 'rb') as f:
-                encrypted_content = f.read()
-            
-            assert len(encrypted_content) > len(self.test_file_content), "Encrypted file should be larger (includes metadata)"
-            
-            print(f"✅ Encrypted file created: {encrypted_file_path}")
-            print(f"✅ Encrypted size: {len(encrypted_content)} bytes")
-            print("✅ File encryption successful")
-            
-        finally:
-            # Clean up original temp file
-            if os.path.exists(temp_file_path):
-                os.remove(temp_file_path)
+        print(f"📁 Input file: {self.test_file_path}")
+        print(f"📊 File size: {len(self.test_file_content)} bytes")
+        print(f"🔑 Password: {password}")
+        print(f"🛠️  Tool: {encrypt_tool}")
+        
+        # Run encrypt.py tool
+        print("🔑 Running encrypt.py tool...")
+        result = subprocess.run([
+            sys.executable, encrypt_tool,
+            self.test_file_path,
+            '--password', password,
+            '--servers'] + self.server_urls,
+        capture_output=True, text=True, cwd=self.tools_dir)
+        
+        print(f"📤 Encrypt tool output:")
+        print(result.stdout)
+        if result.stderr:
+            print(f"📤 Encrypt tool stderr:")
+            print(result.stderr)
+        
+        assert result.returncode == 0, f"encrypt.py failed with exit code {result.returncode}: {result.stderr}"
+        
+        # Check that encrypted file was created and store in class variable
+        TestEncryptDecryptE2E.encrypted_file_path = self.test_file_path + '.enc'
+        assert os.path.exists(TestEncryptDecryptE2E.encrypted_file_path), f"Encrypted file not created: {TestEncryptDecryptE2E.encrypted_file_path}"
+        
+        # Verify encrypted file is different and larger
+        with open(TestEncryptDecryptE2E.encrypted_file_path, 'rb') as f:
+            encrypted_content = f.read()
+        
+        assert len(encrypted_content) > len(self.test_file_content), "Encrypted file should be larger"
+        
+        # Verify success message in output
+        assert "✅ File encrypted successfully!" in result.stdout, "Success message not found in output"
+        assert "Authentication: Enabled (Authentication Codes)" in result.stdout, "Auth codes not mentioned"
+        
+        print(f"✅ Encrypted file created: {TestEncryptDecryptE2E.encrypted_file_path}")
+        print(f"✅ Encrypted size: {len(encrypted_content)} bytes")
+        print("✅ File encryption successful")
     
-    def test_04_secret_sharing_verification(self):
-        """Verify that secrets were properly shared across servers."""
-        print("\n🔗 Testing Secret Sharing Verification")
+    def test_04_encrypted_file_metadata(self):
+        """Verify the encrypted file contains proper metadata."""
+        print("\n🔍 Testing Encrypted File Metadata")
         print("=" * 40)
         
-        # Test that we can list backups from the servers using authentication codes
-        for i, server_url in enumerate(self.server_urls, 1):
-            try:
-                from client.jsonrpc_client import OpenADPClient
-                client = OpenADPClient(server_url)
-                auth_code = self.auth_codes[server_url]
-                
-                backups, error = client.list_backups(auth_code, encrypted=False)
-                
-                if error:
-                    print(f"  ⚠️  Server {i} ({server_url}): {error}")
-                else:
-                    print(f"  ✅ Server {i} ({server_url}): Found {len(backups)} backup(s)")
-                    for j, backup in enumerate(backups, 1):
-                        print(f"    {j}. {backup}")
-                        
-            except Exception as e:
-                print(f"  ❌ Server {i} ({server_url}): Exception - {e}")
+        assert TestEncryptDecryptE2E.encrypted_file_path is not None, "Encrypted file should exist from previous test"
+        assert os.path.exists(TestEncryptDecryptE2E.encrypted_file_path), "Encrypted file should exist on disk"
         
-        print("✅ Secret sharing verification complete")
+        # Read and parse the encrypted file metadata
+        with open(TestEncryptDecryptE2E.encrypted_file_path, 'rb') as f:
+            file_data = f.read()
+        
+        # Parse file format: [metadata_length][metadata][nonce][encrypted_data]
+        metadata_length = int.from_bytes(file_data[:4], 'little')
+        metadata_start = 4
+        metadata_end = metadata_start + metadata_length
+        
+        metadata_json = file_data[metadata_start:metadata_end]
+        metadata = json.loads(metadata_json.decode('utf-8'))
+        
+        print(f"📊 Metadata length: {metadata_length} bytes")
+        print(f"📊 Metadata keys: {list(metadata.keys())}")
+        
+        # Verify required metadata fields
+        assert 'servers' in metadata, "servers field missing from metadata"
+        assert 'threshold' in metadata, "threshold field missing from metadata"
+        assert 'auth_codes' in metadata, "auth_codes field missing from metadata"
+        assert 'user_id' in metadata, "user_id field missing from metadata"
+        assert 'version' in metadata, "version field missing from metadata"
+        
+        # Verify auth_codes structure
+        auth_codes = metadata['auth_codes']
+        assert 'base_auth_code' in auth_codes, "base_auth_code missing from auth_codes"
+        assert 'server_auth_codes' in auth_codes, "server_auth_codes missing from auth_codes"
+        
+        # Verify auth code formats
+        base_auth_code = auth_codes['base_auth_code']
+        assert len(base_auth_code) == 32, f"base_auth_code should be 32 chars, got {len(base_auth_code)}"
+        assert all(c in '0123456789abcdef' for c in base_auth_code), "base_auth_code should be hex"
+        
+        server_auth_codes = auth_codes['server_auth_codes']
+        assert len(server_auth_codes) >= 2, f"Should have at least 2 server auth codes, got {len(server_auth_codes)}"
+        
+        for server_url, server_code in server_auth_codes.items():
+            assert len(server_code) == 64, f"server auth code should be 64 chars, got {len(server_code)}"
+            assert all(c in '0123456789abcdef' for c in server_code), "server auth code should be hex"
+        
+        print(f"✅ Servers: {len(metadata['servers'])}")
+        print(f"✅ Threshold: {metadata['threshold']}")
+        print(f"✅ Version: {metadata['version']}")
+        print(f"✅ Base auth code: {base_auth_code}")
+        print(f"✅ Server auth codes: {len(server_auth_codes)}")
+        print("✅ Metadata validation successful")
     
     def test_05_file_decryption(self):
-        """Test file decryption and recovery."""
-        print("\n🔓 Testing File Decryption")
+        """Test file decryption using the actual decrypt.py tool."""
+        print("\n🔓 Testing File Decryption with Real Tool")
         print("=" * 40)
         
-        assert self.encrypted_file_path is not None, "Encrypted file should exist from previous test"
-        assert os.path.exists(self.encrypted_file_path), "Encrypted file should exist on disk"
+        assert TestEncryptDecryptE2E.encrypted_file_path is not None, "Encrypted file should exist from previous test"
+        assert os.path.exists(TestEncryptDecryptE2E.encrypted_file_path), "Encrypted file should exist on disk"
         
-        # Import the keygen functionality for key recovery
-        from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
-        import json
+        decrypt_tool = os.path.join(self.tools_dir, 'decrypt.py')
+        password = "integration_test_password_123"
         
-        # Set up decryption parameters (same as encryption)
-        pin = "1234"
+        print(f"📁 Encrypted file: {TestEncryptDecryptE2E.encrypted_file_path}")
+        print(f"🔑 Password: {password}")
+        print(f"🛠️  Tool: {decrypt_tool}")
         
-        print(f"📁 Encrypted file: {self.encrypted_file_path}")
-        print(f"👤 User ID: {self.user_id}")
-        print(f"🔑 PIN: {pin}")
+        # Run decrypt.py tool
+        print("🔓 Running decrypt.py tool...")
+        result = subprocess.run([
+            sys.executable, decrypt_tool,
+            TestEncryptDecryptE2E.encrypted_file_path,
+            '--password', password
+        ], capture_output=True, text=True, cwd=self.tools_dir)
         
-        try:
-            # Read the encrypted file and parse its structure
-            with open(self.encrypted_file_path, 'rb') as f:
-                file_data = f.read()
-            
-            # Parse file format: [metadata_length][metadata][nonce][encrypted_data]
-            metadata_length = int.from_bytes(file_data[:4], 'little')
-            metadata_start = 4
-            metadata_end = metadata_start + metadata_length
-            nonce_start = metadata_end
-            nonce_end = nonce_start + 12  # ChaCha20 nonce size
-            
-            metadata_json = file_data[metadata_start:metadata_end]
-            nonce = file_data[nonce_start:nonce_end]
-            ciphertext = file_data[nonce_end:]
-            
-            # Parse metadata
-            metadata = json.loads(metadata_json.decode('utf-8'))
-            server_urls = metadata['servers']
-            threshold = metadata.get('threshold', 2)
-            
-            print(f"📊 Metadata: {len(server_urls)} servers, threshold {threshold}")
-            
-            # Get the original filename from the encrypted file path
-            original_filename = os.path.basename(self.encrypted_file_path)
-            if original_filename.endswith('.enc'):
-                original_filename = original_filename[:-4]  # Remove .enc extension
-            
-            print(f"📁 Original filename: {original_filename}")
-            
-            # Recover encryption key using OpenADP
-            print("🔑 Recovering encryption key using OpenADP...")
-            enc_key, error = self._recover_encryption_key_with_auth_codes(
-                original_filename, pin, self.user_id, self.auth_codes, server_urls, threshold
-            )
-            
-            if error:
-                pytest.fail(f"Failed to recover encryption key: {error}")
-            
-            assert enc_key is not None, "Encryption key should be recovered"
-            print(f"✅ Encryption key recovered: {len(enc_key)} bytes")
-            print(f"🔍 Recovered key (first 16 bytes): {enc_key[:16].hex()}")
-            
-            # Compare with original encryption key
-            if TestEncryptDecryptE2E.original_enc_key is not None:
-                if enc_key == TestEncryptDecryptE2E.original_enc_key:
-                    print("✅ Keys match perfectly!")
-                else:
-                    print("❌ Keys don't match!")
-                    print(f"🔍 Original key (first 16 bytes): {TestEncryptDecryptE2E.original_enc_key[:16].hex()}")
-                    pytest.fail("Recovered encryption key doesn't match original key")
-            
-            # Decrypt the file content
-            chacha = ChaCha20Poly1305(enc_key)
-            decrypted_content = chacha.decrypt(nonce, ciphertext, metadata_json)
-            
-            # Verify content matches original
-            assert decrypted_content == self.test_file_content, "Decrypted content should match original"
-            
-            print(f"✅ Decrypted size: {len(decrypted_content)} bytes")
-            print("✅ Content verification: MATCH")
-            print("✅ File decryption successful")
-            
-        except Exception as e:
-            pytest.fail(f"Decryption failed: {e}")
+        print(f"📥 Decrypt tool output:")
+        print(result.stdout)
+        if result.stderr:
+            print(f"📥 Decrypt tool stderr:")
+            print(result.stderr)
+        
+        assert result.returncode == 0, f"decrypt.py failed with exit code {result.returncode}: {result.stderr}"
+        
+        # Check that decrypted file was created
+        decrypted_file_path = self.test_file_path  # Should restore original filename
+        assert os.path.exists(decrypted_file_path), f"Decrypted file not created: {decrypted_file_path}"
+        
+        # Verify decrypted content matches original
+        with open(decrypted_file_path, 'r') as f:
+            decrypted_content = f.read()
+        
+        assert decrypted_content == self.test_file_content, "Decrypted content doesn't match original"
+        
+        # Verify success message in output
+        assert "✅ File decrypted successfully!" in result.stdout, "Success message not found in output"
+        assert "Authentication: Enabled (Authentication Codes)" in result.stdout, "Auth codes not mentioned"
+        assert "Reading authentication codes from metadata" in result.stdout, "Metadata reading not mentioned"
+        
+        print(f"✅ Decrypted file: {decrypted_file_path}")
+        print(f"✅ Decrypted size: {len(decrypted_content)} bytes")
+        print("✅ Content verification: MATCH")
+        print("✅ File decryption successful")
     
     def test_06_end_to_end_verification(self):
-        """Final verification that the complete system works."""
-        print("\n🎯 Final End-to-End Verification")
+        """Final verification that the complete tools workflow works."""
+        print("\n🎯 Final End-to-End Tools Verification")
         print("=" * 40)
         
         # Verify all components worked together
-        assert self.auth_codes is not None, "Authentication codes should be working"
-        assert len(self.server_urls) >= 2, "Servers should be accessible"
-        assert self.encrypted_file_path is not None, "Encryption should have succeeded"
+        assert self.test_file_path is not None, "Test file should be available"
+        assert TestEncryptDecryptE2E.encrypted_file_path is not None, "Encryption should have succeeded"
+        assert os.path.exists(self.test_file_path), "Decrypted file should exist"
+        assert os.path.exists(TestEncryptDecryptE2E.encrypted_file_path), "Encrypted file should exist"
         
-        print("✅ Authentication: WORKING")
+        # Verify file sizes make sense
+        original_size = len(self.test_file_content)
+        
+        with open(TestEncryptDecryptE2E.encrypted_file_path, 'rb') as f:
+            encrypted_size = len(f.read())
+        
+        with open(self.test_file_path, 'r') as f:
+            final_size = len(f.read())
+        
+        assert encrypted_size > original_size, "Encrypted file should be larger than original"
+        assert final_size == original_size, "Final decrypted file should match original size"
+        
+        print("✅ Tools Integration: WORKING")
         print("✅ Server Communication: WORKING") 
         print("✅ Secret Sharing: WORKING")
-        print("✅ Encryption: WORKING")
-        print("✅ Decryption: WORKING")
+        print("✅ Encryption Tool: WORKING")
+        print("✅ Decryption Tool: WORKING")
         print("✅ Content Integrity: VERIFIED")
+        print("✅ Authentication Codes: WORKING")
+        print("✅ Metadata Storage: WORKING")
         
-        print("\n🎉 COMPLETE SYSTEM INTEGRATION: SUCCESS!")
-        print("🚀 OpenADP encrypt/decrypt workflow is fully operational!")
-
-    def _generate_encryption_key_with_auth_codes(self, filename, password, user_id, server_auth_codes, servers):
-        """Generate an encryption key using OpenADP with authentication codes."""
-        from openadp import crypto, sharing, keygen
-        from client.jsonrpc_client import OpenADPClient
-        import secrets
+        print(f"\n📊 File Size Summary:")
+        print(f"   Original:  {original_size} bytes")
+        print(f"   Encrypted: {encrypted_size} bytes")
+        print(f"   Decrypted: {final_size} bytes")
         
-        # Step 1: Derive identifiers
-        uid, did, bid = keygen.derive_identifiers(filename, user_id)
-        
-        # Step 2: Convert password to PIN
-        pin = keygen.password_to_pin(password)
-        
-        # Step 3: Initialize clients for each server
-        clients = []
-        for server_url in servers:
-            try:
-                client = OpenADPClient(server_url)
-                clients.append((server_url, client))
-            except Exception as e:
-                print(f"Failed to connect to {server_url}: {e}")
-                continue
-        
-        if not clients:
-            return None, "No servers available", [], 0
-        
-        # Step 4: Generate random secret and create point
-        secret = secrets.randbelow(crypto.q)
-        U = crypto.H(uid.encode(), did.encode(), bid.encode(), pin)
-        S = crypto.point_mul(secret, U)
-        
-        # Step 5: Create shares using secret sharing
-        threshold = max(1, min(2, len(clients)))  # At least 1, prefer 2 if available
-        num_shares = len(clients)
-        
-        shares = sharing.make_random_shares(secret, threshold, num_shares)
-        
-        # Step 6: Register shares with servers using authentication codes
-        version = 1
-        registration_errors = []
-        server_urls_used = []
-        
-        for i, ((server_url, client), (x, y)) in enumerate(zip(clients, shares)):
-            auth_code = server_auth_codes[server_url]
-            y_str = str(y)
-            
-            try:
-                result, error = client.register_secret(
-                    auth_code=auth_code,
-                    did=did,
-                    bid=bid,
-                    version=version,
-                    x=str(x),
-                    y=y_str,
-                    max_guesses=10,
-                    expiration=0,
-                    encrypted=False
-                )
-                
-                if error:
-                    registration_errors.append(f"Server {i+1}: {error}")
-                elif not result:
-                    registration_errors.append(f"Server {i+1}: Registration returned false")
-                else:
-                    print(f"OpenADP: Registered share {x} with server {i+1}")
-                    server_urls_used.append(server_url)
-                    
-            except Exception as e:
-                registration_errors.append(f"Server {i+1}: Exception: {str(e)}")
-        
-        if len(server_urls_used) == 0:
-            return None, f"Failed to register any shares: {'; '.join(registration_errors)}", [], 0
-        
-        # Step 7: Derive encryption key
-        enc_key = crypto.deriveEncKey(S)
-        
-        return enc_key, None, server_urls_used, threshold
-    
-    def _recover_encryption_key_with_auth_codes(self, filename, password, user_id, server_auth_codes, server_urls, threshold):
-        """Recover an encryption key using OpenADP with authentication codes."""
-        from openadp import crypto, sharing, keygen
-        from client.jsonrpc_client import OpenADPClient
-        import secrets
-        
-        # Step 1: Derive same identifiers as during encryption
-        uid, did, bid = keygen.derive_identifiers(filename, user_id)
-        
-        # Step 2: Convert password to same PIN
-        pin = keygen.password_to_pin(password)
-        
-        # Step 3: Initialize clients for each server
-        clients = []
-        for server_url in server_urls:
-            try:
-                client = OpenADPClient(server_url)
-                clients.append((server_url, client))
-            except Exception as e:
-                print(f"Failed to connect to {server_url}: {e}")
-                continue
-        
-        if not clients:
-            return None, "No servers from metadata are accessible"
-        
-        # Step 4: Create cryptographic context (same as encryption)
-        U = crypto.H(uid.encode(), did.encode(), bid.encode(), pin)
-        
-        # Generate random r and compute B for recovery protocol
-        p = crypto.q
-        r = secrets.randbelow(p - 1) + 1
-        r_inv = pow(r, -1, p)
-        B = crypto.point_mul(r, U)
-        
-        # Step 5: Recover shares from servers using authentication codes
-        recovered_shares = []
-        
-        for i, (server_url, client) in enumerate(clients):
-            auth_code = server_auth_codes[server_url]
-            
-            try:
-                # Get current guess number for this backup from this specific server
-                backups, error = client.list_backups(auth_code, encrypted=False)
-                if error:
-                    guess_num = 0  # Start with 0 if we can't determine current state
-                else:
-                    # Find our backup in the list from this server
-                    guess_num = 0
-                    for backup in backups:
-                        backup_bid = backup[1] if len(backup) > 1 else ""
-                        if backup_bid == bid:
-                            guess_num = backup[3] if len(backup) > 3 else 0  # num_guesses field
-                            break
-                
-                # Attempt recovery from this specific server
-                result, error = client.recover_secret(
-                    auth_code=auth_code,
-                    did=did,
-                    bid=bid,
-                    b=crypto.unexpand(B),
-                    guess_num=guess_num,
-                    encrypted=False
-                )
-                
-                if error:
-                    print(f"Server {i+1} recovery failed: {error}")
-                    continue
-                    
-                version, x, si_b_unexpanded, num_guesses, max_guesses, expiration = result
-                recovered_shares.append((x, si_b_unexpanded))
-                print(f"OpenADP: Recovered share {x} from server {i+1}")
-                
-            except Exception as e:
-                print(f"Exception recovering from server {i+1}: {e}")
-                continue
-        
-        if len(recovered_shares) < threshold:
-            return None, f"Could not recover enough shares (got {len(recovered_shares)}, need at least {threshold})"
-        
-        # Step 6: Reconstruct secret using recovered shares
-        rec_sb = sharing.recover_sb(recovered_shares)
-        rec_s_point = crypto.point_mul(r_inv, crypto.expand(rec_sb))
-        
-        # Step 7: Derive same encryption key
-        enc_key = crypto.deriveEncKey(rec_s_point)
-        
-        return enc_key, None
+        print("\n🎉 COMPLETE TOOLS INTEGRATION: SUCCESS!")
+        print("🚀 OpenADP encrypt/decrypt tools are fully operational!")
 
 
 if __name__ == "__main__":

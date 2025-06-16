@@ -37,44 +37,6 @@ from openadp.auth_code_manager import AuthCodeManager
 # These must match the values used during encryption
 NONCE_SIZE: int = 12
 
-def get_auth_codes(servers: List[str], password: str, filename: str) -> Tuple[Dict[str, str], str]:
-    """
-    Generate deterministic authentication codes for server access based on password and filename.
-    This ensures the same codes can be regenerated that were used during encryption.
-    
-    Args:
-        servers: List of server URLs
-        password: User password (used as seed for deterministic generation)
-        filename: Filename being decrypted (used as additional entropy)
-        
-    Returns:
-        Tuple of (dictionary mapping server URLs to authentication codes, base_auth_code)
-    """
-    print("🔐 Generating deterministic authentication codes...")
-    
-    # Create deterministic seed from password and filename
-    import hashlib
-    seed_data = f"{password}:{filename}".encode('utf-8')
-    seed_hash = hashlib.sha256(seed_data).hexdigest()
-    
-    # Generate base auth code deterministically from seed (32 hex chars = 128 bits)
-    base_seed = f"base:{seed_hash}"
-    base_hash = hashlib.sha256(base_seed.encode()).hexdigest()
-    base_auth_code = base_hash[:32]  # Take first 32 hex chars (128 bits)
-    
-    # Generate server-specific codes deterministically (64 hex chars = SHA256)
-    server_auth_codes = {}
-    for server_url in servers:
-        # Use same derivation method as AuthCodeManager
-        combined = f"{base_auth_code}:{server_url}"
-        server_code = hashlib.sha256(combined.encode()).hexdigest()  # Full 64 hex chars
-        server_auth_codes[server_url] = server_code
-    
-    print(f"🔑 Generated deterministic base authentication code: {base_auth_code}")
-    print(f"🌐 Derived {len(server_auth_codes)} server-specific codes")
-    
-    return server_auth_codes, base_auth_code
-
 def decrypt_file(input_filename: str, password: str,
                 override_servers: Optional[List[str]] = None) -> None:
     """
@@ -167,17 +129,15 @@ def decrypt_file(input_filename: str, password: str,
         print(f"Error: Failed to parse metadata: {e}")
         sys.exit(1)
 
-    # 4. Generate authentication codes for server access
-    # Use original filename (without .enc) to match encryption
-    original_filename = output_filename
-    server_auth_codes, base_auth_code = get_auth_codes(server_urls, password, original_filename)
-    
-    # 5. Generate user ID from authentication codes (must match encryption)
-    import hashlib
-    user_id = hashlib.sha256(base_auth_code.encode()).hexdigest()[:32]  # 32-char UUID-like ID
-    print(f"🔐 Generated user ID: {user_id}")
+    # 4. Extract authentication codes and user ID from metadata
+    try:
+        server_auth_codes, base_auth_code, user_id = get_auth_codes_from_metadata(metadata)
+    except ValueError as e:
+        print(f"Error: {e}")
+        print("This file may have been encrypted with an older version that doesn't store auth codes.")
+        sys.exit(1)
 
-    # 6. Recover encryption key using custom OpenADP implementation with auth codes
+    # 5. Recover encryption key using custom OpenADP implementation with auth codes
     print("Recovering encryption key from the original OpenADP servers...")
     
     enc_key, error = recover_encryption_key_with_auth_codes(
@@ -193,7 +153,7 @@ def decrypt_file(input_filename: str, password: str,
         print("  • Authentication codes are valid")
         sys.exit(1)
 
-    # 7. Decrypt the file using metadata as additional authenticated data
+    # 6. Decrypt the file using metadata as additional authenticated data
     try:
         chacha = ChaCha20Poly1305(enc_key)
         plaintext = chacha.decrypt(nonce, ciphertext, metadata_json)
@@ -205,7 +165,7 @@ def decrypt_file(input_filename: str, password: str,
         print("  • Mismatched authentication context")
         sys.exit(1)
 
-    # 8. Write the decrypted file
+    # 7. Write the decrypted file
     try:
         with open(output_filename, 'wb') as f_out:
             f_out.write(plaintext)
@@ -333,6 +293,36 @@ def get_password_securely() -> str:
         sys.exit(1)
     return password
 
+def get_auth_codes_from_metadata(metadata: dict) -> Tuple[Dict[str, str], str, str]:
+    """
+    Extract authentication codes from file metadata.
+    
+    Args:
+        metadata: Parsed metadata from encrypted file
+        
+    Returns:
+        Tuple of (server_auth_codes, base_auth_code, user_id)
+    """
+    print("🔐 Reading authentication codes from metadata...")
+    
+    # Extract auth codes from metadata
+    auth_codes_data = metadata.get('auth_codes', {})
+    base_auth_code = auth_codes_data.get('base_auth_code')
+    server_auth_codes = auth_codes_data.get('server_auth_codes', {})
+    user_id = metadata.get('user_id')
+    
+    if not base_auth_code:
+        raise ValueError("No base authentication code found in metadata")
+    if not server_auth_codes:
+        raise ValueError("No server authentication codes found in metadata")
+    if not user_id:
+        raise ValueError("No user ID found in metadata")
+    
+    print(f"🔑 Retrieved base authentication code: {base_auth_code}")
+    print(f"🔐 Retrieved user ID: {user_id}")
+    print(f"🌐 Retrieved {len(server_auth_codes)} server-specific codes")
+    
+    return server_auth_codes, base_auth_code, user_id
 
 def main() -> NoReturn:
     """Main function to handle command line arguments and decrypt files."""
