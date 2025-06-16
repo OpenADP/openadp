@@ -196,7 +196,7 @@ def validate_encrypted_auth(auth_payload: dict, handshake_hash: bytes) -> Tuple[
             expected_thumbprint = calculate_jwk_thumbprint(dpop_public_key)
             token_thumbprint = cnf_claim.get('jkt')
             
-            if True:  # Enable cnf field validation with non-standard extension
+            if False:  # Disable cnf field validation (Keycloak 22.0 doesn't provide cnf.jkt)
                 if not token_thumbprint:
                     return None, "Token missing cnf.jkt claim - DPoP binding required for security"
                 elif token_thumbprint != expected_thumbprint:
@@ -204,7 +204,7 @@ def validate_encrypted_auth(auth_payload: dict, handshake_hash: bytes) -> Tuple[
                 else:
                     logger.info(f"DPoP token binding validated successfully for user: {user_id}")
             else:
-                # Fallback mode (disabled) - would rely on handshake signature only
+                # Fallback mode - rely on handshake signature for DPoP binding
                 logger.warning(f"Token missing cnf.jkt claim - relying on handshake signature for DPoP binding")
                 
         except Exception as e:
