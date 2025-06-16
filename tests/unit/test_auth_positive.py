@@ -15,7 +15,7 @@ from unittest.mock import patch, MagicMock
 import sys
 
 # Add the src directory to Python path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'prototype', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from server.auth_middleware import validate_auth, get_auth_stats, AuthConfig
 from openadp.auth.dpop import make_dpop_header

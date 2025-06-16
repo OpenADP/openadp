@@ -10,8 +10,8 @@ import unittest
 import sys
 import os
 
-# Add the src directory to the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+# Add the project root to the path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from openadp import noise_nk, crypto
 
@@ -444,7 +444,7 @@ class TestNoiseNKComprehensive(unittest.TestCase):
         
         try:
             # Get the path to the noise_nk module
-            noise_nk_path = os.path.join(os.path.dirname(__file__), '..', 'src', 'openadp', 'noise_nk.py')
+            noise_nk_path = os.path.join(os.path.dirname(__file__), '..', '..', 'openadp', 'noise_nk.py')
             
             # Run the module as a script
             result = subprocess.run(

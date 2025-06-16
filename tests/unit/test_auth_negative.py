@@ -18,7 +18,7 @@ import sys
 import jwt
 
 # Add the src directory to Python path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'prototype', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from server.auth_middleware import validate_auth, validate_jwt_token, validate_dpop_header
 from openadp.auth.keys import generate_keypair

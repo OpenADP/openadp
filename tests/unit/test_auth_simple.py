@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 import requests
 
 # Add the src directory to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from openadp.auth.pkce_flow import generate_pkce_challenge, PKCEFlowError
 from openadp.auth.dpop import make_dpop_header, extract_jti_from_dpop, validate_dpop_claims, calculate_jwk_thumbprint

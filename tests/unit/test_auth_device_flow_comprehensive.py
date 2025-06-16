@@ -16,7 +16,7 @@ from unittest.mock import call
 import requests
 
 # Add the src directory to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from openadp.auth import device_flow
 from openadp.auth.device_flow import DeviceFlowError, run_device_flow, refresh_access_token, validate_token_response, get_userinfo

@@ -15,7 +15,7 @@ import sqlite3
 from unittest.mock import Mock, patch
 
 # Add the src directory to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from openadp import database
 
@@ -238,24 +238,27 @@ class TestDatabase(unittest.TestCase):
     def test_concurrent_access(self):
         """Test concurrent database access."""
         try:
-            user_id = "test_user"
-            
-            # Simulate concurrent session creation
-            session_ids = []
+            # Simulate concurrent share insertion
+            shares_data = []
             for i in range(10):
-                session_id = self.db.create_session(f"{user_id}_{i}", 2, 3)
-                session_ids.append(session_id)
+                uid = f"test_user_{i}".encode('utf-8')
+                did = f"device_{i}".encode('utf-8')
+                bid = f"backup_{i}".encode('utf-8')
+                
+                # Insert share
+                self.db.insert(uid, did, bid, 1, i, f"share_data_{i}".encode('utf-8'), 0, 10, 2000000000)
+                shares_data.append((uid, did, bid))
             
-            # All sessions should be created successfully
-            self.assertEqual(len(session_ids), 10)
-            self.assertEqual(len(set(session_ids)), 10)  # All unique
+            # All shares should be inserted successfully
+            self.assertEqual(len(shares_data), 10)
             
-            # All sessions should be retrievable
-            for session_id in session_ids:
-                session_info = self.db.get_session_info(session_id)
-                self.assertIsNotNone(session_info)
-        except AttributeError:
-            self.skipTest("Database methods not implemented")
+            # All shares should be retrievable
+            for uid, did, bid in shares_data:
+                share_info = self.db.lookup(uid, did, bid)
+                self.assertIsNotNone(share_info)
+                
+        except Exception as e:
+            self.fail(f"Concurrent access test failed: {e}")
     
     def test_database_error_handling(self):
         """Test database error handling."""

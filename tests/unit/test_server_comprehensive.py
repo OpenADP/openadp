@@ -15,7 +15,7 @@ import shutil
 from unittest.mock import Mock, patch, MagicMock
 
 # Add the src directory to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 try:
     from server import jsonrpc_server
@@ -344,7 +344,7 @@ class TestJSONRPCServer(unittest.TestCase):
         """Test detailed max guess limit enforcement scenarios."""
         try:
             import sys, os
-            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
             from server import server
             from openadp import database, crypto, sharing
             import secrets
@@ -401,7 +401,7 @@ class TestJSONRPCServer(unittest.TestCase):
         """Test server input validation edge cases."""
         try:
             import sys, os
-            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
             from server import server
             from openadp import database
             import secrets
@@ -490,6 +490,10 @@ class TestJSONRPCServer(unittest.TestCase):
                 db_path = temp_file.name
 
             try:
+                # Initialize database and create tables first to avoid race conditions
+                init_db = database.Database(db_path)
+                init_db.close()
+                
                 results = []
                 errors = []
 
@@ -531,10 +535,10 @@ class TestJSONRPCServer(unittest.TestCase):
                 # Check results - should have minimal errors with proper connection handling
                 if errors:
                     # Some errors might still occur due to SQLite limitations, but should be minimal
-                    self.assertLess(len(errors), 3, f"Too many concurrent access errors: {errors}")
+                    self.assertLess(len(errors), 2, f"Too many concurrent access errors: {errors}")
                 
                 # Should have some successful results
-                self.assertGreater(len(results), 0, "No successful concurrent operations")
+                self.assertGreater(len(results), 2, "Not enough successful concurrent operations")
 
             finally:
                 # Clean up
@@ -550,7 +554,7 @@ class TestJSONRPCServer(unittest.TestCase):
         """Test that recovery operations are idempotent."""
         try:
             import sys, os
-            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
             from server import server
             from openadp import database, crypto
             import secrets

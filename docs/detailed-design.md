@@ -173,7 +173,7 @@ wᵢ = ∏(j≠i) xⱼ/(xⱼ - xᵢ) mod q
 OpenADP is implemented as a modular Python system with clear separation of concerns:
 
 ```
-prototype/src/
+openadp/                        # Root project directory
 ├── openadp/                    # Core cryptographic library
 │   ├── crypto.py              # Ed25519 operations, point arithmetic
 │   ├── sharing.py             # Shamir secret sharing implementation
@@ -181,7 +181,8 @@ prototype/src/
 │   └── auth/                  # Authentication modules
 │       ├── keys.py            # Key management (generation, storage)
 │       ├── pkce_flow.py       # OAuth 2.0 PKCE implementation
-│       └── dpop.py            # DPoP header generation/validation
+│       ├── dpop.py            # DPoP header generation/validation
+│       └── test_*.py          # Unit tests (co-located with code)
 ├── server/                     # Server implementation
 │   ├── jsonrpc_server.py      # Main server with authentication
 │   ├── auth_middleware.py     # JWT validation middleware
@@ -191,9 +192,19 @@ prototype/src/
 │   ├── client.py              # High-level client interface
 │   ├── jsonrpc_client.py      # JSON-RPC over HTTP
 │   └── encrypted_jsonrpc_client.py # Noise-NK encrypted client
-└── tools/                      # End-user tools
-    ├── encrypt.py             # File encryption utility
-    └── decrypt.py             # File decryption utility
+├── tools/                      # End-user tools
+│   ├── encrypt.py             # File encryption utility
+│   └── decrypt.py             # File decryption utility
+├── tests/                      # Organized test suite
+│   ├── unit/                  # Unit tests
+│   ├── integration/           # Integration tests
+│   ├── auth/                  # Authentication tests
+│   └── fake_keycloak.py       # Test authentication server
+├── deployment/                 # Deployment configurations
+│   └── keycloak/              # Keycloak setup scripts
+├── debug/                      # Debug and development tools
+├── docs/                       # Documentation
+└── proto/                      # Protocol buffer definitions
 ```
 
 ### 4.2 Database Schema

@@ -12,19 +12,19 @@ from unittest.mock import Mock, patch, MagicMock
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.hazmat.primitives import hashes, serialization
 
-from src.openadp.auth.pkce_flow import (
+from openadp.auth.pkce_flow import (
     PKCEFlowError, generate_pkce_challenge, run_pkce_flow, 
     refresh_access_token_pkce, CallbackHandler
 )
-from src.openadp.auth.device_flow import (
+from openadp.auth.device_flow import (
     DeviceFlowError, run_device_flow, refresh_access_token,
     validate_token_response, get_userinfo
 )
-from src.openadp.auth.dpop import (
+from openadp.auth.dpop import (
     make_dpop_header, extract_jti_from_dpop, validate_dpop_claims,
     calculate_jwk_thumbprint, verify_handshake_signature, jwk_to_public_key
 )
-from src.openadp.auth.keys import (
+from openadp.auth.keys import (
     generate_keypair, save_private_key, load_private_key, private_key_to_jwk
 )
 
@@ -77,7 +77,7 @@ class TestPKCEFlowComprehensive:
         handler.send_response.assert_called_with(200)
         handler.wfile.write.assert_called_once()
     
-    @patch('src.openadp.auth.pkce_flow.requests.get')
+    @patch('openadp.auth.pkce_flow.requests.get')
     def test_run_pkce_flow_discovery_failure_fallback(self, mock_get):
         """Test PKCE flow with discovery failure using fallback endpoints."""
         # Mock discovery failure - use requests.RequestException to match the actual code
@@ -92,8 +92,8 @@ class TestPKCEFlowComprehensive:
                 timeout=1
             )
     
-    @patch('src.openadp.auth.pkce_flow.requests.post')
-    @patch('src.openadp.auth.pkce_flow.requests.get')
+    @patch('openadp.auth.pkce_flow.requests.post')
+    @patch('openadp.auth.pkce_flow.requests.get')
     def test_refresh_access_token_pkce_discovery_failure(self, mock_get, mock_post):
         """Test refresh token with discovery failure."""
         # Mock discovery failure - should trigger fallback endpoint construction
@@ -120,7 +120,7 @@ class TestPKCEFlowComprehensive:
         assert result['access_token'] == 'new_token'
         assert result['refresh_token'] == 'new_refresh'
     
-    @patch('src.openadp.auth.pkce_flow.requests.post')
+    @patch('openadp.auth.pkce_flow.requests.post')
     def test_refresh_access_token_pkce_error_response(self, mock_post):
         """Test refresh token with error response."""
         mock_post.return_value.raise_for_status.return_value = None
@@ -139,8 +139,8 @@ class TestPKCEFlowComprehensive:
                 private_key=private_key
             )
     
-    @patch('src.openadp.auth.pkce_flow.requests.get')
-    @patch('src.openadp.auth.pkce_flow.requests.post')
+    @patch('openadp.auth.pkce_flow.requests.get')
+    @patch('openadp.auth.pkce_flow.requests.post')
     def test_refresh_access_token_pkce_request_exception(self, mock_post, mock_get):
         """Test refresh token with request exception."""
         # Mock discovery success first
@@ -167,7 +167,7 @@ class TestPKCEFlowComprehensive:
 class TestDeviceFlowComprehensive:
     """Test device flow error conditions and edge cases."""
     
-    @patch('src.openadp.auth.device_flow.requests.get')
+    @patch('openadp.auth.device_flow.requests.get')
     def test_get_userinfo_no_endpoint(self, mock_get):
         """Test get_userinfo when userinfo_endpoint is missing."""
         mock_get.return_value.raise_for_status.return_value = None
@@ -179,7 +179,7 @@ class TestDeviceFlowComprehensive:
         with pytest.raises(DeviceFlowError, match="Userinfo endpoint not found"):
             get_userinfo("https://auth.example.com", "test_token")
     
-    @patch('src.openadp.auth.device_flow.requests.get')
+    @patch('openadp.auth.device_flow.requests.get')
     def test_get_userinfo_discovery_failure(self, mock_get):
         """Test get_userinfo with discovery failure."""
         import requests
@@ -208,7 +208,7 @@ class TestDeviceFlowComprehensive:
         captured = capsys.readouterr()
         assert "Warning: Unexpected token type 'custom'" in captured.out
     
-    @patch('src.openadp.auth.device_flow.requests.get')
+    @patch('openadp.auth.device_flow.requests.get')
     def test_refresh_access_token_missing_endpoint(self, mock_get):
         """Test refresh token when token_endpoint is missing."""
         mock_get.return_value.raise_for_status.return_value = None
