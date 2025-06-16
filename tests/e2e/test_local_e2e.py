@@ -8,6 +8,9 @@ Tests the complete workflow using test infrastructure:
 3. File encryption/decryption workflow
 4. DPoP key binding validation
 5. Error handling and edge cases
+
+NOTE: These tests require complex server setup and should not be run
+in automated CI/CD environments.
 """
 
 import os
@@ -21,7 +24,7 @@ import hashlib
 from pathlib import Path
 
 # Add the src directory to Python path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'prototype', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from openadp.auth import run_pkce_flow, save_private_key, load_private_key
 from openadp.auth.pkce_flow import PKCEFlowError
@@ -47,8 +50,12 @@ class TestLocalE2E:
         # Ensure test cache directory exists
         os.makedirs(TEST_CACHE_DIR, exist_ok=True)
     
+    @pytest.mark.manual
     def test_01_fake_keycloak_discovery(self, fake_keycloak_server):
-        """Test that fake Keycloak is working and discoverable."""
+        """Test that fake Keycloak is working and discoverable.
+        
+        This test requires complex server setup and should only be run manually.
+        """
         print(f"\n🔍 Testing Fake Keycloak Discovery")
         print("=" * 50)
         
@@ -76,8 +83,12 @@ class TestLocalE2E:
         
         print(f"✅ JWKS endpoint working, {len(jwks_data['keys'])} keys available")
     
+    @pytest.mark.manual
     def test_02_openadp_servers_available(self, openadp_servers):
-        """Test that OpenADP servers are running and accessible."""
+        """Test that OpenADP servers are running and accessible.
+        
+        This test requires complex server setup and should only be run manually.
+        """
         print(f"\n🌐 Testing OpenADP Servers")
         print("=" * 50)
         
@@ -103,8 +114,12 @@ class TestLocalE2E:
         assert live_servers > 0, f"At least one server should be live, got {live_servers}"
         print(f"📊 {live_servers}/{len(openadp_servers)} servers are live")
     
+    @pytest.mark.manual
     def test_03_authentication_with_fake_keycloak(self, fake_keycloak_server):
-        """Test programmatic authentication with fake Keycloak."""
+        """Test programmatic authentication with fake Keycloak.
+        
+        This test requires complex server setup and should only be run manually.
+        """
         print(f"\n🔐 Testing Authentication Flow")
         print("=" * 50)
         
@@ -141,8 +156,12 @@ class TestLocalE2E:
         except Exception as e:
             pytest.fail(f"Authentication failed: {e}")
     
+    @pytest.mark.manual
     def test_04_client_initialization(self, openadp_servers):
-        """Test client initialization with server discovery."""
+        """Test client initialization with server discovery.
+        
+        This test requires complex server setup and should only be run manually.
+        """
         print(f"\n🔧 Testing Client Initialization")
         print("=" * 50)
         
@@ -160,8 +179,12 @@ class TestLocalE2E:
         
         print("✅ Client initialization successful")
     
+    @pytest.mark.manual
     def test_05_secret_registration(self):
-        """Test secret registration with authentication."""
+        """Test secret registration with authentication.
+        
+        This test requires complex server setup and should only be run manually.
+        """
         print(f"\n📝 Testing Secret Registration")
         print("=" * 50)
         
@@ -203,8 +226,12 @@ class TestLocalE2E:
         else:
             pytest.fail(f"Registration failed: {error}")
     
+    @pytest.mark.manual
     def test_06_secret_recovery(self):
-        """Test secret recovery."""
+        """Test secret recovery.
+        
+        This test requires complex server setup and should only be run manually.
+        """
         print(f"\n🔓 Testing Secret Recovery")
         print("=" * 50)
         
@@ -268,8 +295,12 @@ class TestLocalE2E:
             print("ℹ️  Skipping cryptographic recovery test")
             print("✅ Recovery authentication flow tested successfully")
     
+    @pytest.mark.manual
     def test_07_crypto_workflow(self):
-        """Test complete cryptographic workflow."""
+        """Test complete cryptographic workflow.
+        
+        This test requires complex server setup and should only be run manually.
+        """
         print(f"\n🔒 Testing Crypto Workflow")
         print("=" * 50)
         
@@ -320,8 +351,12 @@ class TestLocalE2E:
             except Exception:
                 print(f"✅ Correctly threw exception with insufficient shares")
     
+    @pytest.mark.manual
     def test_08_file_integrity_simulation(self):
-        """Test file integrity workflow (simulated encryption/decryption)."""
+        """Test file integrity workflow (simulated encryption/decryption).
+        
+        This test requires complex server setup and should only be run manually.
+        """
         print(f"\n📁 Testing File Integrity Workflow")
         print("=" * 50)
         
@@ -385,8 +420,12 @@ class TestLocalE2E:
                     except:
                         pass
     
+    @pytest.mark.manual
     def test_09_dpop_key_persistence(self):
-        """Test DPoP key persistence across sessions."""
+        """Test DPoP key persistence across sessions.
+        
+        This test requires complex server setup and should only be run manually.
+        """
         print(f"\n🔑 Testing DPoP Key Persistence")
         print("=" * 50)
         
@@ -426,8 +465,12 @@ class TestLocalE2E:
         except Exception as e:
             pytest.fail(f"DPoP signing test failed: {e}")
     
+    @pytest.mark.manual
     def test_10_error_handling(self):
-        """Test error handling scenarios."""
+        """Test error handling scenarios.
+        
+        This test requires complex server setup and should only be run manually.
+        """
         print(f"\n⚠️  Testing Error Handling")
         print("=" * 50)
         

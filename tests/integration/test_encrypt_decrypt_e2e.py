@@ -101,8 +101,8 @@ then the OpenADP system is working perfectly! 🎯
         print("🖥️  Starting local OpenADP servers...")
         
         server_script = os.path.join(
-            os.path.dirname(__file__), 
-            "../../prototype/src/server/jsonrpc_server.py"
+            os.path.dirname(__file__),
+            "../../server/jsonrpc_server.py"
         )
         
         if not os.path.exists(server_script):

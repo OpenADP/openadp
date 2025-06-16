@@ -4,12 +4,16 @@ Test Phase 4 Authentication with Global IdP
 
 This script tests the complete Phase 4 authentication flow using our global
 Keycloak instance running on the Raspberry Pi.
+
+NOTE: This test requires manual browser interaction and should not be run
+in automated CI/CD environments.
 """
 
 import os
 import sys
 import tempfile
 import hashlib
+import pytest
 
 # Add the src directory to the path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -26,8 +30,13 @@ GLOBAL_CLIENT_SECRET = "openadp-cli-secret-change-in-production"
 TOKEN_CACHE_DIR = os.path.expanduser("~/.openadp_test")
 PRIVATE_KEY_PATH = os.path.join(TOKEN_CACHE_DIR, "test_dpop_key.pem")
 
+@pytest.mark.manual
 def test_global_auth():
-    """Test authentication with the global Keycloak IdP."""
+    """Test authentication with the global Keycloak IdP.
+    
+    This test requires manual browser interaction and connects to the
+    production Keycloak server. It should only be run manually.
+    """
     print("🌍 Testing Phase 4 Authentication with Global IdP")
     print("=" * 60)
     print(f"🔗 Issuer: {GLOBAL_ISSUER_URL}")
@@ -99,8 +108,13 @@ def test_global_auth():
         print(f"❌ Unexpected error: {e}")
         return None
 
+@pytest.mark.manual
 def test_file_encryption_with_global_auth():
-    """Test file encryption/decryption with global authentication."""
+    """Test file encryption/decryption with global authentication.
+    
+    This test requires manual browser interaction and connects to the
+    production Keycloak server. It should only be run manually.
+    """
     print("\n🔒 Testing File Encryption with Global Auth")
     print("=" * 60)
     

@@ -31,10 +31,18 @@ def test_actual_secret_sharing():
     max_guesses = 10
     expiration = 0
     
-    # Initialize client
-    client = Client()
+    # Initialize client with local test servers (not production)
+    client = Client(
+        servers_url=None,  # Don't scrape production servers
+        fallback_servers=[
+            "http://localhost:9200",
+            "http://localhost:9201", 
+            "http://localhost:9202"
+        ]
+    )
     if client.get_live_server_count() == 0:
         print("❌ No live servers available")
+        print("ℹ️  Make sure local test servers are running on ports 9200, 9201, 9202")
         return
     
     print(f"Using {client.get_live_server_count()} live servers")

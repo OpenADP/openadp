@@ -231,96 +231,97 @@ def generate_keypair():
     return protocol.dh.generate_keypair()
 
 
+def test_noise_nk():
+    """Test the NoiseNK implementation with bidirectional communication."""
+    print("=== Testing Simple NoiseNK Implementation ===\n")
+    
+    # 1. Generate keypair for responder only (NK pattern)
+    print("1. Generating server keypair...")
+    server_keypair = generate_keypair()
+    
+    print(f"Server public key: {server_keypair.public.data.hex()}")
+    
+    # 2. Initialize both parties - only server has static key
+    print("\n2. Initializing NoiseNK endpoints...")
+    client = NoiseNK(
+        role='initiator',
+        remote_static_key=server_keypair.public
+    )
+    
+    server = NoiseNK(
+        role='responder', 
+        local_static_key=server_keypair
+    )
+    
+    # 3. Perform NK handshake
+    print("\n3. Performing NK handshake...")
+    
+    # Message 1: Client -> Server
+    print("   Client sending handshake message 1...")
+    msg1 = client.write_handshake_message(b"Hello from client!")
+    print(f"   Message 1: {len(msg1)} bytes")
+    
+    payload1 = server.read_handshake_message(msg1)
+    print(f"   Server received: '{payload1.decode()}'")
+    
+    # Message 2: Server -> Client  
+    print("   Server sending handshake message 2...")
+    msg2 = server.write_handshake_message(b"Hello from server!")
+    print(f"   Message 2: {len(msg2)} bytes")
+    
+    payload2 = client.read_handshake_message(msg2)
+    print(f"   Client received: '{payload2.decode()}'")
+    
+    print(f"\n✅ Handshake complete!")
+    print(f"   Client handshake status: {client.is_handshake_complete()}")
+    print(f"   Server handshake status: {server.is_handshake_complete()}")
+    print(f"   Handshake hash: {client.get_handshake_hash().hex()[:32]}...")
+    
+    # 4. Test post-handshake encrypted communication
+    print("\n4. Testing encrypted communication...")
+    
+    # Client -> Server
+    secret_msg = b"This is a secret message from client to server!"
+    print(f"   Client encrypting: '{secret_msg.decode()}'")
+    encrypted = client.encrypt(secret_msg)
+    print(f"   Encrypted: {encrypted.hex()[:64]}...")
+    
+    decrypted = server.decrypt(encrypted)
+    print(f"   Server decrypted: '{decrypted.decode()}'")
+    print(f"   ✅ Encryption successful: {decrypted == secret_msg}")
+    
+    # Server -> Client
+    response_msg = b"Server's secret response back to client!"
+    print(f"\n   Server encrypting: '{response_msg.decode()}'")
+    encrypted_response = server.encrypt(response_msg)
+    print(f"   Encrypted: {encrypted_response.hex()[:64]}...")
+    
+    decrypted_response = client.decrypt(encrypted_response)
+    print(f"   Client decrypted: '{decrypted_response.decode()}'")
+    print(f"   ✅ Encryption successful: {decrypted_response == response_msg}")
+    
+    # 5. Test multiple message exchange
+    print("\n5. Testing multiple message exchange...")
+    messages = [
+        (b"Message 1", "Client -> Server"),
+        (b"ACK 1", "Server -> Client"),
+        (b"Message 2 with more data", "Client -> Server"),
+        (b"Final ACK", "Server -> Client")
+    ]
+    
+    for msg, direction in messages:
+        if "Client -> Server" in direction:
+            encrypted = client.encrypt(msg)
+            decrypted = server.decrypt(encrypted)
+        else:
+            encrypted = server.encrypt(msg)
+            decrypted = client.decrypt(encrypted)
+        
+        print(f"   {direction}: '{msg.decode()}' -> '{decrypted.decode()}' ✅")
+    
+    print("\n🎉 All tests passed! NoiseNK implementation working perfectly!")
+
+
 # Example usage and test
 if __name__ == "__main__":
-    def test_noise_nk():
-        """Test the NoiseNK implementation with bidirectional communication."""
-        print("=== Testing Simple NoiseNK Implementation ===\n")
-        
-        # 1. Generate keypair for responder only (NK pattern)
-        print("1. Generating server keypair...")
-        server_keypair = generate_keypair()
-        
-        print(f"Server public key: {server_keypair.public.data.hex()}")
-        
-        # 2. Initialize both parties - only server has static key
-        print("\n2. Initializing NoiseNK endpoints...")
-        client = NoiseNK(
-            role='initiator',
-            remote_static_key=server_keypair.public
-        )
-        
-        server = NoiseNK(
-            role='responder', 
-            local_static_key=server_keypair
-        )
-        
-        # 3. Perform NK handshake
-        print("\n3. Performing NK handshake...")
-        
-        # Message 1: Client -> Server
-        print("   Client sending handshake message 1...")
-        msg1 = client.write_handshake_message(b"Hello from client!")
-        print(f"   Message 1: {len(msg1)} bytes")
-        
-        payload1 = server.read_handshake_message(msg1)
-        print(f"   Server received: '{payload1.decode()}'")
-        
-        # Message 2: Server -> Client  
-        print("   Server sending handshake message 2...")
-        msg2 = server.write_handshake_message(b"Hello from server!")
-        print(f"   Message 2: {len(msg2)} bytes")
-        
-        payload2 = client.read_handshake_message(msg2)
-        print(f"   Client received: '{payload2.decode()}'")
-        
-        print(f"\n✅ Handshake complete!")
-        print(f"   Client handshake status: {client.is_handshake_complete()}")
-        print(f"   Server handshake status: {server.is_handshake_complete()}")
-        print(f"   Handshake hash: {client.get_handshake_hash().hex()[:32]}...")
-        
-        # 4. Test post-handshake encrypted communication
-        print("\n4. Testing encrypted communication...")
-        
-        # Client -> Server
-        secret_msg = b"This is a secret message from client to server!"
-        print(f"   Client encrypting: '{secret_msg.decode()}'")
-        encrypted = client.encrypt(secret_msg)
-        print(f"   Encrypted: {encrypted.hex()[:64]}...")
-        
-        decrypted = server.decrypt(encrypted)
-        print(f"   Server decrypted: '{decrypted.decode()}'")
-        print(f"   ✅ Encryption successful: {decrypted == secret_msg}")
-        
-        # Server -> Client
-        response_msg = b"Server's secret response back to client!"
-        print(f"\n   Server encrypting: '{response_msg.decode()}'")
-        encrypted_response = server.encrypt(response_msg)
-        print(f"   Encrypted: {encrypted_response.hex()[:64]}...")
-        
-        decrypted_response = client.decrypt(encrypted_response)
-        print(f"   Client decrypted: '{decrypted_response.decode()}'")
-        print(f"   ✅ Encryption successful: {decrypted_response == response_msg}")
-        
-        # 5. Test multiple message exchange
-        print("\n5. Testing multiple message exchange...")
-        messages = [
-            (b"Message 1", "Client -> Server"),
-            (b"ACK 1", "Server -> Client"),
-            (b"Message 2 with more data", "Client -> Server"),
-            (b"Final ACK", "Server -> Client")
-        ]
-        
-        for msg, direction in messages:
-            if "Client -> Server" in direction:
-                encrypted = client.encrypt(msg)
-                decrypted = server.decrypt(encrypted)
-            else:
-                encrypted = server.encrypt(msg)
-                decrypted = client.decrypt(encrypted)
-            
-            print(f"   {direction}: '{msg.decode()}' -> '{decrypted.decode()}' ✅")
-        
-        print("\n🎉 All tests passed! NoiseNK implementation working perfectly!")
-    
     test_noise_nk() 

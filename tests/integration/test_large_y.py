@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Test different y value sizes to understand remote server limits."""
+"""Test different y value sizes to understand remote server limits.
+
+NOTE: This test connects to production servers and should not be run
+in automated CI/CD environments.
+"""
 
 import sys
 import os
@@ -21,9 +25,13 @@ test_cases = [
     (2**252 - 1, "252-bit max (close to crypto.q)"),
 ]
 
+@pytest.mark.manual
 @pytest.mark.parametrize("y_int,description", test_cases)
 def test_y_size(y_int, description):
-    """Test registering with a specific y value."""
+    """Test registering with a specific y value.
+    
+    This test connects to production servers and requires manual setup.
+    """
     print(f"\n--- Testing {description} ---")
     
     # Test parameters

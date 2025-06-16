@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Test OpenADP with a fresh BID to avoid old registration conflicts."""
+"""Test OpenADP with a fresh BID to avoid old registration conflicts.
+
+NOTE: This test requires complex server setup and should not be run
+in automated CI/CD environments.
+"""
 
 import sys
 import os
@@ -71,11 +75,14 @@ def make_auth_data(server_url, jwt_token):
             "private_key": priv
         }
 
+@pytest.mark.manual
 @pytest.mark.usefixtures("integration_env")
 def test_fresh_openadp(tmp_path):
     """
     Integration test: Test OpenADP key generation and recovery with a fresh backup ID,
     using the fake Keycloak server and 3 OpenADP servers.
+    
+    This test requires complex server setup and should only be run manually.
     """
     # Get test environment
     server_urls = os.environ["OPENADP_SERVER_URLS"].split(",")

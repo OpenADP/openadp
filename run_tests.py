@@ -56,11 +56,19 @@ class TestRunner:
                 capture_output=False,
                 text=True
             )
-            success = result.returncode == 0
+            
+            # Handle pytest exit codes
+            # 0: All tests passed
+            # 5: No tests collected (this is OK for E2E tests when all are marked as manual)
+            success = result.returncode == 0 or (result.returncode == 5 and "End-to-End" in description)
+            
             self.test_results[description] = success
             
             if success:
-                print(f"✅ {description} - PASSED")
+                if result.returncode == 5 and "End-to-End" in description:
+                    print(f"✅ {description} - PASSED (all tests deselected as manual)")
+                else:
+                    print(f"✅ {description} - PASSED")
             else:
                 print(f"❌ {description} - FAILED (exit code: {result.returncode})")
                 

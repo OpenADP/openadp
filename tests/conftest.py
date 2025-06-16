@@ -27,7 +27,7 @@ def openadp_servers(tmp_path_factory, fake_keycloak_server):
         env["OPENADP_AUTH_JWKS_URL"] = f"{fake_keycloak_server.issuer}/protocol/openid-connect/certs"
         # Add any other env vars your server needs here
         proc = subprocess.Popen(
-            ["python", "prototype/run_server.py"],
+            ["python", "run_server.py"],
             env=env,
             cwd=os.path.abspath("."),
         )

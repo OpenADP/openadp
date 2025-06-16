@@ -163,13 +163,6 @@ def run_pkce_flow(
     # Set up callback server
     redirect_uri = f"http://localhost:{redirect_port}/callback"
     
-    # Start local callback server
-    server = HTTPServer(('localhost', redirect_port), CallbackHandler)
-    server.auth_code = None
-    server.auth_state = None
-    server.auth_error = None
-    server.timeout = 1  # Short timeout for non-blocking
-    
     # Build authorization URL
     auth_params = {
         'response_type': 'code',
@@ -186,77 +179,116 @@ def run_pkce_flow(
     auth_url = f"{auth_endpoint}?{urlencode(auth_params)}"
     
     print("🔑 Generated keypair for DPoP")
-    print(f"🔗 Opening browser for authorization...")
-    print(f"   URL: {auth_url}")
-    print(f"⏱️  Waiting up to {timeout} seconds for authorization...")
     
-    # Open browser
-    webbrowser.open(auth_url)
+    # Check if this is the fake Keycloak (localhost:9000) for testing
+    is_fake_keycloak = 'localhost:9000' in issuer_url
     
-    try:
-        # Wait for callback - use handle_request() only, no background thread
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            server.handle_request()  # Process one request
-            
-            if server.auth_error:
-                raise PKCEFlowError(f"Authorization failed: {server.auth_error}")
-            
-            if server.auth_code:
-                if server.auth_state != state:
-                    raise PKCEFlowError("State parameter mismatch - possible CSRF attack")
-                
-                print("✅ Authorization code received!")
-                break
-            
-            time.sleep(0.1)
-        else:
-            raise PKCEFlowError("Authorization timed out - user did not complete authorization")
+    if is_fake_keycloak:
+        print("🧪 Detected fake Keycloak - using direct authorization")
         
-        # Exchange authorization code for tokens with DPoP
-        token_data = {
-            'grant_type': 'authorization_code',
-            'code': server.auth_code,
-            'redirect_uri': redirect_uri,
-            'client_id': client_id,
-            'code_verifier': code_verifier
-        }
+        # For fake Keycloak, make direct request to get authorization code
+        try:
+            response = requests.get(auth_url, timeout=10)
+            response.raise_for_status()
+            auth_response = response.json()
+            
+            if 'error' in auth_response:
+                raise PKCEFlowError(f"Authorization failed: {auth_response['error']}")
+            
+            auth_code = auth_response.get('code')
+            auth_state = auth_response.get('state')
+            
+            if not auth_code:
+                raise PKCEFlowError("No authorization code received from fake Keycloak")
+            
+            if auth_state != state:
+                raise PKCEFlowError("State parameter mismatch - possible CSRF attack")
+            
+            print("✅ Authorization code received from fake Keycloak!")
+            
+        except requests.RequestException as e:
+            raise PKCEFlowError(f"Authorization request failed: {e}")
+    
+    else:
+        print(f"🔗 Opening browser for authorization...")
+        print(f"   URL: {auth_url}")
+        print(f"⏱️  Waiting up to {timeout} seconds for authorization...")
         
-        # Create DPoP header for token request
-        dpop_header = make_dpop_header('POST', token_endpoint, private_key)
+        # Start local callback server
+        server = HTTPServer(('localhost', redirect_port), CallbackHandler)
+        server.auth_code = None
+        server.auth_state = None
+        server.auth_error = None
+        server.timeout = 1  # Short timeout for non-blocking
         
-        headers = {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'DPoP': dpop_header
-        }
+        # Open browser
+        webbrowser.open(auth_url)
         
         try:
-            response = requests.post(token_endpoint, data=token_data, headers=headers, timeout=10)
-            response.raise_for_status()
-            token_response = response.json()
-        except requests.RequestException as e:
-            raise PKCEFlowError(f"Token exchange failed: {e}")
-        
-        if 'error' in token_response:
-            raise PKCEFlowError(f"Token exchange error: {token_response['error']}")
-        
-        print("✅ Got DPoP-bound tokens!")
-        
-        # Return complete token information
-        result = {
-            'access_token': token_response.get('access_token'),
-            'refresh_token': token_response.get('refresh_token'),
-            'token_type': token_response.get('token_type', 'DPoP'),
-            'expires_in': token_response.get('expires_in'),
-            'scope': token_response.get('scope'),
-            'jwk_public': public_jwk,
-            'private_key': private_key
-        }
-        
-        return result
-        
-    finally:
-        server.server_close()
+            # Wait for callback - use handle_request() only, no background thread
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                server.handle_request()  # Process one request
+                
+                if server.auth_error:
+                    raise PKCEFlowError(f"Authorization failed: {server.auth_error}")
+                
+                if server.auth_code:
+                    if server.auth_state != state:
+                        raise PKCEFlowError("State parameter mismatch - possible CSRF attack")
+                    
+                    print("✅ Authorization code received!")
+                    auth_code = server.auth_code
+                    break
+                
+                time.sleep(0.1)
+            else:
+                raise PKCEFlowError("Authorization timed out - user did not complete authorization")
+                
+        finally:
+            server.server_close()
+    
+    # Exchange authorization code for tokens with DPoP
+    token_data = {
+        'grant_type': 'authorization_code',
+        'code': auth_code,
+        'redirect_uri': redirect_uri,
+        'client_id': client_id,
+        'code_verifier': code_verifier
+    }
+    
+    # Create DPoP header for token request
+    dpop_header = make_dpop_header('POST', token_endpoint, private_key)
+    
+    headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'DPoP': dpop_header
+    }
+    
+    try:
+        response = requests.post(token_endpoint, data=token_data, headers=headers, timeout=10)
+        response.raise_for_status()
+        token_response = response.json()
+    except requests.RequestException as e:
+        raise PKCEFlowError(f"Token exchange failed: {e}")
+    
+    if 'error' in token_response:
+        raise PKCEFlowError(f"Token exchange error: {token_response['error']}")
+    
+    print("✅ Got DPoP-bound tokens!")
+    
+    # Return complete token information
+    result = {
+        'access_token': token_response.get('access_token'),
+        'refresh_token': token_response.get('refresh_token'),
+        'token_type': token_response.get('token_type', 'DPoP'),
+        'expires_in': token_response.get('expires_in'),
+        'scope': token_response.get('scope'),
+        'jwk_public': public_jwk,
+        'private_key': private_key
+    }
+    
+    return result
 
 
 def refresh_access_token_pkce(

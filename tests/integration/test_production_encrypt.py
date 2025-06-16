@@ -4,11 +4,15 @@ Test Production Encryption with Cached Tokens
 
 This script uses the cached production tokens to test file encryption
 without going through the OAuth flow again.
+
+NOTE: This test connects to production servers and should not be run
+in automated CI/CD environments.
 """
 
 import sys
 import json
 import os
+import pytest
 
 # Add the prototype src to path
 sys.path.insert(0, 'prototype/src')
@@ -55,8 +59,12 @@ def load_cached_tokens():
         print(f"❌ Failed to load cached tokens: {e}")
         return None
 
+@pytest.mark.manual
 def test_encryption(filename, password):
-    """Test encryption using cached production tokens."""
+    """Test encryption using cached production tokens.
+    
+    This test connects to production servers and requires manual setup.
+    """
     
     print("🔐 Testing Production Encryption")
     print("=" * 50)

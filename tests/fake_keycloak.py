@@ -389,17 +389,14 @@ class FakeKeycloakHandler(BaseHTTPRequestHandler):
             "used": False
         }
         
-        # Build redirect response
-        redirect_params = {"code": auth_code}
+        # For testing, return the authorization code directly instead of redirecting
+        # This avoids browser interaction and makes testing easier
+        response_data = {"code": auth_code}
         if state:
-            redirect_params["state"] = state
+            response_data["state"] = state
         
-        redirect_url = f"{redirect_uri}?{urlencode(redirect_params)}"
-        
-        # Send redirect response
-        self.send_response(302)
-        self.send_header("Location", redirect_url)
-        self.end_headers()
+        # Send JSON response instead of redirect
+        self._send_json(response_data)
     
     def _handle_token(self):
         """Handle token endpoint."""
