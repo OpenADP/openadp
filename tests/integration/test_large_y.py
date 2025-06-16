@@ -4,12 +4,24 @@
 import sys
 import os
 import base64
+import pytest
 
 # Add the src directory to Python path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from client.client import Client
 
+# Test cases as parameters
+test_cases = [
+    (123456789, "small integer"),
+    (2**32 - 1, "32-bit max"),
+    (2**64 - 1, "64-bit max"),
+    (2**128 - 1, "128-bit max"),
+    (2**200 - 1, "200-bit max"),
+    (2**252 - 1, "252-bit max (close to crypto.q)"),
+]
+
+@pytest.mark.parametrize("y_int,description", test_cases)
 def test_y_size(y_int, description):
     """Test registering with a specific y value."""
     print(f"\n--- Testing {description} ---")
@@ -40,27 +52,17 @@ def test_y_size(y_int, description):
     
     if success:
         print("✅ Registration successful!")
-        return True
+        assert True  # Explicit success
     else:
         print(f"❌ Registration failed: {error}")
-        return False
+        assert False, f"Registration failed for {description}: {error}"
 
 if __name__ == "__main__":
-    # Test various sizes
-    test_cases = [
-        (123456789, "small integer"),
-        (2**32 - 1, "32-bit max"),
-        (2**64 - 1, "64-bit max"),
-        (2**128 - 1, "128-bit max"),
-        (2**200 - 1, "200-bit max"),
-        (2**252 - 1, "252-bit max (close to crypto.q)"),
-    ]
-    
+    # Run tests manually if called directly
     for y_int, description in test_cases:
         try:
-            success = test_y_size(y_int, description)
-            if not success:
-                break
+            test_y_size(y_int, description)
+            print(f"✅ {description} test passed")
         except Exception as e:
             print(f"❌ Exception during {description}: {e}")
             break 

@@ -358,14 +358,25 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             
             uid, did, bid, version, x, y_str, max_guesses, expiration = params
             
+            # Convert parameters to proper types (JSON-RPC may pass some as strings)
+            try:
+                version = int(version)
+                x = int(x)
+                max_guesses = int(max_guesses)
+                expiration = int(expiration)
+            except (ValueError, TypeError) as e:
+                return None, f"INVALID_ARGUMENT: Invalid integer parameter: {str(e)}"
+            
             # Convert y from string to bytes (x is already an integer from JSON)
             try:
                 y_int = int(y_str)
-                # Validate that the integer can fit in 32 bytes before conversion
+                
+                # Validate that the integer can fit in 32 bytes (for elliptic curve coordinates)
                 if y_int.bit_length() > 256:
                     return None, f"INVALID_ARGUMENT: Y integer too large ({y_int.bit_length()} bits, max 256)"
                 
-                y = int.to_bytes(y_int, 32, "little")  # Convert integer to bytes for server
+                # Convert integer to bytes with fixed 32-byte length (big-endian to match client)
+                y = y_int.to_bytes(32, "big")
                 logger.info(f"Converted y_str (len={len(y_str)}) to {len(y)} bytes, {y_int.bit_length()} bits")
                 
             except ValueError as e:

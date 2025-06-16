@@ -133,7 +133,7 @@ def test_file_encryption_with_global_auth():
             print(f"✅ Encryption successful: {encrypted_file}")
         else:
             print(f"❌ Encryption failed: {result.stderr}")
-            return False
+            assert False, f"Encryption failed: {result.stderr}"
         
         # Test decryption
         print("\n🔓 Testing decryption...")
@@ -152,7 +152,7 @@ def test_file_encryption_with_global_auth():
         
         if result.returncode != 0:
             print(f"❌ Decryption failed: {result.stderr}")
-            return False
+            assert False, f"Decryption failed: {result.stderr}"
         
         # Verify content
         if os.path.exists(test_file):
@@ -161,19 +161,19 @@ def test_file_encryption_with_global_auth():
             
             if decrypted_content == test_content:
                 print("✅ Decryption successful - content matches!")
-                return True
+                assert True  # Explicit success
             else:
                 print("❌ Decryption failed - content mismatch")
                 print(f"Expected: {repr(test_content)}")
                 print(f"Got: {repr(decrypted_content)}")
-                return False
+                assert False, f"Content mismatch: expected {repr(test_content)}, got {repr(decrypted_content)}"
         else:
             print("❌ Decryption failed - no output file")
-            return False
+            assert False, "Decryption failed - no output file"
             
     except Exception as e:
         print(f"❌ File encryption test failed: {e}")
-        return False
+        assert False, f"File encryption test failed: {e}"
     finally:
         # Cleanup
         for file_path in [test_file, test_file + ".enc"]:

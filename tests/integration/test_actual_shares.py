@@ -63,9 +63,10 @@ def test_actual_secret_sharing():
             print("✅ Registration successful!")
         else:
             print(f"❌ Registration failed: {error}")
-            return False
+            assert False, f"Registration failed: {error}"
     
-    return True
+    print("✅ All registrations successful!")
+    assert True  # Explicit success assertion
 
 if __name__ == "__main__":
     test_actual_secret_sharing() 

@@ -289,9 +289,18 @@ class Client:
         if not self.live_servers:
             return False, "No live servers available"
         
+        # Convert bytes to integer string for transmission
+        if isinstance(y, bytes):
+            # Convert bytes to big integer, then to string
+            y_int = int.from_bytes(y, byteorder='big')
+            y_str = str(y_int)
+        else:
+            # If y is already a string or int, convert to string
+            y_str = str(y)
+        
         for client in self.live_servers:
             try:
-                result, error = client.register_secret(uid, did, bid, version, str(x), str(y), max_guesses, expiration, encrypted=True, auth_data=auth_data)
+                result, error = client.register_secret(uid, did, bid, version, str(x), y_str, max_guesses, expiration, encrypted=True, auth_data=auth_data)
                 
                 if error:
                     continue
