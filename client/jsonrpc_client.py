@@ -419,9 +419,9 @@ class EncryptedOpenADPClient(OpenADPClient):
         Create authentication payload for Noise-NK encrypted authentication.
         
         Args:
-            access_token: OAuth access token
-            private_key: DPoP private key (cryptography private key object)
-            public_key_jwk: DPoP public key as JWK dictionary
+            access_token: Authentication token (legacy parameter, not used with auth codes)
+            private_key: Private key for handshake signing (cryptography private key object)
+            public_key_jwk: Public key as JWK dictionary (legacy parameter)
             handshake_hash: Noise-NK handshake hash
             
         Returns:
@@ -431,7 +431,7 @@ class EncryptedOpenADPClient(OpenADPClient):
             from cryptography.hazmat.primitives import hashes
             from cryptography.hazmat.primitives.asymmetric import ec
             
-            # Sign the handshake hash with DPoP private key
+            # Sign the handshake hash with private key
             signature = private_key.sign(handshake_hash, ec.ECDSA(hashes.SHA256()))
             
             # Base64url encode the signature
@@ -445,7 +445,7 @@ class EncryptedOpenADPClient(OpenADPClient):
             auth_payload = {
                 "access_token": access_token,
                 "handshake_signature": signature_b64,
-                "dpop_public_key": public_key_jwk
+                "public_key": public_key_jwk
             }
             
             return auth_payload
@@ -583,14 +583,14 @@ class EncryptedOpenADPClient(OpenADPClient):
     
     def make_authenticated_request(self, method: str, params: List[Any], access_token: str, private_key, public_key_jwk: Dict) -> Tuple[Any, Optional[str]]:
         """
-        Make an authenticated encrypted request using DPoP over Noise-NK.
+        Make an authenticated encrypted request using handshake signing over Noise-NK.
         
         Args:
             method: The RPC method name
             params: List of parameters for the method
-            access_token: OAuth access token
-            private_key: DPoP private key (cryptography object)
-            public_key_jwk: DPoP public key as JWK dictionary
+            access_token: Authentication token (legacy parameter)
+            private_key: Private key for handshake signing (cryptography object)
+            public_key_jwk: Public key as JWK dictionary (legacy parameter)
             
         Returns:
             Tuple of (result, error_message). If successful, error_message is None.

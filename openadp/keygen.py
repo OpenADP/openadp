@@ -39,7 +39,7 @@ def derive_identifiers(filename: str, user_id: str,
     
     Args:
         filename: Name of file being encrypted/decrypted
-        user_id: Authenticated user ID (JWT sub claim - UUID)
+        user_id: Authenticated user ID (authentication code system - UUID)
         hostname: Override hostname (auto-detected if None)
         
     Returns:
@@ -50,8 +50,8 @@ def derive_identifiers(filename: str, user_id: str,
         import socket
         hostname = socket.gethostname()
     
-    # Phase 4: Use JWT sub (UUID) as UID directly
-    uid = user_id  # This is now the JWT sub claim (UUID)
+    # Phase 4: Use authenticated user ID (UUID) as UID directly
+    uid = user_id  # This is now the authenticated user ID (UUID)
     did = hostname  # Device identifier
     bid = f"file://{os.path.basename(filename)}"  # Backup identifier for this file
     
@@ -80,7 +80,7 @@ def generate_encryption_key(filename: str, password: str, user_id: str, max_gues
     Generate an encryption key using OpenADP distributed secret sharing.
     
     This function:
-    1. Derives UID/DID/BID using authenticated user_id (JWT sub)
+    1. Derives UID/DID/BID using authenticated user_id
     2. Converts password to PIN for cryptographic operations
     3. Generates random secret and splits into shares
     4. Registers shares with live OpenADP servers
@@ -89,7 +89,7 @@ def generate_encryption_key(filename: str, password: str, user_id: str, max_gues
     Args:
         filename: File being encrypted (used for BID)
         password: User password 
-        user_id: Authenticated user ID (JWT sub claim - UUID)
+        user_id: Authenticated user ID (authentication code system - UUID)
         max_guesses: Maximum recovery attempts allowed
         expiration: Expiration timestamp (0 for no expiration)
         auth_data: Optional authentication data for Phase 3.5 encrypted auth
@@ -179,7 +179,7 @@ def recover_encryption_key(filename: str, password: str, user_id: str, server_ur
     Recover an encryption key from OpenADP servers for decryption.
     
     This function:
-    1. Derives same UID/DID/BID using authenticated user_id (JWT sub)
+    1. Derives same UID/DID/BID using authenticated user_id
     2. Converts password to same PIN 
     3. Recovers secret shares from OpenADP servers (using specific URLs if provided)
     4. Reconstructs original secret using threshold cryptography
@@ -188,7 +188,7 @@ def recover_encryption_key(filename: str, password: str, user_id: str, server_ur
     Args:
         filename: File being decrypted (used for BID)
         password: User password (must match encryption password)
-        user_id: Authenticated user ID (JWT sub claim - UUID, must match encryption)
+        user_id: Authenticated user ID (authentication code system - UUID, must match encryption)
         server_urls: List of server URLs from metadata
         auth_data: Optional authentication data for Phase 3.5 encrypted auth
         threshold: Threshold required for recovery (from metadata)

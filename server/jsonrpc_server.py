@@ -477,9 +477,9 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
                 
                 logger.info(f"Authenticated encrypted request for {method} by user {user_id}")
                 
-                # For Phase 4: Use JWT sub as UID for ownership validation
+                # For Phase 4: Use authenticated user ID for ownership validation
                 if method in ["RegisterSecret", "RecoverSecret", "ListBackups"]:
-                    # Replace user-provided UID with authenticated JWT sub
+                    # Replace user-provided UID with authenticated user_id
                     if method == "RegisterSecret" and len(rpc_params) >= 1:
                         # Replace first parameter (UID) with authenticated user_id
                         rpc_params[0] = user_id

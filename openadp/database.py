@@ -13,7 +13,7 @@ The main class `Database` provides methods for:
 - Listing all backups for a user
 
 Database Schema:
-- UID: User identifier (JWT 'sub' claim - UUID format)
+- UID: User identifier (authentication code system - UUID format)
 - DID: Device identifier (hostname)
 - BID: Backup identifier (file:// URLs)
 - version: Version number for backup

@@ -3,22 +3,19 @@
 OpenADP File Decryption Utility
 
 This module provides file decryption functionality for files encrypted with ChaCha20-Poly1305
-using OpenADP distributed secret sharing for key recovery instead of traditional 
-password-based key derivation.
+using OpenADP distributed secret sharing for key recovery using authentication codes.
 
 The decryption process:
 1. Reads metadata from the encrypted file to determine which servers were used
-2. Uses those specific OpenADP servers to recover the encryption key 
-3. Decrypts the file with ChaCha20-Poly1305 using metadata as additional authenticated data
-4. Restores the original file format
-
-The key recovery uses the specific servers from encryption metadata, providing
-more reliable decryption than re-scraping the server list.
+2. Generate authentication codes for server access
+3. Uses those specific OpenADP servers to recover the encryption key 
+4. Decrypts the file with ChaCha20-Poly1305 using metadata as additional authenticated data
+5. Restores the original file format
 
 Usage:
     python3 decrypt.py <filename_to_decrypt>
     
-Note: Authentication is always required (Phase 5 - mandatory authentication).
+Note: Uses authentication codes instead of OAuth for server access.
 """
 
 import os
@@ -34,22 +31,52 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from openadp import keygen
+from openadp.auth_code_manager import AuthCodeManager
 
 # --- Configuration ---
 # These must match the values used during encryption
 NONCE_SIZE: int = 12
 
-# Authentication configuration - Global IdP (same as encrypt.py)
-DEFAULT_ISSUER_URL = "https://auth.openadp.org/realms/openadp"
-DEFAULT_CLIENT_ID = "cli-test"
-TOKEN_CACHE_DIR = os.path.expanduser("~/.openadp")
-PRIVATE_KEY_PATH = os.path.join(TOKEN_CACHE_DIR, "dpop_key.pem")
-TOKEN_CACHE_PATH = os.path.join(TOKEN_CACHE_DIR, "tokens.json")
-
+def get_auth_codes(servers: List[str], password: str, filename: str) -> Tuple[Dict[str, str], str]:
+    """
+    Generate deterministic authentication codes for server access based on password and filename.
+    This ensures the same codes can be regenerated that were used during encryption.
+    
+    Args:
+        servers: List of server URLs
+        password: User password (used as seed for deterministic generation)
+        filename: Filename being decrypted (used as additional entropy)
+        
+    Returns:
+        Tuple of (dictionary mapping server URLs to authentication codes, base_auth_code)
+    """
+    print("🔐 Generating deterministic authentication codes...")
+    
+    # Create deterministic seed from password and filename
+    import hashlib
+    seed_data = f"{password}:{filename}".encode('utf-8')
+    seed_hash = hashlib.sha256(seed_data).hexdigest()
+    
+    # Generate base auth code deterministically from seed (32 hex chars = 128 bits)
+    base_seed = f"base:{seed_hash}"
+    base_hash = hashlib.sha256(base_seed.encode()).hexdigest()
+    base_auth_code = base_hash[:32]  # Take first 32 hex chars (128 bits)
+    
+    # Generate server-specific codes deterministically (64 hex chars = SHA256)
+    server_auth_codes = {}
+    for server_url in servers:
+        # Use same derivation method as AuthCodeManager
+        combined = f"{base_auth_code}:{server_url}"
+        server_code = hashlib.sha256(combined.encode()).hexdigest()  # Full 64 hex chars
+        server_auth_codes[server_url] = server_code
+    
+    print(f"🔑 Generated deterministic base authentication code: {base_auth_code}")
+    print(f"🌐 Derived {len(server_auth_codes)} server-specific codes")
+    
+    return server_auth_codes, base_auth_code
 
 def decrypt_file(input_filename: str, password: str,
-                override_servers: Optional[List[str]] = None, 
-                issuer_url: str = DEFAULT_ISSUER_URL, client_id: str = DEFAULT_CLIENT_ID) -> None:
+                override_servers: Optional[List[str]] = None) -> None:
     """
     Decrypt the specified file using ChaCha20-Poly1305 with OpenADP key recovery.
 
@@ -61,8 +88,6 @@ def decrypt_file(input_filename: str, password: str,
         input_filename: Path to the encrypted file to decrypt
         password: Password for OpenADP key recovery (must match encryption password)
         override_servers: Optional list of server URLs to use instead of metadata servers
-        issuer_url: OAuth issuer URL for authentication
-        client_id: OAuth client ID for authentication
         
     Raises:
         SystemExit: If file operations fail or key recovery fails
@@ -119,18 +144,20 @@ def decrypt_file(input_filename: str, password: str,
         server_urls = metadata.get('servers', [])
         auth_enabled = metadata.get('auth_enabled', False)
         threshold = metadata.get('threshold', 2)  # Default to 2 for older files
+        version = metadata.get('version', '1.0')
         
         if not server_urls:
             print("Error: No server URLs found in metadata")
             sys.exit(1)
         print(f"Found metadata with {len(server_urls)} servers, threshold {threshold}")
+        print(f"File version: {version}")
         
         # Use override servers if provided
         if override_servers:
             print(f"Overriding metadata servers with {len(override_servers)} custom servers")
             server_urls = override_servers
         
-        # Phase 5: Authentication is always mandatory
+        # Check authentication requirements
         if auth_enabled:
             print("🔒 File was encrypted with authentication (standard)")
         else:
@@ -140,229 +167,198 @@ def decrypt_file(input_filename: str, password: str,
         print(f"Error: Failed to parse metadata: {e}")
         sys.exit(1)
 
-    # 4. Handle authentication (mandatory in Phase 5)
-    try:
-        # Get auth token for decryption
-        token_data = get_auth_token(issuer_url, client_id)
-        if not token_data:
-            print("❌ Authentication required for decryption but failed. Exiting.")
-            sys.exit(1)
-        
-        # Extract user_id from JWT token for Phase 4
-        try:
-            import jwt
-            # Decode token to extract user_id (sub claim) - don't verify signature here
-            # as we'll send the full token to the server for verification
-            payload = jwt.decode(token_data['access_token'], options={"verify_signature": False})
-            user_id = payload.get('sub')
-            if not user_id:
-                print("❌ JWT token missing 'sub' claim. Invalid token.")
-                sys.exit(1)
-            print(f"🔐 Authenticated as user: {user_id}")
-        except Exception as e:
-            print(f"❌ Failed to extract user ID from token: {e}")
-            sys.exit(1)
-        
-        # Create auth_data for Phase 3.5 encrypted authentication
-        auth_data = {
-            "needs_signing": True,
-            "access_token": token_data['access_token'],
-            "private_key": token_data['private_key'],
-            "public_key_jwk": token_data['jwk_public']
-        }
-        print("🔐 Using Phase 3.5 encrypted authentication")
-        
-    except Exception as e:
-        print(f"❌ Authentication error: {e}")
-        sys.exit(1)
-
-    # 5. Recover encryption key using OpenADP with specific servers from metadata
-    # Derive original filename for BID (backup identifier)
+    # 4. Generate authentication codes for server access
+    # Use original filename (without .enc) to match encryption
     original_filename = output_filename
+    server_auth_codes, base_auth_code = get_auth_codes(server_urls, password, original_filename)
+    
+    # 5. Generate user ID from authentication codes (must match encryption)
+    import hashlib
+    user_id = hashlib.sha256(base_auth_code.encode()).hexdigest()[:32]  # 32-char UUID-like ID
+    print(f"🔐 Generated user ID: {user_id}")
+
+    # 6. Recover encryption key using custom OpenADP implementation with auth codes
     print("Recovering encryption key from the original OpenADP servers...")
     
-    enc_key, error = keygen.recover_encryption_key(original_filename, password, user_id, server_urls, 
-                                                   auth_data, threshold)
+    enc_key, error = recover_encryption_key_with_auth_codes(
+        output_filename, password, user_id, server_auth_codes, server_urls, threshold
+    )
     
     if error:
         print(f"❌ Failed to recover encryption key: {error}")
         print("Check that:")
         print("  • The original OpenADP servers are running and accessible")
         print("  • The password matches the one used during encryption")
-        print("  • The file was encrypted with the same user/device context")
-        print("  • Authentication credentials are valid")
+        print("  • The file was encrypted with the same authentication context")
+        print("  • Authentication codes are valid")
         sys.exit(1)
 
-    # 6. Decrypt the file using metadata as additional authenticated data
+    # 7. Decrypt the file using metadata as additional authenticated data
     try:
         chacha = ChaCha20Poly1305(enc_key)
         plaintext = chacha.decrypt(nonce, ciphertext, metadata_json)
     except Exception as e:
-        print(f"❌ Decryption failed: {e}")
-        print("This could mean:")
+        print(f"Error during decryption: {e}")
+        print("This could indicate:")
         print("  • Wrong password")
-        print("  • File has been corrupted or tampered with")
-        print("  • Metadata has been modified")
-        print("  • File was not encrypted with OpenADP encrypt.py")
+        print("  • Corrupted encrypted file")
+        print("  • Mismatched authentication context")
         sys.exit(1)
 
-    # 7. Write the decrypted data to the output file
+    # 8. Write the decrypted file
     try:
         with open(output_filename, 'wb') as f_out:
             f_out.write(plaintext)
-        print(f"✅ Decryption successful. File saved to '{output_filename}'")
-        print(f"   Encrypted size: {len(file_data)} bytes") 
-        print(f"   Decrypted size: {len(plaintext)} bytes")
-        print(f"   Authentication: Mandatory (Phase 5 - DPoP)")
     except IOError as e:
         print(f"Error writing to '{output_filename}': {e}")
         sys.exit(1)
 
+    print(f"✅ File decrypted successfully!")
+    print(f"   Input:  {input_filename} ({len(file_data)} bytes)")
+    print(f"   Output: {output_filename} ({len(plaintext)} bytes)")
+    print(f"   Servers: {len(server_urls)} servers used")
+    print(f"   Threshold: {threshold}-of-{len(server_urls)} recovery")
+    print(f"   Authentication: Enabled (Authentication Codes)")
+
+
+def recover_encryption_key_with_auth_codes(filename: str, password: str, user_id: str, 
+                                          server_auth_codes: Dict[str, str], server_urls: List[str], 
+                                          threshold: int) -> Tuple[bytes, Optional[str]]:
+    """
+    Recover an encryption key using OpenADP with authentication codes.
+    
+    This is a custom implementation that uses authentication codes instead of OAuth.
+    """
+    from openadp import crypto, sharing
+    from client.jsonrpc_client import OpenADPClient
+    import secrets
+    
+    # Step 1: Derive same identifiers as during encryption
+    uid, did, bid = keygen.derive_identifiers(filename, user_id)
+    print(f"OpenADP: Recovering with UID={uid}, DID={did}, BID={bid}")
+    
+    # Step 2: Convert password to same PIN
+    pin = keygen.password_to_pin(password)
+    
+    # Step 3: Initialize clients for each server
+    clients = []
+    for server_url in server_urls:
+        try:
+            client = OpenADPClient(server_url)
+            clients.append((server_url, client))
+        except Exception as e:
+            print(f"Failed to connect to {server_url}: {e}")
+            continue
+    
+    if not clients:
+        return None, "No servers from metadata are accessible"
+    
+    # Step 4: Create cryptographic context (same as encryption)
+    U = crypto.H(uid.encode(), did.encode(), bid.encode(), pin)
+    
+    # Generate random r and compute B for recovery protocol
+    p = crypto.q
+    r = secrets.randbelow(p - 1) + 1
+    r_inv = pow(r, -1, p)
+    B = crypto.point_mul(r, U)
+    
+    # Step 5: Recover shares from servers using authentication codes
+    print("OpenADP: Recovering shares from servers...")
+    recovered_shares = []
+    
+    for i, (server_url, client) in enumerate(clients):
+        auth_code = server_auth_codes[server_url]
+        
+        try:
+            # Get current guess number for this backup from this specific server
+            backups, error = client.list_backups(auth_code, encrypted=False)
+            if error:
+                print(f"Warning: Could not list backups from server {i+1}: {error}")
+                guess_num = 0  # Start with 0 if we can't determine current state
+            else:
+                # Find our backup in the list from this server
+                guess_num = 0
+                for backup in backups:
+                    backup_bid = backup[1] if len(backup) > 1 else ""
+                    if backup_bid == bid:
+                        guess_num = backup[3] if len(backup) > 3 else 0  # num_guesses field
+                        break
+            
+            # Attempt recovery from this specific server
+            result, error = client.recover_secret(
+                auth_code=auth_code,
+                did=did,
+                bid=bid,
+                b=crypto.unexpand(B),
+                guess_num=guess_num,
+                encrypted=False  # Use auth codes, not encryption
+            )
+            
+            if error:
+                print(f"Server {i+1} recovery failed: {error}")
+                continue
+                
+            version, x, si_b_unexpanded, num_guesses, max_guesses, expiration = result
+            recovered_shares.append((x, si_b_unexpanded))
+            print(f"OpenADP: Recovered share {x} from server {i+1}")
+            
+        except Exception as e:
+            print(f"Exception recovering from server {i+1}: {e}")
+            continue
+    
+    if len(recovered_shares) < threshold:
+        return None, f"Could not recover enough shares (got {len(recovered_shares)}, need at least {threshold})"
+    
+    # Step 6: Reconstruct secret using recovered shares
+    print(f"OpenADP: Reconstructing secret from {len(recovered_shares)} shares...")
+    rec_sb = sharing.recover_sb(recovered_shares)
+    rec_s_point = crypto.point_mul(r_inv, crypto.expand(rec_sb))
+    
+    # Step 7: Derive same encryption key
+    enc_key = crypto.deriveEncKey(rec_s_point)
+    print("OpenADP: Successfully recovered encryption key")
+    
+    return enc_key, None
 
 def get_password_securely() -> str:
     """
-    Get password from user without echoing to terminal.
+    Get password from user securely.
     
     Returns:
-        User-entered password
-        
-    Raises:
-        SystemExit: If password cannot be read or is empty
+        User-provided password
     """
-    try:
-        user_password = getpass.getpass("Enter password for OpenADP key recovery: ")
-        if not user_password:
-            print("Password cannot be empty.")
-            sys.exit(1)
-        return user_password
-    except Exception as e:
-        print(f"Could not read password: {e}")
+    password = getpass.getpass("Enter password: ")
+    if not password:
+        print("Password cannot be empty.")
         sys.exit(1)
-
-
-def get_auth_token(issuer_url: str = DEFAULT_ISSUER_URL, 
-                  client_id: str = DEFAULT_CLIENT_ID) -> Optional[Dict[str, Any]]:
-    """
-    Get authentication token using PKCE flow with DPoP.
-    
-    Args:
-        issuer_url: OAuth issuer URL
-        client_id: OAuth client ID
-        
-    Returns:
-        Token information dictionary or None if authentication fails
-    """
-    print("🔐 Starting authentication flow...")
-    
-    try:
-        from openadp.auth import run_pkce_flow, make_dpop_header, save_private_key, load_private_key
-        from openadp.auth.pkce_flow import PKCEFlowError
-        
-        # Try to load existing private key
-        private_key = None
-        if os.path.exists(PRIVATE_KEY_PATH):
-            try:
-                private_key = load_private_key(PRIVATE_KEY_PATH)
-                print("🔑 Loaded existing DPoP private key")
-            except Exception as e:
-                print(f"⚠️  Failed to load existing key: {e}")
-                print("🔑 Will generate new key")
-        
-        # Run PKCE flow
-        token_data = run_pkce_flow(
-            issuer_url=issuer_url,
-            client_id=client_id,
-            private_key=private_key
-        )
-        
-        # Save private key if it's new
-        if private_key is None:
-            save_private_key(token_data['private_key'], PRIVATE_KEY_PATH)
-            print(f"🔐 Saved DPoP private key to {PRIVATE_KEY_PATH}")
-        
-        # Cache token data (excluding private key)
-        cache_data = {
-            'access_token': token_data['access_token'],
-            'refresh_token': token_data.get('refresh_token'),
-            'token_type': token_data['token_type'],
-            'expires_in': token_data.get('expires_in'),
-            'scope': token_data.get('scope'),
-            'jwk_public': token_data['jwk_public']
-        }
-        
-        # Ensure cache directory exists
-        os.makedirs(TOKEN_CACHE_DIR, exist_ok=True)
-        
-        # Save token cache
-        with open(TOKEN_CACHE_PATH, 'w') as f:
-            json.dump(cache_data, f, indent=2)
-        
-        print("✅ Authentication successful!")
-        return token_data
-        
-    except Exception as e:
-        print(f"❌ Authentication error: {e}")
-        return None
+    return password
 
 
 def main() -> NoReturn:
-    """
-    Main function for the decryption utility.
-    
-    Parses command line arguments and performs file decryption using OpenADP.
-    """
-    # Parse command-line arguments
+    """Main function to handle command line arguments and decrypt files."""
     parser = argparse.ArgumentParser(
-        description="Decrypt files using OpenADP distributed secret sharing",
-        epilog="This utility decrypts files that were encrypted using OpenADP with OAuth authentication."
-    )
-    parser.add_argument(
-        "filename", 
-        help="Path to the encrypted file to decrypt"
+        description="Decrypt files that were encrypted using OpenADP with authentication codes",
+        epilog="This utility decrypts files that were encrypted using OpenADP with authentication codes."
     )
     
-    parser.add_argument(
-        '--password',
-        help='Password for OpenADP key recovery (if not provided, will prompt securely)'
-    )
+    parser.add_argument('filename', help='File to decrypt')
+    parser.add_argument('--password', help='Password for key recovery (will prompt if not provided)')
+    parser.add_argument('--servers', nargs='+', help='Override server URLs (space-separated)')
     
-    parser.add_argument(
-        '--issuer',
-        default=DEFAULT_ISSUER_URL,
-        help=f'OAuth issuer URL (default: {DEFAULT_ISSUER_URL})'
-    )
-    
-    parser.add_argument(
-        '--client-id',
-        default=DEFAULT_CLIENT_ID,
-        help=f'OAuth client ID (default: {DEFAULT_CLIENT_ID})'
-    )
-    
-    parser.add_argument(
-        '--servers',
-        nargs='+',
-        help='Override server URLs for recovery (ignores metadata servers). Example: --servers http://localhost:8081'
-    )
-    
-    # Check for minimum arguments before parsing
-    if len(sys.argv) < 2:
-        parser.print_help()
-        sys.exit(1)
-        
     args = parser.parse_args()
     
-    # Get password from command line or prompt securely
+    # Get password
     if args.password:
-        user_password = args.password
+        password = args.password
+        print("⚠️  Warning: Password provided via command line (visible in process list)")
     else:
-        user_password = get_password_securely()
+        password = get_password_securely()
     
-    # Perform decryption
-    decrypt_file(args.filename, user_password, 
-                override_servers=args.servers, issuer_url=args.issuer, client_id=args.client_id)
+    # Decrypt the file
+    decrypt_file(args.filename, password, args.servers)
     
     sys.exit(0)
 
 
 if __name__ == '__main__':
-    main()
+    main() 

@@ -3,25 +3,21 @@
 OpenADP File Encryption Utility
 
 This module provides file encryption functionality using ChaCha20-Poly1305 AEAD cipher
-with OpenADP distributed secret sharing for key derivation instead of traditional 
-password-based key derivation.
+with OpenADP distributed secret sharing for key derivation using authentication codes.
 
 The encryption process:
-1. Uses OpenADP servers to generate a strong encryption key
-2. Encrypts the file with ChaCha20-Poly1305 
-3. Stores encrypted file with format: [metadata_length][metadata][nonce][encrypted_data]
+1. Generate authentication codes for server access
+2. Uses OpenADP servers to generate a strong encryption key
+3. Encrypts the file with ChaCha20-Poly1305 
+4. Stores encrypted file with format: [metadata_length][metadata][nonce][encrypted_data]
 
 The key derivation is distributed across multiple servers for enhanced security
-and recovery properties compared to traditional Scrypt-based approaches.
-
-The metadata contains the list of servers used during encryption, which is 
-cryptographically bound to the encrypted data as "additional data" in the AEAD cipher.
+and recovery properties compared to traditional password-based approaches.
 
 Usage:
     python3 encrypt.py <filename_to_encrypt>
     
-Note: Authentication is always required (Phase 5 - mandatory authentication).
-The tool will guide you through OAuth authentication using the Device Code flow.
+Note: Uses authentication codes instead of OAuth for server access.
 """
 
 import os
@@ -29,7 +25,7 @@ import sys
 import json
 import getpass
 import argparse
-from typing import NoReturn, Optional, Dict, Any, List
+from typing import NoReturn, Optional, Dict, Any, List, Tuple
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
 import sys
@@ -37,129 +33,60 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from openadp import keygen
-from openadp.auth import run_pkce_flow, make_dpop_header, save_private_key, load_private_key
-from openadp.auth.pkce_flow import PKCEFlowError
+from openadp.auth_code_manager import AuthCodeManager
 
 # --- Configuration ---
 # Nonce (Number used once) is required for ChaCha20. It must be unique for each
 # encryption operation with the same key. 12 bytes is the standard size.
 NONCE_SIZE: int = 12
 
-# Authentication configuration - Global IdP
-DEFAULT_ISSUER_URL = "https://auth.openadp.org/realms/openadp"
-DEFAULT_CLIENT_ID = "cli-test"
-TOKEN_CACHE_DIR = os.path.expanduser("~/.openadp")
-PRIVATE_KEY_PATH = os.path.join(TOKEN_CACHE_DIR, "dpop_key.pem")
-TOKEN_CACHE_PATH = os.path.join(TOKEN_CACHE_DIR, "tokens.json")
+# Default server configuration
+DEFAULT_SERVERS = [
+    "https://xyzzy.openadp.org",
+    "https://sky.openadp.org", 
+    "https://minime.openadp.org"
+]
 
-
-def get_auth_token(issuer_url: str = DEFAULT_ISSUER_URL, 
-                  client_id: str = DEFAULT_CLIENT_ID) -> Optional[Dict[str, Any]]:
+def get_auth_codes(servers: List[str], password: str, filename: str) -> Tuple[Dict[str, str], str]:
     """
-    Get authentication token using Device Code flow.
+    Generate deterministic authentication codes for server access based on password and filename.
+    This ensures the same codes can be regenerated during decryption.
     
     Args:
-        issuer_url: OAuth issuer URL
-        client_id: OAuth client ID
+        servers: List of server URLs
+        password: User password (used as seed for deterministic generation)
+        filename: Filename being encrypted (used as additional entropy)
         
     Returns:
-        Token information dictionary or None if authentication fails
+        Tuple of (dictionary mapping server URLs to authentication codes, base_auth_code)
     """
-    print("🔐 Starting authentication flow...")
+    print("🔐 Generating deterministic authentication codes...")
     
-    try:
-        # Try to load existing private key
-        private_key = None
-        if os.path.exists(PRIVATE_KEY_PATH):
-            try:
-                private_key = load_private_key(PRIVATE_KEY_PATH)
-                print("🔑 Loaded existing DPoP private key")
-            except Exception as e:
-                print(f"⚠️  Failed to load existing key: {e}")
-                print("🔑 Will generate new key")
-        
-        # Run PKCE flow with DPoP support
-        token_data = run_pkce_flow(
-            issuer_url=issuer_url,
-            client_id=client_id,
-            private_key=private_key,
-            redirect_port=8889  # Use a different port to avoid conflicts
-        )
-        
-        # Save private key if it's new
-        if private_key is None:
-            save_private_key(token_data['private_key'], PRIVATE_KEY_PATH)
-            print(f"🔐 Saved DPoP private key to {PRIVATE_KEY_PATH}")
-        
-        # Cache token data (excluding private key)
-        cache_data = {
-            'access_token': token_data['access_token'],
-            'refresh_token': token_data.get('refresh_token'),
-            'token_type': token_data['token_type'],
-            'expires_in': token_data.get('expires_in'),
-            'scope': token_data.get('scope'),
-            'jwk_public': token_data['jwk_public']
-        }
-        
-        # Ensure cache directory exists
-        os.makedirs(TOKEN_CACHE_DIR, exist_ok=True)
-        
-        # Save token cache
-        with open(TOKEN_CACHE_PATH, 'w') as f:
-            json.dump(cache_data, f, indent=2)
-        
-        print("✅ Authentication successful!")
-        return token_data
-        
-    except PKCEFlowError as e:
-        print(f"❌ Authentication failed: {e}")
-        return None
-    except Exception as e:
-        print(f"❌ Unexpected authentication error: {e}")
-        return None
-
-
-def make_authenticated_request(url: str, method: str = "POST", 
-                             token_data: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
-    """
-    Create headers for authenticated requests with DPoP.
+    # Create deterministic seed from password and filename
+    import hashlib
+    seed_data = f"{password}:{filename}".encode('utf-8')
+    seed_hash = hashlib.sha256(seed_data).hexdigest()
     
-    Args:
-        url: Request URL
-        method: HTTP method
-        token_data: Token information from authentication
-        
-    Returns:
-        Dictionary of HTTP headers
-    """
-    if not token_data:
-        return {}
+    # Generate base auth code deterministically from seed (32 hex chars = 128 bits)
+    base_seed = f"base:{seed_hash}"
+    base_hash = hashlib.sha256(base_seed.encode()).hexdigest()
+    base_auth_code = base_hash[:32]  # Take first 32 hex chars (128 bits)
     
-    headers = {}
+    # Generate server-specific codes deterministically (64 hex chars = SHA256)
+    server_auth_codes = {}
+    for server_url in servers:
+        # Use same derivation method as AuthCodeManager
+        combined = f"{base_auth_code}:{server_url}"
+        server_code = hashlib.sha256(combined.encode()).hexdigest()  # Full 64 hex chars
+        server_auth_codes[server_url] = server_code
     
-    # Add Authorization header
-    access_token = token_data['access_token']
-    token_type = token_data.get('token_type', 'Bearer')
+    print(f"🔑 Generated deterministic base authentication code: {base_auth_code}")
+    print(f"🌐 Derived {len(server_auth_codes)} server-specific codes")
     
-    if token_type.lower() == 'dpop':
-        headers['Authorization'] = f'DPoP {access_token}'
-        
-        # Generate DPoP header
-        private_key = token_data['private_key']
-        dpop_header = make_dpop_header(method, url, private_key, access_token)
-        headers['DPoP'] = dpop_header
-        
-        print("🔒 Using DPoP authentication")
-    else:
-        headers['Authorization'] = f'Bearer {access_token}'
-        print("🔒 Using Bearer token authentication")
-    
-    return headers
-
+    return server_auth_codes, base_auth_code
 
 def encrypt_file(input_filename: str, password: str, 
-                servers: Optional[List[str]] = None, servers_url: str = "https://servers.openadp.org",
-                issuer_url: str = DEFAULT_ISSUER_URL, client_id: str = DEFAULT_CLIENT_ID) -> None:
+                servers: Optional[List[str]] = None, servers_url: str = "https://servers.openadp.org") -> None:
     """
     Encrypt the specified file using ChaCha20-Poly1305 with OpenADP key derivation.
 
@@ -172,8 +99,6 @@ def encrypt_file(input_filename: str, password: str,
         password: Password for OpenADP key derivation
         servers: Optional list of custom server URLs (bypasses scraping)
         servers_url: URL to scrape for server list if servers not provided
-        issuer_url: OAuth issuer URL for authentication
-        client_id: OAuth client ID for authentication
         
     Raises:
         SystemExit: If file operations fail or key generation fails
@@ -185,186 +110,223 @@ def encrypt_file(input_filename: str, password: str,
     
     output_filename = input_filename + ".enc"
 
-    # 2. Handle authentication (mandatory in Phase 5)
-    token_data = get_auth_token(issuer_url, client_id)
-    if not token_data:
-        print("❌ Authentication required but failed. Exiting.")
-        sys.exit(1)
+    # 2. Use default servers if none provided
+    if not servers:
+        servers = DEFAULT_SERVERS
+        print(f"🌐 Using default servers: {len(servers)} servers")
     
-    # Extract user_id from JWT token for Phase 4
-    try:
-        import jwt
-        # Decode token to extract user_id (sub claim) - don't verify signature here
-        # as we'll send the full token to the server for verification
-        payload = jwt.decode(token_data['access_token'], options={"verify_signature": False})
-        user_id = payload.get('sub')
-        if not user_id:
-            print("❌ JWT token missing 'sub' claim. Invalid token.")
-            sys.exit(1)
-        print(f"🔐 Authenticated as user: {user_id}")
-    except Exception as e:
-        print(f"❌ Failed to extract user ID from token: {e}")
-        sys.exit(1)
+    # 3. Generate authentication codes
+    server_auth_codes, base_auth_code = get_auth_codes(servers, password, input_filename)
     
-    # Create auth_data for Phase 3.5 encrypted authentication
-    auth_data = {
-        "needs_signing": True,
-        "access_token": token_data['access_token'],
-        "private_key": token_data['private_key'],
-        "public_key_jwk": token_data['jwk_public']
-    }
-    print("🔐 Using Phase 3.5 encrypted authentication")
+    # 4. Generate user ID from authentication codes (for consistency)
+    import hashlib
+    user_id = hashlib.sha256(base_auth_code.encode()).hexdigest()[:32]  # 32-char UUID-like ID
+    print(f"🔐 Generated user ID: {user_id}")
 
-    # 3. Generate encryption key using OpenADP with user_id from JWT
-    print("Generating encryption key from distributed OpenADP servers...")
+    # 5. Generate encryption key using custom OpenADP implementation with auth codes
+    print("Generating encryption key using OpenADP servers...")
     
-    enc_key, error, actual_server_urls, threshold = keygen.generate_encryption_key(
-        input_filename, password, user_id, 10, 0, auth_data, servers, servers_url
+    enc_key, error, server_urls_used, threshold = generate_encryption_key_with_auth_codes(
+        input_filename, password, user_id, server_auth_codes, servers
     )
     
     if error:
         print(f"❌ Failed to generate encryption key: {error}")
         print("Check that:")
-        print("  • OpenADP servers are running and accessible")
-        print("  • Password is correct")
-        print("  • Authentication credentials are valid")
+        print("  • The OpenADP servers are running and accessible")
+        print("  • Your network connection is working")
+        print("  • The authentication codes are valid")
         sys.exit(1)
-        
-    # 4. Create metadata with server information
-    metadata = {
-        "version": 1,
-        "servers": actual_server_urls,
-        "threshold": threshold,
-        "filename": os.path.basename(input_filename),
-        "auth_enabled": True
-    }
-    metadata_json = json.dumps(metadata, separators=(',', ':')).encode('utf-8')
-    metadata_length = len(metadata_json)
 
-    # 5. Generate random nonce for this encryption
-    nonce = os.urandom(NONCE_SIZE)
-
-    # 6. Read the plaintext file content
+    # 6. Read the input file
     try:
         with open(input_filename, 'rb') as f_in:
             plaintext = f_in.read()
     except IOError as e:
         print(f"Error reading from '{input_filename}': {e}")
         sys.exit(1)
-        
-    # 7. Encrypt the data with metadata as additional authenticated data
-    # ChaCha20Poly1305 is an AEAD (Authenticated Encryption with Associated Data)
-    # cipher, which provides both confidentiality and integrity/authenticity.
-    # The metadata is bound cryptographically to the ciphertext.
-    chacha = ChaCha20Poly1305(enc_key)
-    ciphertext = chacha.encrypt(nonce, plaintext, metadata_json)  # metadata as additional data
 
-    # 8. Write the metadata, nonce and ciphertext to the output file
-    # Format: [metadata_length (4 bytes)][metadata][nonce][encrypted_data]
+    # 7. Generate random nonce
+    import secrets
+    nonce = secrets.token_bytes(NONCE_SIZE)
+
+    # 8. Create metadata
+    metadata = {
+        "servers": server_urls_used,
+        "threshold": threshold,
+        "auth_enabled": True,
+        "version": "2.0"  # Version 2.0 uses authentication codes
+    }
+    metadata_json = json.dumps(metadata, separators=(',', ':')).encode('utf-8')
+
+    # 9. Encrypt the file using metadata as additional authenticated data
+    try:
+        chacha = ChaCha20Poly1305(enc_key)
+        ciphertext = chacha.encrypt(nonce, plaintext, metadata_json)
+    except Exception as e:
+        print(f"Error during encryption: {e}")
+        sys.exit(1)
+
+    # 10. Write the encrypted file: [metadata_length][metadata][nonce][encrypted_data]
     try:
         with open(output_filename, 'wb') as f_out:
-            # Write metadata length as a 4-byte little-endian integer
-            f_out.write(metadata_length.to_bytes(4, 'little'))
+            # Write metadata length (4 bytes, little endian)
+            f_out.write(len(metadata_json).to_bytes(4, 'little'))
             # Write metadata
             f_out.write(metadata_json)
             # Write nonce
             f_out.write(nonce)
             # Write encrypted data
             f_out.write(ciphertext)
-        print(f"✅ Encryption successful. File saved to '{output_filename}'")
-        print(f"   Original size: {len(plaintext)} bytes")
-        print(f"   Metadata size: {metadata_length} bytes")
-        print(f"   Total encrypted size: {4 + metadata_length + len(nonce) + len(ciphertext)} bytes")
-        print(f"   Used servers: {len(actual_server_urls)} servers")
-        print(f"   Authentication: Enabled (DPoP)")
     except IOError as e:
         print(f"Error writing to '{output_filename}': {e}")
         sys.exit(1)
 
+    print(f"✅ File encrypted successfully!")
+    print(f"   Input:  {input_filename} ({len(plaintext)} bytes)")
+    print(f"   Output: {output_filename} ({len(metadata_json) + 4 + NONCE_SIZE + len(ciphertext)} bytes)")
+    print(f"   Servers: {len(server_urls_used)} servers used")
+    print(f"   Threshold: {threshold}-of-{len(server_urls_used)} recovery")
+    print(f"   Authentication: Enabled (Authentication Codes)")
+
+
+def generate_encryption_key_with_auth_codes(filename: str, password: str, user_id: str, 
+                                           server_auth_codes: Dict[str, str], servers: List[str]) -> Tuple[bytes, Optional[str], List[str], int]:
+    """
+    Generate an encryption key using OpenADP with authentication codes.
+    
+    This is a custom implementation that uses authentication codes instead of OAuth.
+    """
+    from openadp import crypto, sharing
+    from client.jsonrpc_client import OpenADPClient
+    import secrets
+    
+    # Step 1: Derive identifiers
+    uid, did, bid = keygen.derive_identifiers(filename, user_id)
+    print(f"OpenADP: UID={uid}, DID={did}, BID={bid}")
+    
+    # Step 2: Convert password to PIN
+    pin = keygen.password_to_pin(password)
+    
+    # Step 3: Initialize clients for each server
+    clients = []
+    for server_url in servers:
+        try:
+            client = OpenADPClient(server_url)
+            clients.append((server_url, client))
+        except Exception as e:
+            print(f"Failed to connect to {server_url}: {e}")
+            continue
+    
+    if not clients:
+        return None, "No servers available", [], 0
+    
+    print(f"OpenADP: Using {len(clients)} live servers")
+    
+    # Step 4: Generate random secret and create point
+    secret = secrets.randbelow(crypto.q)
+    U = crypto.H(uid.encode(), did.encode(), bid.encode(), pin)
+    S = crypto.point_mul(secret, U)
+    
+    # Step 5: Create shares using secret sharing
+    threshold = max(1, min(2, len(clients)))  # At least 1, prefer 2 if available
+    num_shares = len(clients)
+    
+    shares = sharing.make_random_shares(secret, threshold, num_shares)
+    print(f"OpenADP: Created {len(shares)} shares with threshold {threshold}")
+    
+    # Step 6: Register shares with servers using authentication codes
+    version = 1
+    registration_errors = []
+    server_urls_used = []
+    
+    for i, ((server_url, client), (x, y)) in enumerate(zip(clients, shares)):
+        auth_code = server_auth_codes[server_url]
+        y_str = str(y)
+        
+        try:
+            # Use the base client (no encryption) with auth codes
+            result, error = client.register_secret(
+                auth_code=auth_code,
+                did=did,
+                bid=bid,
+                version=version,
+                x=str(x),
+                y=y_str,
+                max_guesses=10,
+                expiration=0,
+                encrypted=False  # Use auth codes, not encryption
+            )
+            
+            if error:
+                registration_errors.append(f"Server {i+1}: {error}")
+            elif not result:
+                registration_errors.append(f"Server {i+1}: Registration returned false")
+            else:
+                print(f"OpenADP: Registered share {x} with server {i+1}")
+                server_urls_used.append(server_url)
+                
+        except Exception as e:
+            registration_errors.append(f"Server {i+1}: Exception: {str(e)}")
+    
+    if len(server_urls_used) == 0:
+        return None, f"Failed to register any shares: {'; '.join(registration_errors)}", [], 0
+    
+    # Step 7: Derive encryption key
+    enc_key = crypto.deriveEncKey(S)
+    print("OpenADP: Successfully generated encryption key")
+    
+    return enc_key, None, server_urls_used, threshold
+
 
 def get_password_securely() -> str:
     """
-    Get password from user without echoing to terminal.
+    Get password from user with confirmation.
     
     Returns:
-        User-entered password
-        
-    Raises:
-        SystemExit: If password cannot be read or is empty
+        User-provided password
     """
-    try:
-        user_password = getpass.getpass("Enter password for OpenADP key derivation: ")
-        if not user_password:
-            print("Password cannot be empty.")
-            sys.exit(1)
-        return user_password
-    except Exception as e:
-        print(f"Could not read password: {e}")
-        sys.exit(1)
+    while True:
+        password = getpass.getpass("Enter password: ")
+        if not password:
+            print("Password cannot be empty. Please try again.")
+            continue
+        
+        confirm = getpass.getpass("Confirm password: ")
+        if password != confirm:
+            print("Passwords do not match. Please try again.")
+            continue
+        
+        return password
 
 
 def main() -> NoReturn:
-    """
-    Main function for the encryption utility.
-    
-    Parses command line arguments and performs file encryption using OpenADP.
-    """
+    """Main function to handle command line arguments and encrypt files."""
     parser = argparse.ArgumentParser(
-        description="OpenADP File Encryption Utility",
-        epilog="This utility encrypts files using OpenADP distributed secret sharing "
-               "with OAuth authentication for enhanced security and recovery properties."
+        description="Encrypt files using OpenADP distributed secret sharing with authentication codes",
+        epilog="This utility encrypts files using OpenADP with authentication codes for enhanced security and recovery properties."
     )
     
-    parser.add_argument(
-        'filename',
-        help='File to encrypt'
-    )
-    
-    parser.add_argument(
-        '--password',
-        help='Password for OpenADP key derivation (if not provided, will prompt securely)'
-    )
-    
-    parser.add_argument(
-        '--issuer',
-        default=DEFAULT_ISSUER_URL,
-        help=f'OAuth issuer URL (default: {DEFAULT_ISSUER_URL})'
-    )
-    
-    parser.add_argument(
-        '--client-id',
-        default=DEFAULT_CLIENT_ID,
-        help=f'OAuth client ID (default: {DEFAULT_CLIENT_ID})'
-    )
-    
-    parser.add_argument(
-        '--servers',
-        nargs='+',
-        help='Custom server URLs to use (bypasses scraping). Example: --servers http://localhost:8081 http://localhost:8082'
-    )
-    
-    parser.add_argument(
-        '--servers-url',
-        default="https://servers.openadp.org",
-        help='URL to scrape for server list (default: https://servers.openadp.org)'
-    )
+    parser.add_argument('filename', help='File to encrypt')
+    parser.add_argument('--password', help='Password for key derivation (will prompt if not provided)')
+    parser.add_argument('--servers', nargs='+', help='Custom server URLs (space-separated)')
+    parser.add_argument('--servers-url', default="https://servers.openadp.org",
+                       help='URL to scrape for server list (default: https://servers.openadp.org)')
     
     args = parser.parse_args()
     
-    # Get password from command line or prompt securely
+    # Get password
     if args.password:
-        user_password = args.password
+        password = args.password
+        print("⚠️  Warning: Password provided via command line (visible in process list)")
     else:
-        user_password = get_password_securely()
+        password = get_password_securely()
     
-    # Perform encryption
-    encrypt_file(args.filename, user_password, servers=args.servers, 
-                 servers_url=args.servers_url, issuer_url=args.issuer, client_id=args.client_id)
+    # Encrypt the file
+    encrypt_file(args.filename, password, args.servers, args.servers_url)
     
     sys.exit(0)
 
 
 if __name__ == '__main__':
-    main()
-
-
+    main() 
