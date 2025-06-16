@@ -69,7 +69,7 @@ def check_register_inputs(uid: str, did: str, bid: str, x: int, y: bytes,
     return True
 
 
-def register_secret(db: database.Database, uid: str, did: str, bid: str, 
+def register_secret(db: database.Database, uid: str, did: str, bid: str, auth_code: str,
                    version: int, x: int, y: bytes, max_guesses: int, 
                    expiration: int) -> Union[bool, Exception]:
     """
@@ -80,6 +80,7 @@ def register_secret(db: database.Database, uid: str, did: str, bid: str,
         uid: User identifier
         did: Device identifier
         bid: Backup identifier
+        auth_code: Server-specific authentication code
         version: Version number for this backup
         x: X coordinate for secret sharing
         y: Y coordinate (encrypted share)
@@ -98,7 +99,7 @@ def register_secret(db: database.Database, uid: str, did: str, bid: str,
     did_bytes = did.encode('utf-8') if isinstance(did, str) else did
     bid_bytes = bid.encode('utf-8') if isinstance(bid, str) else bid
     
-    db.insert(uid_bytes, did_bytes, bid_bytes, version, x, y, 0, max_guesses, expiration)
+    db.insert(uid_bytes, did_bytes, bid_bytes, auth_code, version, x, y, 0, max_guesses, expiration)
     return True
 
 
@@ -186,7 +187,7 @@ def recover_secret(db: database.Database, uid: str, did: str, bid: str,
         
         # Increment guess counter
         num_guesses += 1
-        db.insert(uid_bytes, did_bytes, bid_bytes, version, x, y, num_guesses, max_guesses, expiration)
+        db.update_guess_count(uid_bytes, did_bytes, bid_bytes, num_guesses)
         
         # Perform cryptographic recovery calculation
         y_int = int.from_bytes(y, "little")
@@ -265,7 +266,7 @@ def main():
         y_enc = int.to_bytes(y, 32, "little")
         db_name = f"openadp_test{x}.db"
         db = database.Database(db_name)
-        register_secret(db, uid.decode(), did.decode(), bid.decode(), 1, x, y_enc, 10, 10000000000)
+        register_secret(db, uid.decode(), did.decode(), bid.decode(), "auth_code", 1, x, y_enc, 10, 10000000000)
         
         # Simulate some random failed recovery attempts
         for guess_num in range(secrets.randbelow(10)):

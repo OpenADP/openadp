@@ -172,14 +172,14 @@ class OpenADPClient:
         """
         return self._make_plain_request("Echo", [message])
     
-    def register_secret(self, uid: str, did: str, bid: str, version: int, 
+    def register_secret(self, auth_code: str, did: str, bid: str, version: int, 
                        x: str, y: str, max_guesses: int, expiration: int, 
                        encrypted: bool = False, auth_data: Optional[Dict] = None) -> Tuple[bool, Optional[str]]:
         """
         Register a secret with the server.
         
         Args:
-            uid: User ID
+            auth_code: Server-specific authentication code
             did: Device ID
             bid: Backup ID
             version: Version number
@@ -193,7 +193,8 @@ class OpenADPClient:
         Returns:
             Tuple of (success, error_message). If successful, error_message is None.
         """
-        params = [uid, did, bid, version, x, y, max_guesses, expiration]
+        # The server will derive the UID from the auth_code, so we pass empty string for uid
+        params = [auth_code, "", did, bid, version, x, y, max_guesses, expiration]
         result, error = self._make_plain_request("RegisterSecret", params)
         
         if error:
@@ -201,13 +202,13 @@ class OpenADPClient:
         
         return bool(result), None
     
-    def recover_secret(self, uid: str, did: str, bid: str, b: str, guess_num: int,
+    def recover_secret(self, auth_code: str, did: str, bid: str, b: str, guess_num: int,
                       encrypted: bool = False, auth_data: Optional[Dict] = None) -> Tuple[Optional[str], Optional[str]]:
         """
         Recover a secret from the server.
         
         Args:
-            uid: User ID
+            auth_code: Server-specific authentication code
             did: Device ID
             bid: Backup ID
             b: B parameter for recovery
@@ -218,7 +219,7 @@ class OpenADPClient:
         Returns:
             Tuple of (recovered_secret, error_message). If successful, error_message is None.
         """
-        params = [uid, did, bid, b, guess_num]
+        params = [auth_code, did, bid, b, guess_num]
         result, error = self._make_plain_request("RecoverSecret", params)
         
         if error:
@@ -226,19 +227,19 @@ class OpenADPClient:
         
         return result, None
     
-    def list_backups(self, uid: str, encrypted: bool = False, auth_data: Optional[Dict] = None) -> Tuple[Optional[List[Dict]], Optional[str]]:
+    def list_backups(self, auth_code: str, encrypted: bool = False, auth_data: Optional[Dict] = None) -> Tuple[Optional[List[Dict]], Optional[str]]:
         """
         List backups for a user.
         
         Args:
-            uid: User ID
+            auth_code: Server-specific authentication code
             encrypted: Whether to encrypt the request with Noise-NK (ignored in base client)
             auth_data: Authentication data (ignored in base client)
             
         Returns:
             Tuple of (backup_list, error_message). If successful, error_message is None.
         """
-        params = [uid]
+        params = [auth_code]
         result, error = self._make_plain_request("ListBackups", params)
         
         if error:
@@ -489,14 +490,14 @@ class EncryptedOpenADPClient(OpenADPClient):
     
     # Enhanced method signatures with encryption support
     
-    def register_secret(self, uid: str, did: str, bid: str, version: int, 
+    def register_secret(self, auth_code: str, did: str, bid: str, version: int, 
                        x: str, y: str, max_guesses: int, expiration: int, 
                        encrypted: bool = False, auth_data: Optional[Dict] = None) -> Tuple[bool, Optional[str]]:
         """
         Register a secret with the server.
         
         Args:
-            uid: User ID
+            auth_code: Server-specific authentication code
             did: Device ID
             bid: Backup ID
             version: Version number
@@ -509,7 +510,7 @@ class EncryptedOpenADPClient(OpenADPClient):
         Returns:
             Tuple of (success, error_message). If successful, error_message is None.
         """
-        params = [uid, did, bid, version, x, y, max_guesses, expiration]
+        params = [auth_code, "", did, bid, version, x, y, max_guesses, expiration]
         result, error = self._make_request("RegisterSecret", params, encrypted, auth_data)
         
         if error:
@@ -517,13 +518,13 @@ class EncryptedOpenADPClient(OpenADPClient):
         
         return bool(result), None
     
-    def recover_secret(self, uid: str, did: str, bid: str, b: str, guess_num: int,
+    def recover_secret(self, auth_code: str, did: str, bid: str, b: str, guess_num: int,
                       encrypted: bool = False, auth_data: Optional[Dict] = None) -> Tuple[Optional[str], Optional[str]]:
         """
         Recover a secret from the server.
         
         Args:
-            uid: User ID
+            auth_code: Server-specific authentication code
             did: Device ID
             bid: Backup ID
             b: B parameter for recovery
@@ -533,7 +534,7 @@ class EncryptedOpenADPClient(OpenADPClient):
         Returns:
             Tuple of (recovered_secret, error_message). If successful, error_message is None.
         """
-        params = [uid, did, bid, b, guess_num]
+        params = [auth_code, did, bid, b, guess_num]
         result, error = self._make_request("RecoverSecret", params, encrypted, auth_data)
         
         if error:
@@ -541,18 +542,19 @@ class EncryptedOpenADPClient(OpenADPClient):
         
         return result, None
     
-    def list_backups(self, uid: str, encrypted: bool = False, auth_data: Optional[Dict] = None) -> Tuple[Optional[List[Dict]], Optional[str]]:
+    def list_backups(self, auth_code: str, encrypted: bool = False, auth_data: Optional[Dict] = None) -> Tuple[Optional[List[Dict]], Optional[str]]:
         """
         List backups for a user.
         
         Args:
-            uid: User ID
-            encrypted: Whether to encrypt the request with Noise-NK
+            auth_code: Server-specific authentication code
+            encrypted: Whether to encrypt the request with Noise-NK (ignored in base client)
+            auth_data: Authentication data (ignored in base client)
             
         Returns:
             Tuple of (backup_list, error_message). If successful, error_message is None.
         """
-        params = [uid]
+        params = [auth_code]
         result, error = self._make_request("ListBackups", params, encrypted, auth_data)
         
         if error:
@@ -669,25 +671,25 @@ def create_client(server_url: str = "http://localhost:8080") -> EncryptedOpenADP
     return EncryptedOpenADPClient(server_url)
 
 
-def register_secret(uid: str, did: str, bid: str, version: int, 
+def register_secret(auth_code: str, did: str, bid: str, version: int, 
                    x: str, y: str, max_guesses: int, expiration: int,
                    server_url: str = "http://localhost:8080") -> Tuple[bool, Optional[str]]:
     """Register a secret using a one-shot client."""
     client = EncryptedOpenADPClient(server_url)
-    return client.register_secret(uid, did, bid, version, x, y, max_guesses, expiration, encrypted=True)
+    return client.register_secret(auth_code, did, bid, version, x, y, max_guesses, expiration, encrypted=True)
 
 
-def recover_secret(uid: str, did: str, bid: str, b: str, guess_num: int,
+def recover_secret(auth_code: str, did: str, bid: str, b: str, guess_num: int,
                   server_url: str = "http://localhost:8080") -> Tuple[Optional[str], Optional[str]]:
     """Recover a secret using a one-shot client."""
     client = EncryptedOpenADPClient(server_url)
-    return client.recover_secret(uid, did, bid, b, guess_num, encrypted=True)
+    return client.recover_secret(auth_code, did, bid, b, guess_num, encrypted=True)
 
 
-def list_backups(uid: str, server_url: str = "http://localhost:8080") -> Tuple[Optional[List[Dict]], Optional[str]]:
+def list_backups(auth_code: str, server_url: str = "http://localhost:8080") -> Tuple[Optional[List[Dict]], Optional[str]]:
     """List backups using a one-shot client."""
     client = EncryptedOpenADPClient(server_url)
-    return client.list_backups(uid, encrypted=True)
+    return client.list_backups(auth_code, encrypted=True)
 
 
 def echo(message: str, server_url: str = "http://localhost:8080") -> Tuple[Optional[str], Optional[str]]:

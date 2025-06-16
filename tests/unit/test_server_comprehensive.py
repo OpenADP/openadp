@@ -363,7 +363,7 @@ class TestJSONRPCServer(unittest.TestCase):
             expiration = 2000000000
             
             # Register a secret
-            result = server.register_secret(db, uid, did, bid, version, x, y, max_guesses, expiration)
+            result = server.register_secret(db, uid, did, bid, "test_auth_code", version, x, y, max_guesses, expiration)
             self.assertTrue(result)
             
             # Create a valid point B for recovery
@@ -417,17 +417,17 @@ class TestJSONRPCServer(unittest.TestCase):
             expiration = 2000000000
             
             # Test max_guesses > 1000 (should be rejected)
-            result = server.register_secret(db, uid, did, bid, version, x, y, 1001, expiration)
+            result = server.register_secret(db, uid, did, bid, "test_auth_code", version, x, y, 1001, expiration)
             self.assertIsInstance(result, Exception)
             self.assertIn("max", str(result).lower())
             
             # Test valid max_guesses (should succeed)
-            result = server.register_secret(db, uid, did, bid, version, x, y, 1000, expiration)
+            result = server.register_secret(db, uid, did, bid, "test_auth_code", version, x, y, 1000, expiration)
             self.assertTrue(result)
             
             # Test very long strings (should be rejected)
             long_string = "x" * 1000
-            result = server.register_secret(db, long_string, did, bid, version, x, y, 10, expiration)
+            result = server.register_secret(db, long_string, did, bid, "test_auth_code", version, x, y, 10, expiration)
             self.assertIsInstance(result, Exception)
             self.assertIn("too long", str(result).lower())
             
@@ -509,7 +509,7 @@ class TestJSONRPCServer(unittest.TestCase):
                         bid = f"backup_{thread_id}".encode()
 
                         # Insert a share
-                        thread_db.insert(uid, did, bid, 1, thread_id, secrets.token_bytes(32), 0, 10, 2000000000)
+                        thread_db.insert(uid, did, bid, "test_auth_code", 1, thread_id, secrets.token_bytes(32), 0, 10, 2000000000)
 
                         # Look it up
                         result = thread_db.lookup(uid, did, bid)
@@ -572,7 +572,7 @@ class TestJSONRPCServer(unittest.TestCase):
             expiration = 2000000000
             
             # Register secret
-            result = server.register_secret(db, uid, did, bid, version, x, y, max_guesses, expiration)
+            result = server.register_secret(db, uid, did, bid, "test_auth_code", version, x, y, max_guesses, expiration)
             self.assertTrue(result)
             
             # Create point B
@@ -619,7 +619,7 @@ class TestJSONRPCServer(unittest.TestCase):
             
             # Test with past expiration
             past_expiration = int(time.time()) - 3600  # 1 hour ago
-            db.insert(uid, did, bid, version, x, y, 0, max_guesses, past_expiration)
+            db.insert(uid, did, bid, "test_auth_code", version, x, y, 0, max_guesses, past_expiration)
             
             result = db.lookup(uid, did, bid)
             self.assertIsNotNone(result)
@@ -628,7 +628,7 @@ class TestJSONRPCServer(unittest.TestCase):
             
             # Test with future expiration
             future_expiration = int(time.time()) + 3600  # 1 hour from now
-            db.insert(uid, did, b"future_backup", version, x, y, 0, max_guesses, future_expiration)
+            db.insert(uid, did, b"future_backup", "test_auth_code", version, x, y, 0, max_guesses, future_expiration)
             
             result = db.lookup(uid, did, b"future_backup")
             self.assertIsNotNone(result)

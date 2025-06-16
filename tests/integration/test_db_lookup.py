@@ -20,7 +20,7 @@ x = 1
 y = b'\x01' * 32
 
 print("Inserting test data...")
-db.insert(uid, did, bid, version, x, y, 0, 10, 0)
+db.insert(uid, did, bid, "test_auth_code", version, x, y, 0, 10, 0)
 
 print("Looking up data...")
 result = db.lookup(uid, did, bid)

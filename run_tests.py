@@ -105,15 +105,14 @@ class TestRunner:
     
     def run_co_located_tests(self, verbose: bool = False) -> bool:
         """Run co-located unit tests"""
-        cmd = ["python", "-m", "pytest"]
-        
-        if verbose:
-            cmd.append("-v")
-            
-        # Use explicit file paths instead of glob pattern
-        cmd.extend(["openadp/auth/test_dpop.py", "openadp/auth/test_keys.py"])
-        
-        return self.run_command(cmd, "Co-located Unit Tests (openadp/auth/)")
+        # Co-located OAuth tests have been removed
+        print(f"\n{'='*60}")
+        print(f"🧪 Co-located Unit Tests (openadp/auth/)")
+        print(f"{'='*60}")
+        print("No co-located tests available (OAuth tests removed)")
+        print("✅ Co-located Unit Tests (openadp/auth/) - PASSED (no tests)")
+        self.test_results["Co-located Unit Tests (openadp/auth/)"] = True
+        return True
     
     def run_integration_tests(self, verbose: bool = False, fast: bool = False) -> bool:
         """Run integration tests"""

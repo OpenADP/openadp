@@ -246,7 +246,7 @@ class TestDatabase(unittest.TestCase):
                 bid = f"backup_{i}".encode('utf-8')
                 
                 # Insert share
-                self.db.insert(uid, did, bid, 1, i, f"share_data_{i}".encode('utf-8'), 0, 10, 2000000000)
+                self.db.insert(uid, did, bid, "test_auth_code", 1, i, f"share_data_{i}".encode('utf-8'), 0, 10, 2000000000)
                 shares_data.append((uid, did, bid))
             
             # All shares should be inserted successfully
@@ -437,7 +437,7 @@ class TestDatabase(unittest.TestCase):
             bid = b"table_test_backup"
             
             # This should work without errors (tables exist)
-            new_db.insert(uid, did, bid, 1, 1, b"test_data_32_bytes_long_enough!!", 0, 10, 2000000000)
+            new_db.insert(uid, did, bid, "test_auth_code", 1, 1, b"test_data_32_bytes_long_enough!!", 0, 10, 2000000000)
             
             result = new_db.lookup(uid, did, bid)
             self.assertIsNotNone(result)
@@ -495,7 +495,7 @@ class TestDatabase(unittest.TestCase):
         bid = b"test_backup"
         
         # Insert with bytes
-        self.db.insert(uid_bytes, did, bid, 1, 1, b"test_data_32_bytes_long_enough!!", 0, 10, 2000000000)
+        self.db.insert(uid_bytes, did, bid, "test_auth_code", 1, 1, b"test_data_32_bytes_long_enough!!", 0, 10, 2000000000)
         
         # Test list_backups with string input
         backups_str = self.db.list_backups(uid_str)
@@ -523,7 +523,7 @@ class TestDatabase(unittest.TestCase):
         try:
             # Test with very large numbers
             large_version = 2**63 - 1  # Max int64
-            self.db.insert(uid, did, bid, large_version, 1, b"test_data_32_bytes_long_enough!!", 0, 10, 2000000000)
+            self.db.insert(uid, did, bid, "test_auth_code", large_version, 1, b"test_data_32_bytes_long_enough!!", 0, 10, 2000000000)
             
             result = self.db.lookup(uid, did, bid)
             self.assertIsNotNone(result)
@@ -551,7 +551,7 @@ class TestDatabase(unittest.TestCase):
             uid = b"cleanup_user"
             did = b"cleanup_device"
             bid = b"cleanup_backup"
-            test_db.insert(uid, did, bid, 1, 1, b"test_data_32_bytes_long_enough!!", 0, 10, 2000000000)
+            test_db.insert(uid, did, bid, "test_auth_code", 1, 1, b"test_data_32_bytes_long_enough!!", 0, 10, 2000000000)
             
             # Test explicit close
             test_db.close()
@@ -580,7 +580,7 @@ class TestDatabase(unittest.TestCase):
         
         # Test with maximum size y data (32 bytes is typical)
         large_y = b"x" * 32
-        self.db.insert(uid, did, bid, 1, 1, large_y, 0, 10, 2000000000)
+        self.db.insert(uid, did, bid, "test_auth_code", 1, 1, large_y, 0, 10, 2000000000)
         
         result = self.db.lookup(uid, did, bid)
         self.assertIsNotNone(result)
@@ -589,7 +589,7 @@ class TestDatabase(unittest.TestCase):
         
         # Test with very large expiration timestamp
         large_expiration = 2**32 - 1  # Year 2106
-        self.db.insert(uid, did, b"large_exp_backup", 1, 1, b"test_data_32_bytes_long_enough!!", 0, 10, large_expiration)
+        self.db.insert(uid, did, b"large_exp_backup", "test_auth_code", 1, 1, b"test_data_32_bytes_long_enough!!", 0, 10, large_expiration)
         
         result = self.db.lookup(uid, did, b"large_exp_backup")
         self.assertIsNotNone(result)

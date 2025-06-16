@@ -43,180 +43,26 @@ logger = logging.getLogger(__name__)
 # Global server state
 db_connection = None
 
-# Authentication configuration - Global IdP
+# Authentication configuration - Authentication Code System
 AUTH_ENABLED = os.environ.get('OPENADP_AUTH_ENABLED', '1') == '1'
-AUTH_ISSUER = os.environ.get('OPENADP_AUTH_ISSUER', 'https://auth.openadp.org/realms/openadp')
-AUTH_JWKS_URL = os.environ.get('OPENADP_AUTH_JWKS_URL')
 
-# Auto-derive JWKS URL if not provided (with Keycloak 22.0 workaround)
-if not AUTH_JWKS_URL:
-    # Try .well-known first, fallback to direct endpoint
-    AUTH_JWKS_URL = f"{AUTH_ISSUER}/protocol/openid-connect/certs"
-
-# JWKS cache
-jwks_cache = {}
-jwks_cache_expiry = 0
-
-def load_jwks():
-    """Load JWKS from IdP endpoint with caching."""
-    global jwks_cache, jwks_cache_expiry
-    import time
-    import urllib.request
-    
-    current_time = time.time()
-    cache_ttl = int(os.environ.get('OPENADP_AUTH_CACHE_TTL', '3600'))
-    
-    if current_time < jwks_cache_expiry and jwks_cache:
-        return jwks_cache
-    
-    try:
-        logger.info(f"Fetching JWKS from {AUTH_JWKS_URL}")
-        # Create request with User-Agent header (required by Cloudflare)
-        req = urllib.request.Request(AUTH_JWKS_URL)
-        req.add_header('User-Agent', 'OpenADP-Server/1.0')
-        with urllib.request.urlopen(req, timeout=10) as response:
-            jwks_data = json.loads(response.read())
-            jwks_cache = jwks_data
-            jwks_cache_expiry = current_time + cache_ttl
-            logger.info(f"JWKS cached for {cache_ttl} seconds")
-            return jwks_cache
-    except Exception as e:
-        logger.error(f"Failed to fetch JWKS: {e}")
-        return jwks_cache if jwks_cache else None
-
-def validate_jwt_token(access_token: str) -> Tuple[Optional[str], Optional[str]]:
+def validate_auth_code_request(auth_code: str, client_ip: str = "unknown") -> Tuple[Optional[str], Optional[str]]:
     """
-    Validate JWT access token and extract user ID.
-    
-    Returns:
-        Tuple of (user_id, error_message)
-    """
-    try:
-        import jwt
-        from jwt import PyJWKClient
-        
-        # Load JWKS
-        jwks_data = load_jwks()
-        if not jwks_data:
-            return None, "Failed to load JWKS for token validation"
-        
-        # Decode token header to get key ID
-        unverified_header = jwt.get_unverified_header(access_token)
-        kid = unverified_header.get('kid')
-        
-        # Find the signing key
-        signing_key = None
-        for key in jwks_data.get('keys', []):
-            if key.get('kid') == kid:
-                signing_key = jwt.PyJWK(key).key
-                break
-        
-        if not signing_key:
-            return None, f"No signing key found for kid: {kid}"
-        
-        # Verify and decode token
-        payload = jwt.decode(
-            access_token,
-            signing_key,
-            algorithms=['RS256', 'ES256'],
-            issuer=AUTH_ISSUER,
-            options={"verify_aud": False}  # We'll check audience manually if needed
-        )
-        
-        # Extract user ID from 'sub' claim
-        user_id = payload.get('sub')
-        if not user_id:
-            return None, "Token missing 'sub' claim"
-        
-        logger.info(f"JWT token validated for user: {user_id}")
-        return user_id, None
-        
-    except jwt.ExpiredSignatureError:
-        return None, "Token has expired"
-    except jwt.InvalidTokenError as e:
-        return None, f"Invalid token: {str(e)}"
-    except Exception as e:
-        logger.error(f"JWT validation error: {e}")
-        return None, f"Token validation failed: {str(e)}"
-
-def validate_encrypted_auth(auth_payload: dict, handshake_hash: bytes) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Validate authentication payload from encrypted Noise-NK channel.
+    Validate an authentication code request.
     
     Args:
-        auth_payload: Dictionary containing auth information
-        handshake_hash: Handshake hash from Noise-NK session
+        auth_code: Server-specific authentication code (64 hex chars)
+        client_ip: Client IP address for DDoS defense
         
     Returns:
-        Tuple of (user_id, error_message)
+        Tuple of (derived_uuid, error_message). If successful, error_message is None.
     """
     try:
-        # Extract required fields
-        access_token = auth_payload.get('access_token')
-        handshake_signature = auth_payload.get('handshake_signature') 
-        dpop_public_key = auth_payload.get('dpop_public_key')
-        
-        if not access_token:
-            return None, "Missing access_token in auth payload"
-        if not handshake_signature:
-            return None, "Missing handshake_signature in auth payload"
-        if not dpop_public_key:
-            return None, "Missing dpop_public_key in auth payload"
-        
-        # 1. Validate JWT access token
-        user_id, jwt_error = validate_jwt_token(access_token)
-        if jwt_error:
-            return None, f"JWT validation failed: {jwt_error}"
-        
-        # 2. Verify handshake signature
-        try:
-            from openadp.auth.dpop import verify_handshake_signature
-            signature_valid = verify_handshake_signature(
-                handshake_hash=handshake_hash,
-                signature_b64=handshake_signature,
-                public_key_jwk=dpop_public_key
-            )
-            
-            if not signature_valid:
-                return None, "Invalid handshake signature"
-                
-        except Exception as e:
-            return None, f"Handshake signature verification failed: {str(e)}"
-        
-        # 3. Verify token contains matching public key (DPoP binding)
-        # Using Keycloak's non-standard DPoP extension which properly includes cnf.jkt field
-        # This provides proper token binding security against theft attacks
-        try:
-            import jwt
-            unverified_payload = jwt.decode(access_token, options={"verify_signature": False})
-            cnf_claim = unverified_payload.get('cnf', {})
-            
-            # Calculate JWK thumbprint
-            from openadp.auth.dpop import calculate_jwk_thumbprint
-            expected_thumbprint = calculate_jwk_thumbprint(dpop_public_key)
-            token_thumbprint = cnf_claim.get('jkt')
-            
-            if False:  # Disable cnf field validation (Keycloak 22.0 doesn't provide cnf.jkt)
-                if not token_thumbprint:
-                    return None, "Token missing cnf.jkt claim - DPoP binding required for security"
-                elif token_thumbprint != expected_thumbprint:
-                    return None, "Token not bound to provided DPoP key"
-                else:
-                    logger.info(f"DPoP token binding validated successfully for user: {user_id}")
-            else:
-                # Fallback mode - rely on handshake signature for DPoP binding
-                logger.warning(f"Token missing cnf.jkt claim - relying on handshake signature for DPoP binding")
-                
-        except Exception as e:
-            logger.error(f"DPoP binding verification failed: {str(e)}")
-            return None, f"DPoP binding verification failed: {str(e)}"
-        
-        logger.info(f"Encrypted authentication validated for user: {user_id}")
-        return user_id, None
-        
-    except Exception as e:
-        logger.error(f"Encrypted auth validation error: {e}")
-        return None, f"Authentication validation failed: {str(e)}"
+        from server.auth_code_middleware import validate_auth_code_request
+        return validate_auth_code_request(auth_code, "http://localhost:8080", client_ip)
+    except ImportError:
+        logger.error("Authentication code middleware not available")
+        return None, "Authentication system not available"
 
 class RPCRequestHandler(BaseHTTPRequestHandler):
     """
@@ -249,29 +95,9 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             params = request.get('params', [])
             request_id = request.get('id')
             
-            # Check authentication for state-changing methods (Phase 4)
-            # Echo, GetServerInfo, handshake methods, and encrypted_call remain unauthenticated
-            # encrypted_call handles authentication internally via Phase 3.5 encrypted auth
-            unauthenticated_methods = {'Echo', 'GetServerInfo', 'noise_handshake', 'encrypted_call'}
-            
-            if AUTH_ENABLED and method not in unauthenticated_methods:
-                from server.auth_middleware import validate_auth
-                user_id, auth_error = validate_auth(post_data, dict(self.headers))
-                
-                if auth_error:
-                    error_response = {
-                        'jsonrpc': '2.0',
-                        'error': {'code': -32001, 'message': f'Unauthorized: {auth_error}'},
-                        'id': request_id
-                    }
-                    self._send_json_response(error_response)
-                    return
-                
-                # Store user_id for method handlers to use
-                self.user_id = user_id
-                logger.info(f"Authenticated request for user: {user_id}, method: {method}")
-            else:
-                self.user_id = None
+            # Authentication is now handled per-method using authentication codes
+            # Echo, GetServerInfo, handshake methods remain unauthenticated
+            self.user_id = None
             
             # Route to appropriate method
             result, error = self._route_method(method, params)
@@ -347,16 +173,27 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
         Handle RegisterSecret RPC method.
         
         Args:
-            params: List containing [uid, did, bid, version, x, y_str, max_guesses, expiration]
+            params: List containing [auth_code, uid, did, bid, version, x, y_str, max_guesses, expiration]
             
         Returns:
             Tuple of (result, error_message)
         """
         try:
-            if len(params) != 8:
-                return None, "INVALID_ARGUMENT: RegisterSecret expects exactly 8 parameters"
+            if len(params) != 9:
+                return None, "INVALID_ARGUMENT: RegisterSecret expects exactly 9 parameters"
             
-            uid, did, bid, version, x, y_str, max_guesses, expiration = params
+            auth_code, uid, did, bid, version, x, y_str, max_guesses, expiration = params
+            
+            # Validate authentication code
+            if AUTH_ENABLED:
+                client_ip = getattr(self, 'client_address', ['unknown'])[0] if hasattr(self, 'client_address') else 'unknown'
+                derived_uuid, auth_error = validate_auth_code_request(auth_code, client_ip)
+                if auth_error:
+                    return None, f"AUTHENTICATION_FAILED: {auth_error}"
+                
+                # Use derived UUID as the user identifier
+                uid = derived_uuid
+                logger.info(f"Authenticated RegisterSecret request for derived UUID: {uid}")
             
             # Convert parameters to proper types (JSON-RPC may pass some as strings)
             try:
@@ -384,8 +221,8 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             except OverflowError as e:
                 return None, f"INVALID_ARGUMENT: Y integer too large for 32 bytes: {str(e)}"
             
-            # Call server function
-            result = server.register_secret(self.db, uid, did, bid, version, x, y, max_guesses, expiration)
+            # Call server function with auth_code
+            result = server.register_secret(self.db, uid, did, bid, auth_code, version, x, y, max_guesses, expiration)
             
             if isinstance(result, Exception):
                 return None, f"INVALID_ARGUMENT: {str(result)}"
@@ -401,7 +238,7 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
         Handle RecoverSecret RPC method.
         
         Args:
-            params: List containing [uid, did, bid, b_unexpanded, guess_num]
+            params: List containing [auth_code, did, bid, b_unexpanded, guess_num]
             
         Returns:
             Tuple of (result, error_message)
@@ -410,7 +247,24 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             if len(params) != 5:
                 return None, "INVALID_ARGUMENT: RecoverSecret expects exactly 5 parameters"
             
-            uid, did, bid, b_unexpanded, guess_num = params
+            auth_code, did, bid, b_unexpanded, guess_num = params
+            
+            # Validate authentication code
+            if AUTH_ENABLED:
+                client_ip = getattr(self, 'client_address', ['unknown'])[0] if hasattr(self, 'client_address') else 'unknown'
+                derived_uuid, auth_error = validate_auth_code_request(auth_code, client_ip)
+                if auth_error:
+                    return None, f"AUTHENTICATION_FAILED: {auth_error}"
+                
+                logger.info(f"Authenticated RecoverSecret request for derived UUID: {derived_uuid}")
+            
+            # Look up the share using auth_code instead of uid
+            share_result = self.db.lookup_by_auth_code(auth_code, did, bid)
+            if share_result is None:
+                return None, "INVALID_ARGUMENT: Share not found"
+            
+            # Extract uid from the lookup result
+            uid, version, x, y, num_guesses, max_guesses, expiration = share_result
             
             # Convert b from JSON representation back to cryptographic point
             try:
@@ -436,7 +290,7 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
         Handle ListBackups RPC method.
         
         Args:
-            params: List containing [uid]
+            params: List containing [auth_code]
             
         Returns:
             Tuple of (result, error_message)
@@ -445,10 +299,19 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             if len(params) != 1:
                 return None, "INVALID_ARGUMENT: ListBackups expects exactly 1 parameter"
             
-            uid = params[0]
+            auth_code = params[0]
             
-            # Call server function
-            result = server.list_backups(self.db, uid)
+            # Validate authentication code
+            if AUTH_ENABLED:
+                client_ip = getattr(self, 'client_address', ['unknown'])[0] if hasattr(self, 'client_address') else 'unknown'
+                derived_uuid, auth_error = validate_auth_code_request(auth_code, client_ip)
+                if auth_error:
+                    return None, f"AUTHENTICATION_FAILED: {auth_error}"
+                
+                logger.info(f"Authenticated ListBackups request for derived UUID: {derived_uuid}")
+            
+            # List backups using auth_code
+            result = self.db.list_backups_by_auth_code(auth_code)
             
             if isinstance(result, Exception):
                 return None, f"INVALID_ARGUMENT: {str(result)}"

@@ -66,6 +66,7 @@ class Database:
                     UID TEXT NOT NULL,
                     DID TEXT NOT NULL,
                     BID TEXT NOT NULL,
+                    auth_code TEXT NOT NULL,
                     version INTEGER NOT NULL,
                     x INTEGER NOT NULL,
                     y BLOB NOT NULL,
@@ -76,6 +77,14 @@ class Database:
                 )
             """)
             self.con.commit()
+        else:
+            # Check if auth_code column exists, add it if missing
+            cur.execute("PRAGMA table_info(shares)")
+            columns = [column[1] for column in cur.fetchall()]
+            if 'auth_code' not in columns:
+                print(f"Adding auth_code column to shares table in {self.db_name}")
+                cur.execute("ALTER TABLE shares ADD COLUMN auth_code TEXT DEFAULT ''")
+                self.con.commit()
 
         # Check if server_config table exists
         result = cur.execute(
@@ -108,7 +117,7 @@ class Database:
         cur.execute(sql, (key, value))
         self.con.commit()
 
-    def insert(self, uid: bytes, did: bytes, bid: bytes, version: int, x: int, 
+    def insert(self, uid: bytes, did: bytes, bid: bytes, auth_code: str, version: int, x: int, 
                y: bytes, num_guesses: int, max_guesses: int, expiration: int) -> None:
         """
         Insert or update a secret share in the database.
@@ -119,6 +128,7 @@ class Database:
             uid: User identifier (bytes)
             did: Device identifier (bytes)  
             bid: Backup identifier (bytes)
+            auth_code: Server-specific authentication code
             version: Version number for this backup
             x: X coordinate for secret sharing
             y: Y coordinate (encrypted share data)
@@ -127,14 +137,15 @@ class Database:
             expiration: Expiration timestamp (0 for no expiration)
         """
         sql = """
-            REPLACE INTO shares(UID, DID, BID, version, x, y, num_guesses, max_guesses, expiration)
-            VALUES(?,?,?,?,?,?,?,?,?)
+            REPLACE INTO shares(UID, DID, BID, auth_code, version, x, y, num_guesses, max_guesses, expiration)
+            VALUES(?,?,?,?,?,?,?,?,?,?)
         """
         cur = self.con.cursor()
         cur.execute(sql, (
             uid.decode('utf-8'), 
             did.decode('utf-8'), 
-            bid.decode('utf-8'), 
+            bid.decode('utf-8'),
+            auth_code,
             version, 
             x, 
             y,
@@ -217,6 +228,76 @@ class Database:
         # num_guesses is at index 3 in the tuple
         return backup[3]
 
+    def lookup_by_auth_code(self, auth_code: str, did: str, bid: str) -> Optional[Tuple]:
+        """
+        Look up a specific share by authentication code, device, and backup identifiers.
+        
+        Args:
+            auth_code: Server-specific authentication code
+            did: Device identifier
+            bid: Backup identifier
+            
+        Returns:
+            Tuple containing (uid, version, x, y, num_guesses, max_guesses, expiration)
+            or None if not found
+        """
+        sql = """
+            SELECT UID, version, x, y, num_guesses, max_guesses, expiration 
+            FROM shares
+            WHERE auth_code = ? AND DID = ? AND BID = ?
+        """
+        cur = self.con.cursor()
+        results = cur.execute(sql, [auth_code, did, bid]).fetchall()
+        
+        if not results:
+            return None
+        
+        assert len(results) == 1, f"Expected 1 result, got {len(results)}"
+        return results[0]
+
+    def list_backups_by_auth_code(self, auth_code: str) -> List[Tuple]:
+        """
+        List all backups for a specific authentication code.
+        
+        Args:
+            auth_code: Server-specific authentication code
+            
+        Returns:
+            List of tuples containing:
+            (uid, did, bid, version, num_guesses, max_guesses, expiration)
+        """
+        sql = """
+            SELECT UID, DID, BID, version, num_guesses, max_guesses, expiration 
+            FROM shares 
+            WHERE auth_code = ?
+        """
+        cur = self.con.cursor()
+        return cur.execute(sql, [auth_code]).fetchall()
+
+    def update_guess_count(self, uid: bytes, did: bytes, bid: bytes, num_guesses: int) -> None:
+        """
+        Update the guess count for a specific share.
+        
+        Args:
+            uid: User identifier (bytes)
+            did: Device identifier (bytes)
+            bid: Backup identifier (bytes)
+            num_guesses: New guess count
+        """
+        sql = """
+            UPDATE shares 
+            SET num_guesses = ?
+            WHERE UID = ? AND DID = ? AND BID = ?
+        """
+        cur = self.con.cursor()
+        cur.execute(sql, (
+            num_guesses,
+            uid.decode('utf-8'), 
+            did.decode('utf-8'), 
+            bid.decode('utf-8')
+        ))
+        self.con.commit()
+
     def close(self) -> None:
         """Explicitly close the database connection."""
         if hasattr(self, 'con'):
@@ -240,12 +321,13 @@ def main():
     did = b"Ubuntu beast Alienware laptop"
     version = 1
     x = 1
-    y = 234
+    y = b"test_secret_share_32_bytes_long!!"
+    auth_code = "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
     
     # Test insertions
     print("Inserting test data...")
-    db.insert(uid, did, b"file://archive.tgz", version, x, y, 0, 10, expiration)
-    db.insert(uid, did, b"firefox_passwords://passwords.json", version, x, y, 0, 10, expiration)
+    db.insert(uid, did, b"file://archive.tgz", auth_code, version, x, y, 0, 10, expiration)
+    db.insert(uid, did, b"firefox_passwords://passwords.json", auth_code, version, x, y, 0, 10, expiration)
     
     # Test list_backups
     print("Testing list_backups...")
