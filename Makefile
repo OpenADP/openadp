@@ -311,6 +311,14 @@ help:
 	@echo "  decrypt          - Run decryption tool"
 	@echo "  interactive      - Run CLI in interactive mode"
 	@echo ""
+	@echo "🏗️  Node Operator Targets:"
+	@echo "  install-node     - Install/update OpenADP node (requires sudo)"
+	@echo "  update-node      - Quick update node (skip system deps, sudo)"
+	@echo "  node-status      - Show node service status"
+	@echo "  node-logs        - Show recent node logs"
+	@echo "  node-test        - Test node health and functionality"
+	@echo "  operator-help    - Show detailed operator help"
+	@echo ""
 	@echo "🛠️  Development Targets:"
 	@echo "  clean            - Clean build artifacts"
 	@echo "  deps             - Install dependencies"
@@ -433,4 +441,52 @@ fuzz-help:
 	@echo "  make fuzz-server                    # Test server logic"
 	@echo "  make fuzz-crypto                    # Test crypto operations"
 	@echo "  make fuzz-api                       # Test API endpoints"
-	@echo "  make fuzz-quick                     # Quick CI-friendly tests" 
+	@echo "  make fuzz-quick                     # Quick CI-friendly tests"
+
+# Operator automation targets
+.PHONY: install-node update-node node-status node-logs node-test
+
+install-node: ## Install/update OpenADP node (requires sudo)
+	@echo "Installing/updating OpenADP node..."
+	sudo ./scripts/update-openadp-node.sh
+
+update-node: ## Quick update of OpenADP node (skip deps, requires sudo)
+	@echo "Quick updating OpenADP node..."
+	sudo ./scripts/update-openadp-node.sh --skip-deps
+
+node-status: ## Show OpenADP node service status
+	@echo "OpenADP node service status:"
+	@systemctl is-active openadp-server 2>/dev/null && echo "✓ Service is running" || echo "✗ Service is not running"
+	@echo ""
+	@systemctl status openadp-server --no-pager -l 2>/dev/null || echo "Service not installed"
+
+node-logs: ## Show OpenADP node logs
+	@echo "Recent OpenADP node logs:"
+	@journalctl -u openadp-server -n 50 --no-pager 2>/dev/null || echo "No logs available"
+
+node-test: ## Test OpenADP node health and functionality
+	@echo "Testing OpenADP node..."
+	@echo "Health check:"
+	@curl -s http://localhost:8080/health 2>/dev/null && echo " ✓ Health check passed" || echo " ✗ Health check failed"
+	@echo "Echo test:"
+	@curl -s -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"Echo","params":["Test"],"id":1}' http://localhost:8080 2>/dev/null | jq -e '.result' >/dev/null && echo " ✓ Echo test passed" || echo " ✗ Echo test failed"
+	@echo "Server info:"
+	@curl -s -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"GetServerInfo","params":[],"id":1}' http://localhost:8080 2>/dev/null | jq '.result' 2>/dev/null || echo " ✗ Server info failed"
+
+# Operator help
+operator-help: ## Show operator commands
+	@echo ""
+	@echo "$(CYAN)OpenADP Node Operator Commands:$(NC)"
+	@echo ""
+	@echo "  $(GREEN)make install-node$(NC)  - Install or update OpenADP node (full)"
+	@echo "  $(GREEN)make update-node$(NC)   - Quick update OpenADP node (skip system deps)"
+	@echo "  $(GREEN)make node-status$(NC)   - Show service status"
+	@echo "  $(GREEN)make node-logs$(NC)     - Show recent service logs"
+	@echo "  $(GREEN)make node-test$(NC)     - Test node health and functionality"
+	@echo ""
+	@echo "  $(YELLOW)Direct script usage:$(NC)"
+	@echo "    $(GREEN)sudo ./scripts/update-openadp-node.sh$(NC)            # Full install/update"
+	@echo "    $(GREEN)sudo ./scripts/update-openadp-node.sh --dry-run$(NC)   # Preview changes"
+	@echo "    $(GREEN)sudo ./scripts/update-openadp-node.sh --skip-deps$(NC) # Quick update"
+	@echo "    $(GREEN)./scripts/update-openadp-node.sh --help$(NC)          # Show all options"
+	@echo "" 
