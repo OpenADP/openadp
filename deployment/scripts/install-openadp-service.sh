@@ -158,10 +158,10 @@ cd "$INSTALL_DIR/src"
 
 # Build as the service user to avoid permission issues
 sudo -u "$SERVICE_USER" bash -c "
-    export PATH='/usr/local/go/bin:\$PATH'
+    export PATH='/usr/local/go/bin:/usr/bin:/bin:\$PATH'
     export GOPATH=/tmp/go-build-$$
     export GOCACHE=/tmp/go-cache-$$
-    mkdir -p \$GOPATH \$GOCACHE
+    /bin/mkdir -p \$GOPATH \$GOCACHE
     cd '$INSTALL_DIR/src'
     
     echo 'Downloading Go dependencies...'
@@ -176,7 +176,7 @@ sudo -u "$SERVICE_USER" bash -c "
     go build -o '$INSTALL_DIR/bin/openadp-decrypt' -ldflags '-X main.version=1.0.0' ./cmd/openadp-decrypt || echo 'Note: openadp-decrypt build failed, skipping'
     
     # Clean up build cache
-    rm -rf \$GOPATH \$GOCACHE
+    /bin/rm -rf \$GOPATH \$GOCACHE
 "
 
 # Verify the binary was built successfully
