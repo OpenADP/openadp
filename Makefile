@@ -26,7 +26,7 @@ GOFMT=$(GOCMD) fmt
 # Build flags
 LDFLAGS=-ldflags "-X main.version=$(VERSION)"
 
-.PHONY: all build build-cli build-server build-encrypt build-decrypt build-keygen build-test-runner clean test test-verbose deps fmt lint help install demo server encrypt decrypt keygen run-tests
+.PHONY: all build build-cli build-server build-encrypt build-decrypt build-keygen build-test-runner clean test test-verbose deps fmt lint help install demo server encrypt decrypt keygen run-tests fuzz fuzz-server fuzz-crypto fuzz-api fuzz-all fuzz-quick fuzz-extended fuzz-coverage fuzz-clean fuzz-help
 
 # Default target
 all: clean deps fmt test build build-cli build-server build-encrypt build-decrypt build-keygen build-test-runner
@@ -321,4 +321,116 @@ help:
 	@echo "📦 Release Targets:"
 	@echo "  install          - Install binaries to GOPATH/bin"
 	@echo "  release          - Create release builds for all platforms"
-	@echo "  stats            - Show project statistics" 
+	@echo "  stats            - Show project statistics"
+
+# Fuzz testing targets
+.PHONY: fuzz fuzz-server fuzz-crypto fuzz-api fuzz-all
+
+# Run all fuzz tests for a short duration (useful for CI)
+fuzz-quick:
+	@echo "Running quick fuzz tests..."
+	go test -fuzz=FuzzRegisterInputs -fuzztime=10s ./pkg/server
+	go test -fuzz=FuzzRecoverInputs -fuzztime=10s ./pkg/server
+	go test -fuzz=FuzzPoint2D -fuzztime=10s ./pkg/crypto
+	go test -fuzz=FuzzJSONRPCRequest -fuzztime=10s ./cmd/openadp-server
+
+# Run server-specific fuzz tests
+fuzz-server:
+	@echo "Running server fuzz tests..."
+	go test -fuzz=FuzzRegisterInputs -fuzztime=1m ./pkg/server
+	go test -fuzz=FuzzRecoverInputs -fuzztime=1m ./pkg/server  
+	go test -fuzz=FuzzRegisterSecretE2E -fuzztime=1m ./pkg/server
+	go test -fuzz=FuzzRecoverSecretE2E -fuzztime=1m ./pkg/server
+	go test -fuzz=FuzzPointValid -fuzztime=30s ./pkg/server
+	go test -fuzz=FuzzServerInfo -fuzztime=30s ./pkg/server
+	go test -fuzz=FuzzEcho -fuzztime=30s ./pkg/server
+	go test -fuzz=FuzzListBackups -fuzztime=1m ./pkg/server
+	go test -fuzz=FuzzJSONSerialization -fuzztime=1m ./pkg/server
+	go test -fuzz=FuzzConcurrentAccess -fuzztime=30s ./pkg/server
+
+# Run cryptography fuzz tests
+fuzz-crypto:
+	@echo "Running crypto fuzz tests..."
+	go test -fuzz=FuzzPoint2D -fuzztime=1m ./pkg/crypto
+	go test -fuzz=FuzzPoint4D -fuzztime=1m ./pkg/crypto
+	go test -fuzz=FuzzScalarMult -fuzztime=2m ./pkg/crypto
+	go test -fuzz=FuzzPointAdd -fuzztime=2m ./pkg/crypto
+	go test -fuzz=FuzzX25519Operations -fuzztime=1m ./pkg/crypto
+	go test -fuzz=FuzzHashFunctions -fuzztime=1m ./pkg/crypto
+	go test -fuzz=FuzzRandomBytes -fuzztime=30s ./pkg/crypto
+	go test -fuzz=FuzzPointConversions -fuzztime=1m ./pkg/crypto
+	go test -fuzz=FuzzBigIntOperations -fuzztime=1m ./pkg/crypto
+
+# Run API endpoint fuzz tests
+fuzz-api:
+	@echo "Running API fuzz tests..."
+	go test -fuzz=FuzzJSONRPCRequest -fuzztime=2m ./cmd/openadp-server
+	go test -fuzz=FuzzEchoMethod -fuzztime=1m ./cmd/openadp-server
+	go test -fuzz=FuzzRegisterSecretMethod -fuzztime=2m ./cmd/openadp-server
+	go test -fuzz=FuzzRecoverSecretMethod -fuzztime=2m ./cmd/openadp-server
+	go test -fuzz=FuzzListBackupsMethod -fuzztime=1m ./cmd/openadp-server
+	go test -fuzz=FuzzHTTPMethods -fuzztime=1m ./cmd/openadp-server
+	go test -fuzz=FuzzParameterTypes -fuzztime=1m ./cmd/openadp-server
+	go test -fuzz=FuzzConcurrentRequests -fuzztime=1m ./cmd/openadp-server
+	go test -fuzz=FuzzLargePayloads -fuzztime=1m ./cmd/openadp-server
+	go test -fuzz=FuzzHealthEndpoint -fuzztime=30s ./cmd/openadp-server
+
+# Run extended fuzz tests (longer duration)
+fuzz-extended:
+	@echo "Running extended fuzz tests (5 minutes each)..."
+	go test -fuzz=FuzzRegisterSecretE2E -fuzztime=5m ./pkg/server
+	go test -fuzz=FuzzRecoverSecretE2E -fuzztime=5m ./pkg/server
+	go test -fuzz=FuzzScalarMult -fuzztime=5m ./pkg/crypto
+	go test -fuzz=FuzzPointAdd -fuzztime=5m ./pkg/crypto
+	go test -fuzz=FuzzJSONRPCRequest -fuzztime=5m ./cmd/openadp-server
+	go test -fuzz=FuzzRegisterSecretMethod -fuzztime=5m ./cmd/openadp-server
+
+# Run all fuzz tests with moderate duration
+fuzz-all: fuzz-server fuzz-crypto fuzz-api
+
+# Run specific fuzz test with custom duration
+# Usage: make fuzz-custom FUZZ=FuzzRegisterInputs PACKAGE=./pkg/server DURATION=30s
+fuzz-custom:
+	@echo "Running custom fuzz test: $(FUZZ) for $(DURATION)..."
+	go test -fuzz=$(FUZZ) -fuzztime=$(DURATION) $(PACKAGE)
+
+# Generate fuzz test coverage report
+fuzz-coverage:
+	@echo "Generating fuzz test coverage..."
+	mkdir -p coverage
+	go test -fuzz=FuzzRegisterInputs -fuzztime=1m -coverprofile=coverage/fuzz-server.out ./pkg/server
+	go test -fuzz=FuzzPoint2D -fuzztime=1m -coverprofile=coverage/fuzz-crypto.out ./pkg/crypto
+	go test -fuzz=FuzzJSONRPCRequest -fuzztime=1m -coverprofile=coverage/fuzz-api.out ./cmd/openadp-server
+	go tool cover -html=coverage/fuzz-server.out -o coverage/fuzz-server.html
+	go tool cover -html=coverage/fuzz-crypto.out -o coverage/fuzz-crypto.html
+	go tool cover -html=coverage/fuzz-api.out -o coverage/fuzz-api.html
+	@echo "Coverage reports generated in coverage/ directory"
+
+# Clean up fuzz test artifacts
+fuzz-clean:
+	@echo "Cleaning up fuzz test artifacts..."
+	find . -name "fuzz_*.db" -delete
+	find . -path "*/testdata/fuzz/*" -delete
+	rm -rf coverage/fuzz-*.out coverage/fuzz-*.html
+
+# Show fuzz test help
+fuzz-help:
+	@echo "OpenADP Fuzz Testing Targets:"
+	@echo ""
+	@echo "  fuzz-quick      - Run quick fuzz tests (10s each, good for CI)"
+	@echo "  fuzz-server     - Run server business logic fuzz tests"
+	@echo "  fuzz-crypto     - Run cryptographic operation fuzz tests" 
+	@echo "  fuzz-api        - Run HTTP/JSON-RPC API fuzz tests"
+	@echo "  fuzz-all        - Run all fuzz tests with moderate duration"
+	@echo "  fuzz-extended   - Run extended fuzz tests (5m each)"
+	@echo "  fuzz-coverage   - Generate coverage reports for fuzz tests"
+	@echo "  fuzz-clean      - Clean up fuzz test artifacts"
+	@echo ""
+	@echo "Custom usage:"
+	@echo "  make fuzz-custom FUZZ=FuzzRegisterInputs PACKAGE=./pkg/server DURATION=30s"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make fuzz-server                    # Test server logic"
+	@echo "  make fuzz-crypto                    # Test crypto operations"
+	@echo "  make fuzz-api                       # Test API endpoints"
+	@echo "  make fuzz-quick                     # Quick CI-friendly tests" 
