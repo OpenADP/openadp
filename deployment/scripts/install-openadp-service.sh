@@ -36,22 +36,22 @@ case $OS in
     ubuntu|debian|raspbian)
         PKG_UPDATE="apt-get update"
         PKG_INSTALL="apt-get install -y"
-        SYSTEM_PKGS="golang-go gcc sqlite3"
+        SYSTEM_PKGS="wget gcc sqlite3"
         ;;
     fedora|rhel|centos|rocky|almalinux)
         PKG_UPDATE="dnf update -y"
         PKG_INSTALL="dnf install -y"
-        SYSTEM_PKGS="golang gcc sqlite"
+        SYSTEM_PKGS="wget gcc sqlite"
         ;;
     opensuse*|sles)
         PKG_UPDATE="zypper refresh"
         PKG_INSTALL="zypper install -y"
-        SYSTEM_PKGS="go gcc sqlite3"
+        SYSTEM_PKGS="wget gcc sqlite3"
         ;;
     arch|manjaro)
         PKG_UPDATE="pacman -Sy"
         PKG_INSTALL="pacman -S --noconfirm"
-        SYSTEM_PKGS="go gcc sqlite"
+        SYSTEM_PKGS="wget gcc sqlite"
         ;;
     *)
         echo "Unsupported OS: $OS"
@@ -62,13 +62,54 @@ esac
 
 echo "Using package manager: ${PKG_INSTALL%% *}"
 
-# Install minimal system dependencies (Go compiler, C compiler for SQLite driver, SQLite database)
+# Install minimal system dependencies (wget for Go download, C compiler for SQLite driver, SQLite database)
 echo "Installing minimal dependencies for Go server..."
 echo "Running: $PKG_UPDATE"
 $PKG_UPDATE
 
 echo "Installing system packages: $SYSTEM_PKGS"
 $PKG_INSTALL $SYSTEM_PKGS
+
+# Install modern Go version
+echo "Installing Go 1.23.10..."
+GO_VERSION="1.23.10"
+GO_TARBALL="go${GO_VERSION}.linux-"
+
+# Detect architecture
+ARCH=$(uname -m)
+case $ARCH in
+    x86_64)
+        GO_ARCH="amd64"
+        ;;
+    aarch64|arm64)
+        GO_ARCH="arm64"
+        ;;
+    armv7l)
+        GO_ARCH="armv6l"
+        ;;
+    *)
+        echo "Unsupported architecture: $ARCH"
+        exit 1
+        ;;
+esac
+
+GO_TARBALL="${GO_TARBALL}${GO_ARCH}.tar.gz"
+GO_URL="https://golang.org/dl/${GO_TARBALL}"
+
+echo "Downloading Go ${GO_VERSION} for ${GO_ARCH}..."
+cd /tmp
+wget -O "$GO_TARBALL" "$GO_URL"
+
+# Remove old Go installation and install new one
+echo "Installing Go to /usr/local..."
+rm -rf /usr/local/go
+tar -C /usr/local -xzf "$GO_TARBALL"
+rm "$GO_TARBALL"
+
+# Set up Go environment
+export PATH="/usr/local/go/bin:$PATH"
+export GOPATH="/tmp/go-workspace"
+export GOCACHE="/tmp/go-cache"
 
 # Verify Go installation
 echo "Verifying Go installation..."
@@ -77,8 +118,8 @@ if ! command -v go &> /dev/null; then
     exit 1
 fi
 
-GO_VERSION=$(go version)
-echo "Go version: $GO_VERSION"
+INSTALLED_GO_VERSION=$(go version)
+echo "Go version: $INSTALLED_GO_VERSION"
 
 # Create service user and group
 echo "Creating service user and group..."
@@ -117,6 +158,7 @@ cd "$INSTALL_DIR/src"
 
 # Build as the service user to avoid permission issues
 sudo -u "$SERVICE_USER" bash -c "
+    export PATH='/usr/local/go/bin:\$PATH'
     export GOPATH=/tmp/go-build-$$
     export GOCACHE=/tmp/go-cache-$$
     mkdir -p \$GOPATH \$GOCACHE
@@ -186,7 +228,7 @@ systemctl daemon-reload
 echo "=== Installation Complete ==="
 echo ""
 echo "OS: $PRETTY_NAME"
-echo "Go version: $GO_VERSION"
+echo "Go version: $INSTALLED_GO_VERSION"
 echo "Package manager: ${PKG_INSTALL%% *}"
 echo ""
 echo "Installed files:"
