@@ -1,5 +1,5 @@
 [Unit]
-Description=OpenADP JSON-RPC Server
+Description=OpenADP Go JSON-RPC Server
 Documentation=https://github.com/waywardgeek/openadp
 After=network.target
 Wants=network.target
@@ -9,18 +9,26 @@ Type=simple
 User=openadp
 Group=openadp
 WorkingDirectory=/opt/openadp
-ExecStart=/opt/openadp/venv/bin/python3 /opt/openadp/server/jsonrpc_server.py
+ExecStart=/opt/openadp/bin/openadp-server -port 8080 -db /opt/openadp/data/openadp.db -auth true
 Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
+
+# Load environment variables from configuration file
+EnvironmentFile=-/opt/openadp/openadp-server.conf
+
+# Default environment variables (can be overridden in openadp-server.conf)
+Environment=OPENADP_PORT=8080
+Environment=OPENADP_DB=/opt/openadp/data/openadp.db
+Environment=OPENADP_AUTH=true
 
 # Security settings
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/openadp
+ReadWritePaths=/opt/openadp/data
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
