@@ -25,12 +25,11 @@ const (
 
 // Metadata represents the metadata stored with encrypted files
 type Metadata struct {
-	Servers     []string          `json:"servers"`
-	Threshold   int               `json:"threshold"`
-	AuthEnabled bool              `json:"auth_enabled"`
-	Version     string            `json:"version"`
-	AuthCodes   AuthCodesMetadata `json:"auth_codes"`
-	UserID      string            `json:"user_id"`
+	Servers   []string `json:"servers"`
+	Threshold int      `json:"threshold"`
+	Version   string   `json:"version"`
+	AuthCode  string   `json:"auth_code"` // Single base auth code (32 bytes hex)
+	UserID    string   `json:"user_id"`
 }
 
 // AuthCodesMetadata represents authentication codes in metadata
@@ -181,21 +180,22 @@ func encryptFile(inputFilename, password string, serverURLs []string, serversURL
 
 	// Create metadata using the actual results from keygen
 	metadata := Metadata{
-		Servers:     actualServerURLs,
-		Threshold:   threshold,
-		AuthEnabled: true,
-		Version:     "2.0",
-		AuthCodes: AuthCodesMetadata{
-			BaseAuthCode:    authCodes.BaseAuthCode,
-			ServerAuthCodes: authCodes.ServerAuthCodes,
-		},
-		UserID: userID,
+		Servers:   actualServerURLs,
+		Threshold: threshold,
+		Version:   "1.0",
+		AuthCode:  authCodes.BaseAuthCode,
+		UserID:    userID,
 	}
 
 	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata: %v", err)
 	}
+
+	// DEBUG: Print metadata during encryption
+	fmt.Printf("DEBUG ENCRYPT: Metadata JSON: %s\n", string(metadataJSON))
+	fmt.Printf("DEBUG ENCRYPT: UserID: %s\n", userID)
+	fmt.Printf("DEBUG ENCRYPT: AuthCode: %s\n", authCodes.BaseAuthCode)
 
 	// Encrypt the file using metadata as additional authenticated data
 	cipher, err := chacha20poly1305.New(encKey)

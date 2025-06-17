@@ -372,29 +372,78 @@ func SecretToPublic(secret []byte) ([]byte, error) {
 	return PointCompress(publicPoint), nil
 }
 
+// prefixed returns a 16-bit length prefixed (little-endian) byte string
+func prefixed(a []byte) []byte {
+	l := len(a)
+	if l >= 1<<16 {
+		panic("Input string too long")
+	}
+	prefix := make([]byte, 2)
+	prefix[0] = byte(l)
+	prefix[1] = byte(l >> 8)
+	return append(prefix, a...)
+}
+
+// pointMul8 multiplies a point by 8 (matching Python point_mul8)
+func pointMul8(p *Point4D) *Point4D {
+	// Multiply by 8 = 2^3, so we double 3 times
+	result := PointAdd(p, p)          // 2P
+	result = PointAdd(result, result) // 4P
+	result = PointAdd(result, result) // 8P
+	return result
+}
+
+// pointValid checks if a point is valid (matching Python point_valid)
+func pointValid(p *Point4D) bool {
+	if p == nil || p.X == nil || p.Y == nil || p.Z == nil || p.T == nil {
+		return false
+	}
+
+	// Check that the point is not the zero point
+	if PointEqual(p, ZeroPoint) {
+		return false
+	}
+
+	// For now, assume all non-zero points are valid
+	// In a full implementation, we'd check the curve equation
+	return true
+}
+
 // H computes the hash function H(UID, DID, BID, pin) -> Point
 func H(uid, did, bid, pin []byte) *Point4D {
-	// Concatenate all inputs with prefixes
-	data := append([]byte("UID:"), uid...)
-	data = append(data, []byte("|DID:")...)
-	data = append(data, did...)
-	data = append(data, []byte("|BID:")...)
-	data = append(data, bid...)
-	data = append(data, []byte("|PIN:")...)
+	// Concatenate all inputs with length prefixes (matching Python implementation)
+	data := prefixed(uid)
+	data = append(data, prefixed(did)...)
+	data = append(data, prefixed(bid)...)
 	data = append(data, pin...)
 
 	// Hash and convert to point
 	hash := Sha256Hash(data)
 
-	// Use hash as seed to generate a valid point
-	for i := 0; i < 256; i++ {
-		candidate := make([]byte, 32)
-		copy(candidate, hash)
-		candidate[31] = byte(i) // Try different values
+	// Convert hash to big integer and extract sign bit (matching Python)
+	yBase := new(big.Int).SetBytes(reverseBytes(hash)) // little-endian
+	sign := int(yBase.Bit(255))
+	yBase.SetBit(yBase, 255, 0) // Clear sign bit
 
-		point, err := PointDecompress(candidate)
-		if err == nil {
-			return point
+	counter := 0
+	for {
+		// XOR with counter to find valid point
+		y := new(big.Int).Xor(yBase, big.NewInt(int64(counter)))
+
+		x := recoverX(y, sign)
+		if x != nil {
+			// Force the point to be in a group of order q (multiply by 8)
+			P := Expand(&Point2D{X: x, Y: y})
+			P = pointMul8(P)
+			if pointValid(P) {
+				return P
+			}
+		}
+		counter++
+
+		// Safety check to avoid infinite loop
+		if counter > 1000 {
+			break
 		}
 	}
 

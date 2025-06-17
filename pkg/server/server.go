@@ -181,7 +181,12 @@ func RecoverSecret(db *database.Database, uid, did, bid string, b *crypto.Point2
 	yInt := new(big.Int)
 	yBytes := make([]byte, len(record.Y))
 	copy(yBytes, record.Y)
-	// Y is stored in big-endian format (Go's default), no reversal needed
+
+	// Y is now stored in little-endian format (to match Python server)
+	// Convert from little-endian to big integer
+	for i, j := 0, len(yBytes)-1; i < j; i, j = i+1, j-1 {
+		yBytes[i], yBytes[j] = yBytes[j], yBytes[i]
+	}
 	yInt.SetBytes(yBytes)
 
 	// Convert Point2D to Point4D for multiplication
@@ -221,6 +226,19 @@ func RecoverSecretByAuthCode(db *database.Database, authCode, did, bid string, b
 		return nil, fmt.Errorf("share not found")
 	}
 
+	// Debug: Print what we retrieved from database
+	yIntFromDB := new(big.Int)
+	yBytesFromDB := make([]byte, len(record.Y))
+	copy(yBytesFromDB, record.Y)
+
+	// Y is stored in little-endian format
+	for i, j := 0, len(yBytesFromDB)-1; i < j; i, j = i+1, j-1 {
+		yBytesFromDB[i], yBytesFromDB[j] = yBytesFromDB[j], yBytesFromDB[i]
+	}
+	yIntFromDB.SetBytes(yBytesFromDB)
+	fmt.Printf("DATABASE RETRIEVED: x=%d, y=%s (hex: %x)\n",
+		record.X, yIntFromDB.String(), record.Y)
+
 	// Verify expected guess number (for idempotency)
 	if guessNum != record.NumGuesses {
 		return nil, fmt.Errorf("expecting guess_num = %d", record.NumGuesses)
@@ -247,7 +265,12 @@ func RecoverSecretByAuthCode(db *database.Database, authCode, did, bid string, b
 	yInt := new(big.Int)
 	yBytes := make([]byte, len(record.Y))
 	copy(yBytes, record.Y)
-	// Y is stored in big-endian format (Go's default), no reversal needed
+
+	// Y is now stored in little-endian format (to match Python server)
+	// Convert from little-endian to big integer
+	for i, j := 0, len(yBytes)-1; i < j; i, j = i+1, j-1 {
+		yBytes[i], yBytes[j] = yBytes[j], yBytes[i]
+	}
 	yInt.SetBytes(yBytes)
 
 	// Convert Point2D to Point4D for multiplication

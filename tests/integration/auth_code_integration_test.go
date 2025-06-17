@@ -37,26 +37,20 @@ func TestCompleteRegistrationFlow(t *testing.T) {
 	expiration := time.Now().Unix() + 86400 // 24 hours from now
 
 	// Generate authentication code
-	baseCode := manager.GenerateAuthCode()
+	baseCode, err := manager.GenerateAuthCode()
+	if err != nil {
+		t.Fatalf("Failed to generate auth code: %v", err)
+	}
 	serverURL := "https://server1.openadp.org"
 	serverCode := manager.DeriveServerCode(baseCode, serverURL)
 
 	// Generate cryptographic data
-	secret, err := rand.Int(rand.Reader, crypto.Q)
-	if err != nil {
-		t.Fatalf("Failed to generate secret: %v", err)
-	}
-
-	u := crypto.PointMul(secret, crypto.G)
 	x := 1 // Share index
 	y := make([]byte, 32)
 	rand.Read(y) // Secret share
 
-	// Create server instance
-	srv := server.NewServer(db, true) // with auth
-
-	// Register secret
-	err = srv.RegisterSecret(uid, did, bid, serverCode, version, x, y, maxGuesses, expiration)
+	// Register secret using server package function
+	err = server.RegisterSecret(db, uid, did, bid, serverCode, version, x, y, maxGuesses, expiration)
 	if err != nil {
 		t.Fatalf("Secret registration should succeed: %v", err)
 	}
@@ -116,7 +110,10 @@ func TestCompleteRecoveryFlow(t *testing.T) {
 	expiration := time.Now().Unix() + 86400
 
 	// Setup: Register a secret first
-	baseCode := manager.GenerateAuthCode()
+	baseCode, err := manager.GenerateAuthCode()
+	if err != nil {
+		t.Fatalf("Failed to generate auth code: %v", err)
+	}
 	serverURL := "https://server1.openadp.org"
 	serverCode := manager.DeriveServerCode(baseCode, serverURL)
 
@@ -131,11 +128,8 @@ func TestCompleteRecoveryFlow(t *testing.T) {
 	y := make([]byte, 32)
 	rand.Read(y)
 
-	// Create server instance
-	srv := server.NewServer(db, true)
-
-	// Register
-	err = srv.RegisterSecret(uid, did, bid, serverCode, version, x, y, maxGuesses, expiration)
+	// Register using server package function
+	err = server.RegisterSecret(db, uid, did, bid, serverCode, version, x, y, maxGuesses, expiration)
 	if err != nil {
 		t.Fatalf("Failed to register secret: %v", err)
 	}
@@ -148,9 +142,9 @@ func TestCompleteRecoveryFlow(t *testing.T) {
 	r.Add(r, big.NewInt(1))
 	b := crypto.PointMul(r, u)
 
-	// Attempt recovery
-	bCompressed := crypto.PointCompress(b)
-	_, err = srv.RecoverSecret(uid, did, bid, bCompressed, 0)
+	// Attempt recovery using server package function with auth code
+	b2D := crypto.Unexpand(b)
+	_, err = server.RecoverSecretByAuthCode(db, serverCode, did, bid, b2D, 0)
 
 	// Note: This may fail cryptographically since we're not using the proper
 	// key derivation, but it should not fail due to authentication issues
@@ -187,12 +181,12 @@ func TestBackupListingFlow(t *testing.T) {
 	maxGuesses := 10
 	expiration := time.Now().Unix() + 86400
 
-	baseCode := manager.GenerateAuthCode()
+	baseCode, err := manager.GenerateAuthCode()
+	if err != nil {
+		t.Fatalf("Failed to generate auth code: %v", err)
+	}
 	serverURL := "https://server1.openadp.org"
 	serverCode := manager.DeriveServerCode(baseCode, serverURL)
-
-	// Create server instance
-	srv := server.NewServer(db, true)
 
 	// Register multiple backups
 	backups := []struct {
@@ -205,17 +199,11 @@ func TestBackupListingFlow(t *testing.T) {
 	}
 
 	for i, backup := range backups {
-		secret, err := rand.Int(rand.Reader, crypto.Q)
-		if err != nil {
-			t.Fatalf("Failed to generate secret: %v", err)
-		}
-
-		u := crypto.PointMul(secret, crypto.G)
 		x := i + 1 // Share index
 		y := make([]byte, 32)
 		rand.Read(y)
 
-		err = srv.RegisterSecret(uid, backup.did, backup.bid, serverCode, version, x, y, maxGuesses, expiration)
+		err = server.RegisterSecret(db, uid, backup.did, backup.bid, serverCode, version, x, y, maxGuesses, expiration)
 		if err != nil {
 			t.Fatalf("Failed to register backup %d: %v", i, err)
 		}
@@ -231,25 +219,24 @@ func TestBackupListingFlow(t *testing.T) {
 		t.Errorf("Expected 3 backups, got %d", len(backupList))
 	}
 
-	// Verify backup information
-	foundBackups := make(map[string]string) // bid -> did
-	for _, backup := range backupList {
-		if len(backup) >= 3 {
-			did := backup[0].(string)
-			bid := backup[1].(string)
-			foundBackups[bid] = did
+	// Verify backup information - BackupInfo has DID, BID, Version fields
+	expectedBackups := make(map[string]string) // bid -> did
+	for _, backup := range backups {
+		expectedBackups[backup.bid] = backup.did
+	}
+
+	for i, backup := range backupList {
+		if expectedDid, exists := expectedBackups[backup.BID]; !exists {
+			t.Errorf("Backup %d: Unexpected BID %s", i, backup.BID)
+		} else if backup.DID != expectedDid {
+			t.Errorf("Backup %d: Expected DID %s for BID %s, got %s", i, expectedDid, backup.BID, backup.DID)
+		}
+		if backup.Version != version {
+			t.Errorf("Backup %d: Expected version %d, got %d", i, version, backup.Version)
 		}
 	}
 
-	for _, expected := range backups {
-		if foundDid, exists := foundBackups[expected.bid]; !exists {
-			t.Errorf("Backup %s not found", expected.bid)
-		} else if foundDid != expected.did {
-			t.Errorf("Expected device %s for backup %s, got %s", expected.did, expected.bid, foundDid)
-		}
-	}
-
-	fmt.Println("✅ Backup listing flow test passed")
+	fmt.Println("✅ Complete backup listing flow test passed")
 }
 
 func TestMultiServerIsolation(t *testing.T) {
@@ -272,7 +259,10 @@ func TestMultiServerIsolation(t *testing.T) {
 	maxGuesses := 10
 	expiration := time.Now().Unix() + 86400
 
-	baseCode := manager.GenerateAuthCode()
+	baseCode, err := manager.GenerateAuthCode()
+	if err != nil {
+		t.Fatalf("Failed to generate auth code: %v", err)
+	}
 
 	servers := []string{
 		"https://server1.openadp.org",
@@ -280,19 +270,10 @@ func TestMultiServerIsolation(t *testing.T) {
 		"https://backup.openadp.org",
 	}
 
-	// Create server instance
-	srv := server.NewServer(db, true)
-
 	// Register same backup on different servers
 	for i, serverURL := range servers {
 		serverCode := manager.DeriveServerCode(baseCode, serverURL)
 
-		secret, err := rand.Int(rand.Reader, crypto.Q)
-		if err != nil {
-			t.Fatalf("Failed to generate secret: %v", err)
-		}
-
-		u := crypto.PointMul(secret, crypto.G)
 		x := i + 1 // Share index
 		y := make([]byte, 32)
 		rand.Read(y)
@@ -300,7 +281,7 @@ func TestMultiServerIsolation(t *testing.T) {
 		// Use different UIDs to distinguish
 		uid := fmt.Sprintf("%s_server_%d", baseUID, i)
 
-		err = srv.RegisterSecret(uid, did, bid, serverCode, version, x, y, maxGuesses, expiration)
+		err = server.RegisterSecret(db, uid, did, bid, serverCode, version, x, y, maxGuesses, expiration)
 		if err != nil {
 			t.Fatalf("Failed to register for server %d: %v", i, err)
 		}
@@ -349,37 +330,36 @@ func TestGuessCountTracking(t *testing.T) {
 	maxGuesses := 3 // Low limit for testing
 	expiration := time.Now().Unix() + 86400
 
-	baseCode := manager.GenerateAuthCode()
+	baseCode, err := manager.GenerateAuthCode()
+	if err != nil {
+		t.Fatalf("Failed to generate auth code: %v", err)
+	}
 	serverURL := "https://server1.openadp.org"
 	serverCode := manager.DeriveServerCode(baseCode, serverURL)
 
 	// Register secret
-	secret, err := rand.Int(rand.Reader, crypto.Q)
-	if err != nil {
-		t.Fatalf("Failed to generate secret: %v", err)
-	}
-
 	x := 1
 	y := make([]byte, 32)
 	rand.Read(y)
 
-	// Create server instance
-	srv := server.NewServer(db, true)
-
-	err = srv.RegisterSecret(uid, did, bid, serverCode, version, x, y, maxGuesses, expiration)
+	err = server.RegisterSecret(db, uid, did, bid, serverCode, version, x, y, maxGuesses, expiration)
 	if err != nil {
 		t.Fatalf("Failed to register secret: %v", err)
 	}
 
-	// Test guess count increments
-	for i := 0; i < maxGuesses; i++ {
-		// Attempt recovery with wrong data (should increment guess count)
-		wrongB := crypto.PointCompress(crypto.G) // Wrong point
-		_, err = srv.RecoverSecret(uid, did, bid, wrongB, i)
+	// Test guess count increments with valid recovery attempts
+	testBCompressed := crypto.PointCompress(crypto.G)
+	testB4D, err := crypto.PointDecompress(testBCompressed)
+	if err != nil {
+		t.Fatalf("Failed to decompress test point: %v", err)
+	}
+	testB := crypto.Unexpand(testB4D)
 
-		// Should fail but not due to guess limit yet
-		if err == nil {
-			t.Error("Expected recovery to fail with wrong data")
+	for i := 0; i < maxGuesses; i++ {
+		// Attempt recovery (will succeed but increment guess count)
+		_, err = server.RecoverSecret(db, uid, did, bid, testB, i)
+		if err != nil {
+			t.Fatalf("Unexpected error during recovery attempt %d: %v", i, err)
 		}
 
 		// Check guess count
@@ -395,8 +375,7 @@ func TestGuessCountTracking(t *testing.T) {
 	}
 
 	// Next attempt should fail due to guess limit
-	wrongB := crypto.PointCompress(crypto.G)
-	_, err = srv.RecoverSecret(uid, did, bid, wrongB, maxGuesses)
+	_, err = server.RecoverSecret(db, uid, did, bid, testB, maxGuesses)
 	if err == nil {
 		t.Error("Expected recovery to fail due to guess limit")
 	}

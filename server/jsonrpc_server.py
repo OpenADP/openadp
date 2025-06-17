@@ -238,7 +238,7 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
         Handle RecoverSecret RPC method.
         
         Args:
-            params: List containing [auth_code, did, bid, b_unexpanded, guess_num]
+            params: List containing [auth_code, did, bid, b_compressed, guess_num]
             
         Returns:
             Tuple of (result, error_message)
@@ -247,7 +247,7 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             if len(params) != 5:
                 return None, "INVALID_ARGUMENT: RecoverSecret expects exactly 5 parameters"
             
-            auth_code, did, bid, b_unexpanded, guess_num = params
+            auth_code, did, bid, b_compressed, guess_num = params
             
             # Validate authentication code
             if AUTH_ENABLED:
@@ -267,9 +267,17 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             uid, version, x, y, num_guesses, max_guesses, expiration = share_result
             
             # Convert b from JSON representation back to cryptographic point
+            # Only accept base64 compressed point format (standard)
             try:
-                b = crypto.expand(b_unexpanded)
-                logger.info(f"Converted b_unexpanded to cryptographic point")
+                if not isinstance(b_compressed, str):
+                    return None, "INVALID_ARGUMENT: Point b must be a base64-encoded compressed point"
+                
+                # Handle base64 compressed point format
+                b_bytes = base64.b64decode(b_compressed)
+                b = crypto.point_decompress(b_bytes)
+                if b is None:
+                    return None, "INVALID_ARGUMENT: Invalid compressed point b"
+                logger.info(f"Converted compressed point to cryptographic point")
             except Exception as e:
                 return None, f"INVALID_ARGUMENT: Invalid point b: {str(e)}"
             
@@ -279,7 +287,26 @@ class RPCRequestHandler(BaseHTTPRequestHandler):
             if isinstance(result, Exception):
                 return None, f"INVALID_ARGUMENT: {str(result)}"
             
-            return result, None
+            # Convert tuple result to dictionary format (matching Go server)
+            if isinstance(result, tuple) and len(result) == 6:
+                version, x, si_b, num_guesses, max_guesses, expiration = result
+                
+                # Convert si_b point to compressed base64 format
+                si_b_4d = crypto.expand(si_b)
+                si_b_compressed = crypto.point_compress(si_b_4d)
+                si_b_b64 = base64.b64encode(si_b_compressed).decode()
+                
+                # Return dictionary format matching Go server
+                return {
+                    "version": version,
+                    "x": x,
+                    "si_b": si_b_b64,
+                    "num_guesses": num_guesses,
+                    "max_guesses": max_guesses,
+                    "expiration": expiration
+                }, None
+            else:
+                return None, f"INTERNAL_ERROR: Unexpected result format from server"
             
         except Exception as e:
             logger.error(f"Error in recover_secret: {e}")

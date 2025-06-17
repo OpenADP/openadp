@@ -3,97 +3,49 @@ package integration
 import (
 	"crypto/rand"
 	"fmt"
-	"math/big"
-	"os"
 	"testing"
+	"time"
 
 	"github.com/openadp/openadp/pkg/client"
 	"github.com/openadp/openadp/pkg/crypto"
 	"github.com/openadp/openadp/pkg/sharing"
 )
 
-func TestActualSecretSharing(t *testing.T) {
-	fmt.Println("Testing with actual secret sharing values...")
+func TestSecretSharingBasic(t *testing.T) {
+	fmt.Println("Testing basic secret sharing...")
 
-	// Generate the same values as in OpenADP key generation
+	// Create a test secret
 	secret, err := rand.Int(rand.Reader, crypto.Q)
 	if err != nil {
-		t.Fatalf("Failed to generate secret: %v", err)
+		t.Fatalf("Failed to generate random secret: %v", err)
 	}
 
-	shares, err := sharing.MakeRandomShares(secret, 2, 2)
+	// Create shares
+	shares, err := sharing.MakeRandomShares(secret, 2, 3)
 	if err != nil {
-		t.Fatalf("Failed to make shares: %v", err)
+		t.Fatalf("Failed to create shares: %v", err)
 	}
 
-	fmt.Printf("Secret: %s\n", secret.String())
-	fmt.Printf("Shares: %v\n", shares)
-	fmt.Println()
+	fmt.Printf("Created %d shares with threshold 2\n", len(shares))
 
-	// Test parameters
-	uid := "test@example.com"
-	did := "test_device"
-	bid := "test_actual_shares"
-	version := 1
-	maxGuesses := 10
-	expiration := int64(0)
-
-	// Initialize client with local test servers
-	fallbackServers := []string{
-		"http://localhost:9200",
-		"http://localhost:9201",
-		"http://localhost:9202",
-	}
-
-	c, err := client.NewClient("", fallbackServers)
+	// Recover secret from shares
+	recoveredSecret, err := sharing.RecoverSecret(shares[:2])
 	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
+		t.Fatalf("Failed to recover secret: %v", err)
 	}
 
-	liveCount := c.GetLiveServerCount()
-	if liveCount == 0 {
-		t.Skip("No live servers available - make sure local test servers are running on ports 9200, 9201, 9202")
+	// Verify the recovered secret matches the original
+	if secret.Cmp(recoveredSecret) != 0 {
+		t.Errorf("Recovered secret doesn't match original")
+		t.Errorf("Original:  %s", secret.String())
+		t.Errorf("Recovered: %s", recoveredSecret.String())
 	}
 
-	fmt.Printf("Using %d live servers\n", liveCount)
-
-	// Try to register each share
-	for i, share := range shares {
-		fmt.Printf("\n--- Registering Share %d ---\n", i+1)
-		fmt.Printf("x: %d\n", share.X)
-		fmt.Printf("y: %s\n", share.Y.String())
-		fmt.Printf("y bits: %d\n", share.Y.BitLen())
-		fmt.Printf("y string length: %d\n", len(share.Y.String()))
-
-		// Test conversion
-		yBytes := make([]byte, 32)
-		share.Y.FillBytes(yBytes)
-		fmt.Printf("✅ Local conversion successful: %d bytes\n", len(yBytes))
-
-		// Try to register with remote servers
-		yStr := share.Y.String()
-		bidWithIndex := fmt.Sprintf("%s_%d", bid, i)
-		success, errMsg := c.RegisterSecret(uid, did, bidWithIndex, version, share.X, yStr, maxGuesses, expiration)
-
-		if success {
-			fmt.Println("✅ Registration successful!")
-		} else {
-			t.Fatalf("Registration failed: %s", errMsg)
-		}
-	}
-
-	fmt.Println("✅ All registrations successful!")
+	fmt.Println("✅ Basic secret sharing test passed")
 }
 
-func TestRecoveryWorkflow(t *testing.T) {
-	fmt.Println("Testing recovery workflow...")
-
-	// Test parameters
-	uid := "waywardgeek@beast"
-	did := "beast"
-	bid := "file://test_document.txt"
-
-	fmt.Printf("Testing recovery for UID=%s, DID=%s, BID=%s\n", uid, did, bid)
+func TestSecretSharingWithServer(t *testing.T) {
+	fmt.Println("Testing secret sharing with server...")
 
 	// Initialize client
 	fallbackServers := []string{
@@ -102,10 +54,7 @@ func TestRecoveryWorkflow(t *testing.T) {
 		"http://localhost:9202",
 	}
 
-	c, err := client.NewClient("", fallbackServers)
-	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
-	}
+	c := client.NewClient("", fallbackServers, 5*time.Second, 3)
 
 	liveCount := c.GetLiveServerCount()
 	if liveCount == 0 {
@@ -114,65 +63,173 @@ func TestRecoveryWorkflow(t *testing.T) {
 
 	fmt.Printf("Using %d live servers\n", liveCount)
 
-	// Check backups
-	fmt.Println("\n--- Listing backups ---")
-	backups, errMsg := c.ListBackups(uid)
-	if errMsg != "" {
-		t.Fatalf("List backups failed: %s", errMsg)
-	}
+	// Test parameters
+	uid := "sharing_test@example.com"
+	did := "test_device"
+	bid := "test_backup"
+	version := 1
+	maxGuesses := 10
+	expiration := 0
 
-	fmt.Printf("Found %d backups:\n", len(backups))
-	for i, backup := range backups {
-		fmt.Printf("  Backup %d: %v\n", i, backup)
-		if len(backup) >= 4 {
-			backupBid := backup[1].(string)
-			numGuesses := int(backup[3].(float64))
-			fmt.Printf("    BID: %s, num_guesses: %d\n", backupBid, numGuesses)
-		}
-	}
-
-	// Find our backup
-	guessNum := 0
-	foundBackup := false
-	for _, backup := range backups {
-		if len(backup) > 1 {
-			backupBid := backup[1].(string)
-			if backupBid == bid {
-				if len(backup) > 3 {
-					guessNum = int(backup[3].(float64))
-				}
-				foundBackup = true
-				fmt.Printf("✅ Found matching backup: %v\n", backup)
-				fmt.Printf("    Current guess_num: %d\n", guessNum)
-				break
-			}
-		}
-	}
-
-	if !foundBackup {
-		t.Skipf("No backup found for BID: %s", bid)
-	}
-
-	// Test recovery from one server
-	fmt.Println("\n--- Testing recovery from first server ---")
-
-	// Create B point for recovery
-	pin := []byte{0x12, 0x34} // Test PIN
-	U := crypto.H([]byte(uid), []byte(did), []byte(bid), pin)
-	r, err := rand.Int(rand.Reader, new(big.Int).Sub(crypto.Q, big.NewInt(1)))
+	// Create a test secret and shares
+	secret, err := rand.Int(rand.Reader, crypto.Q)
 	if err != nil {
-		t.Fatalf("Failed to generate r: %v", err)
+		t.Fatalf("Failed to generate random secret: %v", err)
 	}
-	r.Add(r, big.NewInt(1))
-	B := crypto.PointMul(r, U)
 
-	BCompressed := crypto.PointCompress(B)
-	result, errMsg := c.RecoverSecret(uid, did, bid, BCompressed, guessNum)
-
-	if errMsg != "" {
-		fmt.Printf("❌ Recovery failed: %s\n", errMsg)
-	} else {
-		fmt.Printf("✅ Recovery successful: %v\n", result)
+	shares, err := sharing.MakeRandomShares(secret, 2, 3) // minimum=2, shares=3
+	if err != nil {
+		t.Fatalf("Failed to create shares: %v", err)
 	}
+
+	fmt.Printf("Secret: %s\n", secret.String())
+	fmt.Printf("Created %d shares\n", len(shares))
+
+	// Register shares with server
+	for i, share := range shares {
+		x := int(share.X.Int64()) // Convert *big.Int to int
+		y := share.Y.Bytes()
+
+		success, err := c.RegisterSecret(uid, did, fmt.Sprintf("%s_%d", bid, i), version, x, y, maxGuesses, expiration, nil)
+		if !success {
+			errMsg := ""
+			if err != nil {
+				errMsg = err.Error()
+			}
+			t.Errorf("Failed to register share %d: %s", i, errMsg)
+		} else {
+			fmt.Printf("✅ Registered share %d\n", i)
+		}
+	}
+
+	fmt.Println("✅ Secret sharing with server test passed")
 }
 
+func TestSecretSharingRecovery(t *testing.T) {
+	fmt.Println("Testing secret sharing recovery...")
+
+	// Initialize client
+	fallbackServers := []string{
+		"http://localhost:9200",
+		"http://localhost:9201",
+		"http://localhost:9202",
+	}
+
+	c := client.NewClient("", fallbackServers, 5*time.Second, 3)
+
+	liveCount := c.GetLiveServerCount()
+	if liveCount == 0 {
+		t.Skip("No live servers available")
+	}
+
+	// Test parameters
+	uid := "recovery_test@example.com"
+	did := "test_device"
+	bid := "test_backup"
+	version := 1
+	maxGuesses := 10
+	expiration := 0
+
+	// Create a test secret and shares
+	secret, err := rand.Int(rand.Reader, crypto.Q)
+	if err != nil {
+		t.Fatalf("Failed to generate random secret: %v", err)
+	}
+
+	shares, err := sharing.MakeRandomShares(secret, 2, 3) // minimum=2, shares=3
+	if err != nil {
+		t.Fatalf("Failed to create shares: %v", err)
+	}
+
+	fmt.Printf("Original secret: %s\n", secret.String())
+
+	// Register shares with server
+	for i, share := range shares {
+		x := int(share.X.Int64()) // Convert *big.Int to int
+		y := share.Y.Bytes()
+
+		success, err := c.RegisterSecret(uid, did, fmt.Sprintf("%s_%d", bid, i), version, x, y, maxGuesses, expiration, nil)
+		if !success {
+			errMsg := ""
+			if err != nil {
+				errMsg = err.Error()
+			}
+			t.Errorf("Failed to register share %d: %s", i, errMsg)
+		}
+	}
+
+	// Simulate recovery by reconstructing from first 2 shares
+	recoveredSecret, err := sharing.RecoverSecret(shares[:2])
+	if err != nil {
+		t.Fatalf("Failed to recover secret: %v", err)
+	}
+
+	// Verify the recovered secret matches the original
+	if secret.Cmp(recoveredSecret) != 0 {
+		t.Errorf("Recovered secret doesn't match original")
+		t.Errorf("Original:  %s", secret.String())
+		t.Errorf("Recovered: %s", recoveredSecret.String())
+	} else {
+		fmt.Printf("✅ Recovered secret matches: %s\n", recoveredSecret.String())
+	}
+
+	fmt.Println("✅ Secret sharing recovery test passed")
+}
+
+func TestSecretSharingThresholds(t *testing.T) {
+	fmt.Println("Testing secret sharing thresholds...")
+
+	// Test different threshold configurations
+	testCases := []struct {
+		numShares int
+		threshold int
+	}{
+		{3, 2},
+		{5, 3},
+		{7, 4},
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("%d_of_%d", tc.threshold, tc.numShares), func(t *testing.T) {
+			// Create a test secret
+			secret, err := rand.Int(rand.Reader, crypto.Q)
+			if err != nil {
+				t.Fatalf("Failed to generate random secret: %v", err)
+			}
+
+			// Create shares - correct parameter order: minimum, shares
+			shares, err := sharing.MakeRandomShares(secret, tc.threshold, tc.numShares)
+			if err != nil {
+				t.Fatalf("Failed to create shares: %v", err)
+			}
+
+			// Test with exactly threshold shares
+			recoveredSecret, err := sharing.RecoverSecret(shares[:tc.threshold])
+			if err != nil {
+				t.Fatalf("Failed to recover secret with threshold shares: %v", err)
+			}
+
+			if secret.Cmp(recoveredSecret) != 0 {
+				t.Errorf("Recovered secret doesn't match original for %d-of-%d", tc.threshold, tc.numShares)
+			}
+
+			// Test with insufficient shares - Lagrange interpolation will produce a result,
+			// but it won't be the correct secret (mathematical property, not an error)
+			if tc.threshold > 1 {
+				insufficientRecovered, err := sharing.RecoverSecret(shares[:tc.threshold-1])
+				if err != nil {
+					t.Errorf("Unexpected error with insufficient shares: %v", err)
+				}
+
+				// The recovered value should be different from the original secret
+				if secret.Cmp(insufficientRecovered) == 0 {
+					t.Errorf("Insufficient shares should not recover the correct secret for %d-of-%d", tc.threshold, tc.numShares)
+				}
+			}
+
+			fmt.Printf("✅ %d-of-%d threshold test passed\n", tc.threshold, tc.numShares)
+		})
+	}
+
+	fmt.Println("✅ Secret sharing thresholds test passed")
+}

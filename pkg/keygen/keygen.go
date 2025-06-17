@@ -90,6 +90,25 @@ type GenerateEncryptionKeyResult struct {
 func GenerateEncryptionKey(filename, password, userID string, maxGuesses, expiration int,
 	serverURLs []string) *GenerateEncryptionKeyResult {
 
+	// Input validation
+	if filename == "" {
+		return &GenerateEncryptionKeyResult{
+			Error: "Filename cannot be empty",
+		}
+	}
+
+	if userID == "" {
+		return &GenerateEncryptionKeyResult{
+			Error: "User ID cannot be empty",
+		}
+	}
+
+	if maxGuesses < 0 {
+		return &GenerateEncryptionKeyResult{
+			Error: "Max guesses cannot be negative",
+		}
+	}
+
 	// Step 1: Derive identifiers using authenticated user_id
 	uid, did, bid := DeriveIdentifiers(filename, userID, "")
 	fmt.Printf("OpenADP: UID=%s, DID=%s, BID=%s\n", uid, did, bid)
@@ -126,6 +145,10 @@ func GenerateEncryptionKey(filename, password, userID string, maxGuesses, expira
 	U := crypto.H([]byte(uid), []byte(did), []byte(bid), pin)
 	S := crypto.PointMul(secret, U)
 
+	// Debug: Print the point S during encryption
+	SCompressed := crypto.PointCompress(S)
+	fmt.Printf("DEBUG ENCRYPT: Point S = %x\n", SCompressed)
+
 	// Step 7: Create shares using secret sharing
 	threshold := max(1, min(2, len(liveClients))) // At least 1, prefer 2 if available
 	numShares := len(liveClients)
@@ -158,6 +181,15 @@ func GenerateEncryptionKey(filename, password, userID string, maxGuesses, expira
 		client := liveClients[i]
 		serverURL := liveServerURLs[i]
 		authCode := authCodes.ServerAuthCodes[serverURL]
+
+		// DEBUG: Print the scalar share si and compute si*U
+		si := share.Y
+		siU := crypto.PointMul(si, U)
+		siUCompressed := crypto.PointCompress(siU)
+		UCompressed := crypto.PointCompress(U)
+		fmt.Printf("DEBUG ENCRYPT: Share[%d] si = %x\n", i+1, si)
+		fmt.Printf("DEBUG ENCRYPT: Share[%d] U = %x\n", i+1, UCompressed)
+		fmt.Printf("DEBUG ENCRYPT: Share[%d] si*U (SENT) = %x\n", i+1, siUCompressed)
 
 		// Convert share Y to integer string (server expects integer, not base64)
 		yInt := share.Y.String()
@@ -208,6 +240,25 @@ type RecoverEncryptionKeyResult struct {
 // 4. Reconstructs the original secret using threshold cryptography
 // 5. Derives the same encryption key
 func RecoverEncryptionKey(filename, password, userID string, serverURLs []string, threshold int, authCodes *AuthCodes) *RecoverEncryptionKeyResult {
+	// Input validation
+	if filename == "" {
+		return &RecoverEncryptionKeyResult{
+			Error: "Filename cannot be empty",
+		}
+	}
+
+	if userID == "" {
+		return &RecoverEncryptionKeyResult{
+			Error: "User ID cannot be empty",
+		}
+	}
+
+	if threshold <= 0 {
+		return &RecoverEncryptionKeyResult{
+			Error: "Threshold must be positive",
+		}
+	}
+
 	// Step 1: Derive same identifiers as during encryption
 	uid, did, bid := DeriveIdentifiers(filename, userID, "")
 	fmt.Printf("OpenADP: UID=%s, DID=%s, BID=%s\n", uid, did, bid)
@@ -271,15 +322,8 @@ func RecoverEncryptionKey(filename, password, userID string, serverURLs []string
 
 	B := crypto.PointMul(r, U)
 
-	// Convert B to both formats - we'll try Python format first, then Go format
-	B2D := crypto.Unexpand(B)
-
-	// Format 1: [x, y] array with integers for Python servers
-	bArrayFormat := []interface{}{B2D.X, B2D.Y}
-
-	// Format 2: base64 compressed point for Go servers
-	B4D := crypto.Expand(B2D) // Ensure proper 4D format
-	bCompressed := crypto.PointCompress(B4D)
+	// Convert B to compressed point format (base64 string) - standard format for all servers
+	bCompressed := crypto.PointCompress(B)
 	bBase64Format := base64.StdEncoding.EncodeToString(bCompressed)
 
 	// Step 6: Recover shares from servers using authentication codes
@@ -293,18 +337,12 @@ func RecoverEncryptionKey(filename, password, userID string, serverURLs []string
 		// Get current guess number for this backup (start with 0)
 		guessNum := 0
 
-		// Try Python format first (most common)
-		fmt.Printf("Debug: Trying Python format [x, y] for server %d\n", i+1)
-		result, err := client.RecoverSecretWithAuthCode(authCode, did, bid, bArrayFormat, guessNum)
+		// Use compressed point format (base64 string) - standard for all servers
+		fmt.Printf("Debug: Using compressed point format for server %d\n", i+1)
+		result, err := client.RecoverSecretWithAuthCode(authCode, did, bid, bBase64Format, guessNum)
 
 		if err != nil {
-			// If Python format fails, try Go format
-			fmt.Printf("Debug: Python format failed, trying Go format for server %d\n", i+1)
-			result, err = client.RecoverSecretWithAuthCode(authCode, did, bid, bBase64Format, guessNum)
-		}
-
-		if err != nil {
-			fmt.Printf("Server %d recovery failed with both formats: %v\n", i+1, err)
+			fmt.Printf("Server %d recovery failed: %v\n", i+1, err)
 			continue
 		}
 
@@ -323,6 +361,25 @@ func RecoverEncryptionKey(filename, password, userID string, serverURLs []string
 			X:     big.NewInt(int64(result.X)),
 			Point: siB, // This is si*B point returned by server
 		}
+
+		// DEBUG: Print what we got from the server
+		fmt.Printf("DEBUG: Server %d returned X=%d, siB=(%x, %x)\n", i+1, result.X, siB.X, siB.Y)
+		fmt.Printf("DEBUG: Created PointShare with X=%s, Point=(%x, %x)\n", pointShare.X.String(), pointShare.Point.X, pointShare.Point.Y)
+
+		// DEBUG: Convert si*B back to si*U to verify
+		// We have si*B, and B = r*U, so si*U = r^-1 * (si*B)
+		siBExtended := crypto.Expand(siB)
+		siU := crypto.PointMul(rInv, siBExtended)
+		siUCompressed := crypto.PointCompress(siU)
+
+		// DEBUG: Also compute what si should be by extracting it from si*B
+		// Since si*B = si * (r*U), we need to figure out si from the server response
+		// The server should have returned the original si value somehow
+		UCompressed := crypto.PointCompress(U)
+		fmt.Printf("DEBUG DECRYPT: Share[%d] U = %x\n", i+1, UCompressed)
+		fmt.Printf("DEBUG DECRYPT: Share[%d] si*U (RECOVERED) = %x\n", i+1, siUCompressed)
+
+		// TODO: We need to get the actual si value from the server to compare
 
 		recoveredPointShares = append(recoveredPointShares, pointShare)
 		fmt.Printf("OpenADP: Recovered share %d from server %d\n", result.X, i+1)
@@ -349,6 +406,10 @@ func RecoverEncryptionKey(filename, password, userID string, serverURLs []string
 	// This matches Python: rec_s_point = crypto.point_mul(r_inv, crypto.expand(rec_sb))
 	recoveredSB4D := crypto.Expand(recoveredSB)
 	originalSU := crypto.PointMul(rInv, recoveredSB4D)
+
+	// Debug: Print the recovered point S during decryption
+	recoveredSCompressed := crypto.PointCompress(originalSU)
+	fmt.Printf("DEBUG DECRYPT: Point S = %x\n", recoveredSCompressed)
 
 	// Step 8: Derive same encryption key
 	encKey := crypto.DeriveEncKey(originalSU)

@@ -25,6 +25,7 @@ import getpass
 import argparse
 from typing import NoReturn, Dict, Any, Optional, List, Tuple
 from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
+import base64
 
 import sys
 import os
@@ -222,6 +223,10 @@ def recover_encryption_key_with_auth_codes(filename: str, password: str, user_id
     r_inv = pow(r, -1, p)
     B = crypto.point_mul(r, U)
     
+    print(f"DEBUG: U = {crypto.unexpand(U)}")
+    print(f"DEBUG: r = {r}")
+    print(f"DEBUG: B = {crypto.unexpand(B)}")
+    
     # Step 5: Recover shares from servers using authentication codes
     print("OpenADP: Recovering shares from servers...")
     recovered_shares = []
@@ -231,6 +236,7 @@ def recover_encryption_key_with_auth_codes(filename: str, password: str, user_id
         
         try:
             # Get current guess number for this backup from this specific server
+            print(f"DEBUG: Getting backups from server {i+1}")
             backups, error = client.list_backups(auth_code, encrypted=False)
             if error:
                 print(f"Warning: Could not list backups from server {i+1}: {error}")
@@ -239,31 +245,64 @@ def recover_encryption_key_with_auth_codes(filename: str, password: str, user_id
                 # Find our backup in the list from this server
                 guess_num = 0
                 for backup in backups:
-                    backup_bid = backup[1] if len(backup) > 1 else ""
+                    # backup is a dictionary, not a tuple
+                    backup_bid = backup.get('bid', '') if isinstance(backup, dict) else ""
                     if backup_bid == bid:
-                        guess_num = backup[3] if len(backup) > 3 else 0  # num_guesses field
+                        guess_num = backup.get('num_guesses', 0) if isinstance(backup, dict) else 0
                         break
             
+            print(f"DEBUG: Using guess_num={guess_num} for server {i+1}")
+            
             # Attempt recovery from this specific server
+            # Convert Point4D B to compressed base64 string for transmission
+            print(f"DEBUG: Converting point B for server {i+1}")
+            b_4d = crypto.expand(crypto.unexpand(B))  # Convert B to Point4D
+            b_compressed = crypto.point_compress(b_4d)
+            b_b64 = base64.b64encode(b_compressed).decode()
+            
+            print(f"DEBUG: Sending to server {i+1}: b_compressed={len(b_compressed)} bytes, b_b64={b_b64[:20]}...")
+            
+            print(f"DEBUG: Calling recover_secret on server {i+1}")
             result, error = client.recover_secret(
                 auth_code=auth_code,
                 did=did,
                 bid=bid,
-                b=crypto.unexpand(B),
+                b=b_b64,  # Send as base64 encoded compressed point
                 guess_num=guess_num,
                 encrypted=False  # Use auth codes, not encryption
             )
+            
+            print(f"DEBUG: Server {i+1} returned: result={result}, error={error}")
             
             if error:
                 print(f"Server {i+1} recovery failed: {error}")
                 continue
                 
-            version, x, si_b_unexpanded, num_guesses, max_guesses, expiration = result
-            recovered_shares.append((x, si_b_unexpanded))
+            # result is a dictionary, not a tuple
+            if not isinstance(result, dict):
+                print(f"Server {i+1} returned unexpected result type: {type(result)}")
+                continue
+                
+            version = result.get('version')
+            x = result.get('x') 
+            si_b_b64 = result.get('si_b')
+            num_guesses = result.get('num_guesses')
+            max_guesses = result.get('max_guesses')
+            expiration = result.get('expiration')
+            
+            if x is None or si_b_b64 is None:
+                print(f"Server {i+1} returned incomplete result")
+                continue
+                
+            recovered_shares.append((x, si_b_b64))
             print(f"OpenADP: Recovered share {x} from server {i+1}")
             
         except Exception as e:
             print(f"Exception recovering from server {i+1}: {e}")
+            print(f"Exception type: {type(e)}")
+            print(f"Exception args: {e.args}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             continue
     
     if len(recovered_shares) < threshold:
@@ -271,7 +310,18 @@ def recover_encryption_key_with_auth_codes(filename: str, password: str, user_id
     
     # Step 6: Reconstruct secret using recovered shares
     print(f"OpenADP: Reconstructing secret from {len(recovered_shares)} shares...")
-    rec_sb = sharing.recover_sb(recovered_shares)
+    
+    # Convert base64 si_b strings back to Point2D tuples
+    decoded_shares = []
+    for x, si_b_b64 in recovered_shares:
+        # Decode base64 and decompress point
+        si_b_compressed = base64.b64decode(si_b_b64)
+        si_b_4d = crypto.point_decompress(si_b_compressed)
+        si_b_2d = crypto.unexpand(si_b_4d)
+        decoded_shares.append((x, si_b_2d))
+        print(f"DEBUG: Decoded share {x}: si_b_2d = {si_b_2d}")
+    
+    rec_sb = sharing.recover_sb(decoded_shares)
     rec_s_point = crypto.point_mul(r_inv, crypto.expand(rec_sb))
     
     # Step 7: Derive same encryption key

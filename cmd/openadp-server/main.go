@@ -278,12 +278,24 @@ func (s *Server) handleRegisterSecret(params []interface{}) (interface{}, error)
 		yInt := new(big.Int)
 		yInt, ok := yInt.SetString(yStr, 10)
 		if ok {
-			// Convert big integer to bytes (big-endian format)
-			y = yInt.Bytes()
+			// Validate that Y is within valid range (< P, the prime modulus)
+			if yInt.Cmp(crypto.P) >= 0 {
+				return nil, fmt.Errorf("invalid y coordinate: value must be less than prime modulus P")
+			}
 
-			// Ensure we have at least some bytes (handle zero case)
-			if len(y) == 0 {
-				y = []byte{0}
+			// Convert big integer to little-endian bytes (to match Python server)
+			// Use fixed 32-byte length like Python server: y_int.to_bytes(32, "little")
+			y = make([]byte, 32)
+
+			// Get big-endian bytes and reverse to little-endian
+			bigEndianBytes := yInt.Bytes()
+
+			// Copy in reverse order to convert big-endian to little-endian
+			// Start from the least significant byte (rightmost in big-endian)
+			for i, b := range bigEndianBytes {
+				if len(bigEndianBytes)-1-i < 32 {
+					y[len(bigEndianBytes)-1-i] = b
+				}
 			}
 		} else {
 			isDecimal = false
@@ -295,6 +307,12 @@ func (s *Server) handleRegisterSecret(params []interface{}) (interface{}, error)
 		y, err = base64.StdEncoding.DecodeString(yStr)
 		if err != nil {
 			return nil, fmt.Errorf("invalid y coordinate: not valid decimal integer or base64")
+		}
+
+		// Also validate base64 decoded values
+		yInt := new(big.Int).SetBytes(y)
+		if yInt.Cmp(crypto.P) >= 0 {
+			return nil, fmt.Errorf("invalid y coordinate: value must be less than prime modulus P")
 		}
 	}
 
@@ -309,6 +327,12 @@ func (s *Server) handleRegisterSecret(params []interface{}) (interface{}, error)
 		return nil, fmt.Errorf("expiration must be a number")
 	}
 	expiration := int64(expirationFloat)
+
+	// Debug: Print what we're storing
+	yInt := new(big.Int)
+	yInt.SetBytes(y)
+	fmt.Printf("SERVER %d STORING: uid=%s, did=%s, bid=%s, x=%d, y=%s (hex: %x)\n",
+		s.port, uid, did, bid, x, yInt.String(), y)
 
 	// Register the secret
 	err = server.RegisterSecret(s.db, uid, did, bid, authCode, version, x, y, maxGuesses, expiration)
@@ -341,10 +365,10 @@ func (s *Server) handleRecoverSecret(params []interface{}) (interface{}, error) 
 		return nil, fmt.Errorf("bid must be a string")
 	}
 
-	// Parse point B (expecting base64 encoded compressed point)
+	// Parse point B (expecting base64 encoded compressed point only)
 	bStr, ok := params[3].(string)
 	if !ok {
-		return nil, fmt.Errorf("b must be a string")
+		return nil, fmt.Errorf("b must be a base64-encoded compressed point string")
 	}
 
 	bBytes, err := base64.StdEncoding.DecodeString(bStr)
@@ -355,7 +379,7 @@ func (s *Server) handleRecoverSecret(params []interface{}) (interface{}, error) 
 	// Decompress point
 	b4D, err := crypto.PointDecompress(bBytes)
 	if err != nil {
-		return nil, fmt.Errorf("invalid point b: %v", err)
+		return nil, fmt.Errorf("invalid compressed point b: %v", err)
 	}
 	b := crypto.Unexpand(b4D)
 
@@ -365,11 +389,19 @@ func (s *Server) handleRecoverSecret(params []interface{}) (interface{}, error) 
 	}
 	guessNum := int(guessNumFloat)
 
+	// Debug: Print what we're about to recover
+	fmt.Printf("SERVER %d RECOVERING: did=%s, bid=%s, guess_num=%d\n",
+		s.port, did, bid, guessNum)
+
 	// Recover the secret using auth code
 	response, err := server.RecoverSecretByAuthCode(s.db, authCode, did, bid, b, guessNum)
 	if err != nil {
 		return nil, err
 	}
+
+	// Debug: Print what we recovered
+	fmt.Printf("SERVER %d RECOVERED: x=%d, si_b=(%s, %s)\n",
+		s.port, response.X, response.SiB.X.String(), response.SiB.Y.String())
 
 	// Convert response to JSON-compatible format
 	// Create Point4D from Point2D for compression

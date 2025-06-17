@@ -277,7 +277,7 @@ def generate_encryption_key_with_auth_codes(filename: str, password: str, user_i
                 did=did,
                 bid=bid,
                 version=version,
-                x=str(x),
+                x=x,
                 y=y_str,
                 max_guesses=10,
                 expiration=0,

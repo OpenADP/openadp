@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -21,12 +22,11 @@ const (
 
 // Metadata represents the metadata stored with encrypted files
 type Metadata struct {
-	Servers     []string          `json:"servers"`
-	Threshold   int               `json:"threshold"`
-	AuthEnabled bool              `json:"auth_enabled"`
-	Version     string            `json:"version"`
-	AuthCodes   AuthCodesMetadata `json:"auth_codes"`
-	UserID      string            `json:"user_id"`
+	Servers   []string `json:"servers"`
+	Threshold int      `json:"threshold"`
+	Version   string   `json:"version"`
+	AuthCode  string   `json:"auth_code"` // Single base auth code (32 bytes hex)
+	UserID    string   `json:"user_id"`
 }
 
 // AuthCodesMetadata represents authentication codes in metadata
@@ -178,6 +178,11 @@ func decryptFile(inputFilename, password string, overrideServers []string) error
 		return fmt.Errorf("failed to parse metadata: %v", err)
 	}
 
+	// DEBUG: Print metadata during decryption
+	fmt.Printf("DEBUG DECRYPT: Metadata JSON: %s\n", string(metadataJSON))
+	fmt.Printf("DEBUG DECRYPT: UserID: %s\n", metadata.UserID)
+	fmt.Printf("DEBUG DECRYPT: BaseAuthCode: %s\n", metadata.AuthCode)
+
 	serverURLs := metadata.Servers
 	if len(serverURLs) == 0 {
 		return fmt.Errorf("no server URLs found in metadata")
@@ -193,21 +198,21 @@ func decryptFile(inputFilename, password string, overrideServers []string) error
 	}
 
 	// Check authentication requirements
-	if metadata.AuthEnabled {
-		fmt.Println("🔒 File was encrypted with authentication (standard)")
-	} else {
+	if metadata.AuthCode == "" {
 		fmt.Println("ℹ️  File was encrypted without authentication (legacy), but using auth for decryption")
+	} else {
+		fmt.Println("🔒 File was encrypted with authentication (standard)")
 	}
 
 	// Extract authentication codes and user ID from metadata
-	serverAuthCodes, _, userID, err := getAuthCodesFromMetadata(metadata)
+	baseAuthCode, userID, err := getAuthCodesFromMetadata(metadata)
 	if err != nil {
 		return fmt.Errorf("failed to extract auth codes: %v", err)
 	}
 
 	// Recover encryption key using OpenADP
 	fmt.Println("🔄 Recovering encryption key from OpenADP servers...")
-	encKey, err := recoverEncryptionKey(outputFilename, password, userID, serverAuthCodes, serverURLs, metadata.Threshold)
+	encKey, err := recoverEncryptionKey(outputFilename, password, userID, baseAuthCode, serverURLs, metadata.Threshold)
 	if err != nil {
 		return fmt.Errorf("failed to recover encryption key: %v", err)
 	}
@@ -218,10 +223,18 @@ func decryptFile(inputFilename, password string, overrideServers []string) error
 		return fmt.Errorf("failed to create cipher: %v", err)
 	}
 
+	fmt.Printf("Debug: About to decrypt with key length: %d, nonce length: %d, ciphertext length: %d, metadata length: %d\n",
+		len(encKey), len(nonce), len(ciphertext), len(metadataJSON))
+
 	plaintext, err := cipher.Open(nil, nonce, ciphertext, metadataJSON)
 	if err != nil {
+		fmt.Printf("Debug: ChaCha20-Poly1305 decryption error: %v\n", err)
+		// AEAD authentication failure should always be fatal
 		return fmt.Errorf("decryption failed: %v (wrong password or corrupted file)", err)
 	}
+
+	fmt.Printf("Debug: ChaCha20-Poly1305 decryption succeeded\n")
+	fmt.Printf("Debug: Plaintext length: %d\n", len(plaintext))
 
 	// Write the decrypted file
 	if err := os.WriteFile(outputFilename, plaintext, 0644); err != nil {
@@ -237,14 +250,23 @@ func decryptFile(inputFilename, password string, overrideServers []string) error
 	return nil
 }
 
-func recoverEncryptionKey(filename, password, userID string, serverAuthCodes map[string]string, serverURLs []string, threshold int) ([]byte, error) {
+func recoverEncryptionKey(filename, password, userID string, baseAuthCode string, serverURLs []string, threshold int) ([]byte, error) {
 	// Derive identifiers (same as during encryption)
 	uid, did, bid := keygen.DeriveIdentifiers(filename, userID, "")
 	fmt.Printf("🔑 Recovering with UID=%s, DID=%s, BID=%s\n", uid, did, bid)
 
+	// Regenerate server auth codes from base auth code
+	serverAuthCodes := make(map[string]string)
+	for _, serverURL := range serverURLs {
+		// Derive server-specific code using SHA256 (same as GenerateAuthCodes)
+		combined := fmt.Sprintf("%s:%s", baseAuthCode, serverURL)
+		hash := sha256.Sum256([]byte(combined))
+		serverAuthCodes[serverURL] = fmt.Sprintf("%x", hash[:])
+	}
+
 	// Create AuthCodes structure from metadata
 	authCodes := &keygen.AuthCodes{
-		BaseAuthCode:    "", // Not needed for recovery
+		BaseAuthCode:    baseAuthCode,
 		ServerAuthCodes: serverAuthCodes,
 		UserID:          userID,
 	}
@@ -259,16 +281,16 @@ func recoverEncryptionKey(filename, password, userID string, serverAuthCodes map
 	return result.EncryptionKey, nil
 }
 
-func getAuthCodesFromMetadata(metadata Metadata) (map[string]string, string, string, error) {
-	if metadata.AuthCodes.BaseAuthCode == "" {
-		return nil, "", "", fmt.Errorf("no authentication codes found in metadata")
+func getAuthCodesFromMetadata(metadata Metadata) (string, string, error) {
+	if metadata.AuthCode == "" {
+		return "", "", fmt.Errorf("no authentication code found in metadata")
 	}
 
 	if metadata.UserID == "" {
-		return nil, "", "", fmt.Errorf("no user ID found in metadata")
+		return "", "", fmt.Errorf("no user ID found in metadata")
 	}
 
-	return metadata.AuthCodes.ServerAuthCodes, metadata.AuthCodes.BaseAuthCode, metadata.UserID, nil
+	return metadata.AuthCode, metadata.UserID, nil
 }
 
 func readUint32LE(data []byte) uint32 {

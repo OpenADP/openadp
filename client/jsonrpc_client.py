@@ -173,7 +173,7 @@ class OpenADPClient:
         return self._make_plain_request("Echo", [message])
     
     def register_secret(self, auth_code: str, did: str, bid: str, version: int, 
-                       x: str, y: str, max_guesses: int, expiration: int, 
+                       x: int, y: str, max_guesses: int, expiration: int, 
                        encrypted: bool = False, auth_data: Optional[Dict] = None) -> Tuple[bool, Optional[str]]:
         """
         Register a secret with the server.
@@ -183,7 +183,7 @@ class OpenADPClient:
             did: Device ID
             bid: Backup ID
             version: Version number
-            x: X coordinate
+            x: X coordinate (integer)
             y: Y coordinate
             max_guesses: Maximum number of guesses allowed
             expiration: Expiration timestamp
@@ -491,7 +491,7 @@ class EncryptedOpenADPClient(OpenADPClient):
     # Enhanced method signatures with encryption support
     
     def register_secret(self, auth_code: str, did: str, bid: str, version: int, 
-                       x: str, y: str, max_guesses: int, expiration: int, 
+                       x: int, y: str, max_guesses: int, expiration: int, 
                        encrypted: bool = False, auth_data: Optional[Dict] = None) -> Tuple[bool, Optional[str]]:
         """
         Register a secret with the server.
@@ -501,7 +501,7 @@ class EncryptedOpenADPClient(OpenADPClient):
             did: Device ID
             bid: Backup ID
             version: Version number
-            x: X coordinate
+            x: X coordinate (integer)
             y: Y coordinate
             max_guesses: Maximum number of guesses allowed
             expiration: Expiration timestamp
@@ -672,7 +672,7 @@ def create_client(server_url: str = "http://localhost:8080") -> EncryptedOpenADP
 
 
 def register_secret(auth_code: str, did: str, bid: str, version: int, 
-                   x: str, y: str, max_guesses: int, expiration: int,
+                   x: int, y: str, max_guesses: int, expiration: int,
                    server_url: str = "http://localhost:8080") -> Tuple[bool, Optional[str]]:
     """Register a secret using a one-shot client."""
     client = EncryptedOpenADPClient(server_url)

@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/base64"
 	"fmt"
 	"log"
 	"sync"
@@ -193,8 +194,8 @@ func (c *Client) RegisterSecret(uid, did, bid string, version, x int, y []byte, 
 		return false, fmt.Errorf("no live servers available")
 	}
 
-	// Convert y bytes to string for JSON-RPC
-	yStr := string(y)
+	// Convert y bytes to base64 string for JSON-RPC (server expects decimal or base64)
+	yStr := base64.StdEncoding.EncodeToString(y)
 
 	// Try each server until one succeeds
 	var lastErr error
