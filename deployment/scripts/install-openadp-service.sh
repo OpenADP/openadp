@@ -149,8 +149,8 @@ if [ -d "$INSTALL_DIR/src" ]; then rm -rf "$INSTALL_DIR/src"; fi
 mkdir -p "$INSTALL_DIR/src"
 cp -r "$SOURCE_DIR"/* "$INSTALL_DIR/src/" 2>/dev/null || true
 
-# Set temporary permissions for building
-chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR/src"
+# Set permissions for building (entire install directory, not just src)
+chown -R "$SERVICE_USER:$SERVICE_GROUP" "$INSTALL_DIR"
 
 # Build the Go server binary
 echo "Building OpenADP Go server..."
@@ -176,7 +176,8 @@ sudo -u "$SERVICE_USER" bash -c "
     go build -o '$INSTALL_DIR/bin/openadp-decrypt' -ldflags '-X main.version=1.0.0' ./cmd/openadp-decrypt || echo 'Note: openadp-decrypt build failed, skipping'
     
     # Clean up build cache
-    /bin/rm -rf \$GOPATH \$GOCACHE
+    go clean -cache -modcache 2>/dev/null || true
+    /bin/rm -rf \$GOPATH \$GOCACHE 2>/dev/null || true
 "
 
 # Verify the binary was built successfully
