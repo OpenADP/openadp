@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -63,6 +64,7 @@ type Server struct {
 	authEnabled bool
 	port        int
 	dbPath      string
+	monitoring  *server.MonitoringTracker
 }
 
 // NewServer creates a new OpenADP server instance
@@ -85,6 +87,7 @@ func NewServer(dbPath string, port int, authEnabled bool) (*Server, error) {
 		authEnabled: authEnabled,
 		port:        port,
 		dbPath:      dbPath,
+		monitoring:  server.NewMonitoringTracker(),
 	}, nil
 }
 
@@ -126,6 +129,8 @@ func loadOrGenerateServerKey(db *database.Database) ([]byte, error) {
 
 // handleJSONRPC handles JSON-RPC 2.0 requests
 func (s *Server) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
+	startTime := time.Now()
+
 	// Set CORS headers
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
@@ -140,6 +145,7 @@ func (s *Server) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		s.monitoring.RecordError()
 		return
 	}
 
@@ -155,6 +161,7 @@ func (s *Server) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
 			ID: nil,
 		}
 		json.NewEncoder(w).Encode(response)
+		s.monitoring.RecordError()
 		return
 	}
 
@@ -172,8 +179,12 @@ func (s *Server) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
 			Code:    -32603,
 			Message: err.Error(),
 		}
+		s.monitoring.RecordError()
 	} else {
 		response.Result = result
+		// Record successful request with response time
+		responseTime := float64(time.Since(startTime).Nanoseconds()) / 1000000.0 // Convert to milliseconds
+		s.monitoring.RecordRequest(responseTime)
 	}
 
 	json.NewEncoder(w).Encode(response)
@@ -213,7 +224,7 @@ func (s *Server) handleEcho(params []interface{}) (interface{}, error) {
 
 // handleGetServerInfo handles the GetServerInfo method
 func (s *Server) handleGetServerInfo(params []interface{}) (interface{}, error) {
-	return server.GetServerInfo(version, s.serverKey), nil
+	return server.GetServerInfo(version, s.serverKey, s.monitoring), nil
 }
 
 // handleRegisterSecret handles the RegisterSecret method

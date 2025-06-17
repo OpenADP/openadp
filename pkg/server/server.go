@@ -343,15 +343,26 @@ func ListBackupsByAuthCode(db *database.Database, authCode string) ([]ListBackup
 	return response, nil
 }
 
+// MonitoringInfo represents server monitoring data
+type MonitoringInfo struct {
+	QueriesCurrentHour int     `json:"queries_current_hour"`
+	QueriesLast24H     int     `json:"queries_last_24h"`
+	UptimeStart        string  `json:"uptime_start"`
+	ResponseTimeAvgMs  float64 `json:"response_time_avg_ms"`
+	ErrorRatePercent   float64 `json:"error_rate_percent"`
+	LastHourHistogram  []int   `json:"last_hour_histogram,omitempty"`
+}
+
 // ServerInfo represents server information
 type ServerInfo struct {
-	Version      string   `json:"version"`
-	NoiseNKKey   string   `json:"noise_nk_public_key,omitempty"`
-	Capabilities []string `json:"capabilities"`
+	Version      string          `json:"version"`
+	NoiseNKKey   string          `json:"noise_nk_public_key,omitempty"`
+	Capabilities []string        `json:"capabilities"`
+	Monitoring   *MonitoringInfo `json:"monitoring,omitempty"`
 }
 
 // GetServerInfo returns server information
-func GetServerInfo(version string, noiseNKKey []byte) *ServerInfo {
+func GetServerInfo(version string, noiseNKKey []byte, monitoring *MonitoringTracker) *ServerInfo {
 	info := &ServerInfo{
 		Version: version,
 		Capabilities: []string{
@@ -365,6 +376,11 @@ func GetServerInfo(version string, noiseNKKey []byte) *ServerInfo {
 	if len(noiseNKKey) > 0 {
 		info.NoiseNKKey = base64.StdEncoding.EncodeToString(noiseNKKey)
 		info.Capabilities = append(info.Capabilities, "noise_nk_encryption")
+	}
+
+	// Include monitoring data if available
+	if monitoring != nil {
+		info.Monitoring = monitoring.GetMonitoringInfo()
 	}
 
 	return info

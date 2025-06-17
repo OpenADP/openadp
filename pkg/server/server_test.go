@@ -417,8 +417,9 @@ func TestListBackups(t *testing.T) {
 func TestGetServerInfo(t *testing.T) {
 	version := "1.0.0"
 	noiseKey := []byte("test-noise-key-32-bytes-long!!")
+	monitoring := NewMonitoringTracker()
 
-	info := GetServerInfo(version, noiseKey)
+	info := GetServerInfo(version, noiseKey, monitoring)
 
 	if info.Version != version {
 		t.Errorf("Expected version %s, got %s", version, info.Version)
@@ -440,8 +441,13 @@ func TestGetServerInfo(t *testing.T) {
 		t.Errorf("Expected %d capabilities, got %d", len(expectedCapabilities), len(info.Capabilities))
 	}
 
+	// Check monitoring data is included
+	if info.Monitoring == nil {
+		t.Error("Expected monitoring data to be included")
+	}
+
 	// Test without noise key
-	infoNoNoise := GetServerInfo(version, nil)
+	infoNoNoise := GetServerInfo(version, nil, monitoring)
 	if infoNoNoise.NoiseNKKey != "" {
 		t.Error("Expected empty NoiseNK key when none provided")
 	}
@@ -455,6 +461,12 @@ func TestGetServerInfo(t *testing.T) {
 
 	if len(infoNoNoise.Capabilities) != len(expectedCapabilitiesNoNoise) {
 		t.Errorf("Expected %d capabilities without noise, got %d", len(expectedCapabilitiesNoNoise), len(infoNoNoise.Capabilities))
+	}
+
+	// Test without monitoring
+	infoNoMonitoring := GetServerInfo(version, noiseKey, nil)
+	if infoNoMonitoring.Monitoring != nil {
+		t.Error("Expected no monitoring data when monitoring is nil")
 	}
 }
 

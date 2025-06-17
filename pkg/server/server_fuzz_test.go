@@ -210,7 +210,8 @@ func FuzzServerInfo(f *testing.F) {
 
 	f.Fuzz(func(t *testing.T, version string, noiseKey []byte) {
 		// GetServerInfo should not panic with any inputs
-		info := GetServerInfo(version, noiseKey)
+		monitoring := NewMonitoringTracker()
+		info := GetServerInfo(version, noiseKey, monitoring)
 
 		if info == nil {
 			t.Error("GetServerInfo should not return nil")

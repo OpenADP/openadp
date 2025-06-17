@@ -684,7 +684,8 @@ func TestServerInfoFunction(t *testing.T) {
 	version := "1.0.0"
 	noiseKey := make([]byte, 32)
 
-	info := GetServerInfo(version, noiseKey)
+	monitoring := NewMonitoringTracker()
+	info := GetServerInfo(version, noiseKey, monitoring)
 
 	if info.Version != version {
 		t.Errorf("Expected version %s, got %s", version, info.Version)
