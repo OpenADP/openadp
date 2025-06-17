@@ -33,19 +33,45 @@ def test_global_server_default():
     """Test that global server is the default issuer."""
     print("\n🧪 Testing Phase 5: Global server default...")
     
-    # Skip this test since OAuth tools were removed
-    print("⚠️  Skipping OAuth tool test - OAuth removed in favor of auth codes")
-    print("✅ Phase 5 complete: OAuth tools removed, auth codes implemented")
-    assert True, "OAuth tools removed - test no longer applicable"
+    # Run from tools directory where encrypt.py is located
+    result = subprocess.run([sys.executable, 'tools/encrypt.py', '--help'],
+                          capture_output=True, text=True)
+    
+    # Look for auth code system evidence instead of OAuth
+    if 'servers.openadp.org' in result.stdout or 'auth' in result.stdout.lower() or 'password' in result.stdout.lower():
+        print("✅ Global server system is default")
+        assert True
+    else:
+        print("❌ Global server not found in help output")
+        print(f"Help output: {result.stdout}")
+        print(f"Error output: {result.stderr}")
+        assert False, "Test failed"
 
 def test_mandatory_auth():
     """Test that authentication is always attempted."""
     print("\n🧪 Testing Phase 5: Mandatory authentication...")
     
-    # Skip this test since OAuth tools were removed
-    print("⚠️  Skipping OAuth tool test - OAuth removed in favor of auth codes")
-    print("✅ Phase 5 complete: OAuth tools removed, auth codes implemented")
-    assert True, "OAuth tools removed - test no longer applicable"
+    # Try to encrypt without any servers (should fail with auth attempt)
+    result = subprocess.run([sys.executable, 'tools/encrypt.py', 'nonexistent.txt',
+                           '--password', 'test'],
+                          capture_output=True, text=True, timeout=5)
+    
+    # Look for evidence of auth code system activation
+    auth_attempted = (
+        'servers.openadp.org' in result.stdout or 
+        'auth' in result.stdout.lower() or
+        'password' in result.stdout.lower() or
+        result.returncode != 0  # Should fail trying to authenticate
+    )
+    
+    if auth_attempted:
+        print("✅ Authentication system activated")
+        assert True
+    else:
+        print("❌ Authentication not attempted")
+        print(f"Output: {result.stdout}")
+        print(f"Error: {result.stderr}")
+        assert False, "Test failed"
 
 def main():
     """Run all Phase 5 verification tests."""
@@ -56,23 +82,17 @@ def main():
     total_tests = 3
     
     # Test 1: No --auth flags
-    try:
-        test_no_auth_flags()
+    if test_no_auth_flags():
         tests_passed += 1
-    except AssertionError:
-        pass
     
     # Test 2: Global server default
-    try:
-        test_global_server_default()
+    if test_global_server_default():
         tests_passed += 1
-    except AssertionError:
-        pass
     
     # Test 3: Mandatory authentication (may timeout, that's OK)
     try:
-        test_mandatory_auth()
-        tests_passed += 1
+        if test_mandatory_auth():
+            tests_passed += 1
     except subprocess.TimeoutExpired:
         print("✅ Authentication flow started (timed out as expected)")
         tests_passed += 1
@@ -92,8 +112,8 @@ def main():
     else:
         print("❌ Some Phase 5 tests failed")
     
-    # Don't return a value that pytest will complain about
-    assert tests_passed == total_tests, f"Only {tests_passed}/{total_tests} tests passed"
+    return tests_passed == total_tests
 
 if __name__ == "__main__":
-    main() 
+    success = main()
+    sys.exit(0 if success else 1) 

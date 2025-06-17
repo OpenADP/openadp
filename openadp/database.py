@@ -13,7 +13,7 @@ The main class `Database` provides methods for:
 - Listing all backups for a user
 
 Database Schema:
-- UID: User identifier (authentication code system - UUID format)
+- UID: User identifier (JWT 'sub' claim - UUID format)
 - DID: Device identifier (hostname)
 - BID: Backup identifier (file:// URLs)
 - version: Version number for backup
@@ -77,14 +77,6 @@ class Database:
                 )
             """)
             self.con.commit()
-        else:
-            # Check if auth_code column exists, add it if missing
-            cur.execute("PRAGMA table_info(shares)")
-            columns = [column[1] for column in cur.fetchall()]
-            if 'auth_code' not in columns:
-                print(f"Adding auth_code column to shares table in {self.db_name}")
-                cur.execute("ALTER TABLE shares ADD COLUMN auth_code TEXT DEFAULT ''")
-                self.con.commit()
 
         # Check if server_config table exists
         result = cur.execute(
@@ -145,7 +137,7 @@ class Database:
             uid.decode('utf-8'), 
             did.decode('utf-8'), 
             bid.decode('utf-8'),
-            auth_code,
+            auth_code, 
             version, 
             x, 
             y,
@@ -228,14 +220,14 @@ class Database:
         # num_guesses is at index 3 in the tuple
         return backup[3]
 
-    def lookup_by_auth_code(self, auth_code: str, did: str, bid: str) -> Optional[Tuple]:
+    def lookup_by_auth_code(self, auth_code: str, did, bid) -> Optional[Tuple]:
         """
         Look up a specific share by authentication code, device, and backup identifiers.
         
         Args:
             auth_code: Server-specific authentication code
-            did: Device identifier
-            bid: Backup identifier
+            did: Device identifier (string or bytes)
+            bid: Backup identifier (string or bytes)
             
         Returns:
             Tuple containing (uid, version, x, y, num_guesses, max_guesses, expiration)
@@ -247,7 +239,16 @@ class Database:
             WHERE auth_code = ? AND DID = ? AND BID = ?
         """
         cur = self.con.cursor()
-        results = cur.execute(sql, [auth_code, did, bid]).fetchall()
+        
+        # Handle both string and bytes input
+        did_str = did.decode('utf-8') if isinstance(did, bytes) else did
+        bid_str = bid.decode('utf-8') if isinstance(bid, bytes) else bid
+        
+        results = cur.execute(sql, [
+            auth_code,
+            did_str, 
+            bid_str
+        ]).fetchall()
         
         if not results:
             return None
@@ -264,38 +265,44 @@ class Database:
             
         Returns:
             List of tuples containing:
-            (uid, did, bid, version, num_guesses, max_guesses, expiration)
+            (did, bid, version, num_guesses, max_guesses, expiration)
         """
         sql = """
-            SELECT UID, DID, BID, version, num_guesses, max_guesses, expiration 
+            SELECT DID, BID, version, num_guesses, max_guesses, expiration 
             FROM shares 
             WHERE auth_code = ?
         """
         cur = self.con.cursor()
         return cur.execute(sql, [auth_code]).fetchall()
 
-    def update_guess_count(self, uid: bytes, did: bytes, bid: bytes, num_guesses: int) -> None:
+    def update_guess_count(self, uid, did, bid, num_guesses: int) -> None:
         """
         Update the guess count for a specific share.
         
         Args:
-            uid: User identifier (bytes)
-            did: Device identifier (bytes)
-            bid: Backup identifier (bytes)
+            uid: User identifier (string or bytes)
+            did: Device identifier (string or bytes)
+            bid: Backup identifier (string or bytes)
             num_guesses: New guess count
         """
         sql = """
             UPDATE shares 
-            SET num_guesses = ?
+            SET num_guesses = ? 
             WHERE UID = ? AND DID = ? AND BID = ?
         """
         cur = self.con.cursor()
-        cur.execute(sql, (
+        
+        # Handle both string and bytes input
+        uid_str = uid.decode('utf-8') if isinstance(uid, bytes) else uid
+        did_str = did.decode('utf-8') if isinstance(did, bytes) else did
+        bid_str = bid.decode('utf-8') if isinstance(bid, bytes) else bid
+        
+        cur.execute(sql, [
             num_guesses,
-            uid.decode('utf-8'), 
-            did.decode('utf-8'), 
-            bid.decode('utf-8')
-        ))
+            uid_str, 
+            did_str, 
+            bid_str
+        ])
         self.con.commit()
 
     def close(self) -> None:
@@ -321,13 +328,12 @@ def main():
     did = b"Ubuntu beast Alienware laptop"
     version = 1
     x = 1
-    y = b"test_secret_share_32_bytes_long!!"
-    auth_code = "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
+    y = 234
     
     # Test insertions
     print("Inserting test data...")
-    db.insert(uid, did, b"file://archive.tgz", auth_code, version, x, y, 0, 10, expiration)
-    db.insert(uid, did, b"firefox_passwords://passwords.json", auth_code, version, x, y, 0, 10, expiration)
+    db.insert(uid, did, b"file://archive.tgz", "test_auth_code_12345", version, x, y, 0, 10, expiration)
+    db.insert(uid, did, b"firefox_passwords://passwords.json", "test_auth_code_67890", version, x, y, 0, 10, expiration)
     
     # Test list_backups
     print("Testing list_backups...")

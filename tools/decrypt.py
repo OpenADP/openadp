@@ -105,7 +105,6 @@ def decrypt_file(input_filename: str, password: str,
     try:
         metadata = json.loads(metadata_json.decode('utf-8'))
         server_urls = metadata.get('servers', [])
-        auth_enabled = metadata.get('auth_enabled', False)
         threshold = metadata.get('threshold', 2)  # Default to 2 for older files
         version = metadata.get('version', '1.0')
         
@@ -121,10 +120,7 @@ def decrypt_file(input_filename: str, password: str,
             server_urls = override_servers
         
         # Check authentication requirements
-        if auth_enabled:
-            print("🔒 File was encrypted with authentication (standard)")
-        else:
-            print("ℹ️  File was encrypted without authentication (legacy), but using auth for decryption")
+        print("🔒 File was encrypted with authentication (standard)")
             
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
         print(f"Error: Failed to parse metadata: {e}")
@@ -355,22 +351,24 @@ def get_auth_codes_from_metadata(metadata: dict) -> Tuple[Dict[str, str], str, s
     """
     print("🔐 Reading authentication codes from metadata...")
     
-    # Extract auth codes from metadata
-    auth_codes_data = metadata.get('auth_codes', {})
-    base_auth_code = auth_codes_data.get('base_auth_code')
-    server_auth_codes = auth_codes_data.get('server_auth_codes', {})
+    # Handle Go-compatible format (version 1.0) - uses single base auth code
+    base_auth_code = metadata.get('auth_code')
     user_id = metadata.get('user_id')
+    server_urls = metadata.get('servers', [])
     
     if not base_auth_code:
         raise ValueError("No base authentication code found in metadata")
-    if not server_auth_codes:
-        raise ValueError("No server authentication codes found in metadata")
     if not user_id:
         raise ValueError("No user ID found in metadata")
     
+    # Generate server-specific codes from base auth code (same as Go tools)
+    from openadp.auth_code_manager import AuthCodeManager
+    auth_manager = AuthCodeManager()
+    server_auth_codes = auth_manager.get_server_codes(base_auth_code, server_urls)
+    
     print(f"🔑 Retrieved base authentication code: {base_auth_code}")
     print(f"🔐 Retrieved user ID: {user_id}")
-    print(f"🌐 Retrieved {len(server_auth_codes)} server-specific codes")
+    print(f"🌐 Derived {len(server_auth_codes)} server-specific codes")
     
     return server_auth_codes, base_auth_code, user_id
 

@@ -30,7 +30,7 @@ if [ ! -d "../.venv" ]; then
 fi
 
 echo "🌐 Starting server on http://localhost:8081"
-echo "   (Note: Using port 8081 to avoid conflicts)"
+echo "   (Note: Using port 8081 to avoid conflict with Keycloak on 8080)"
 echo ""
 echo "📋 Available endpoints:"
 echo "   POST /  - JSON-RPC endpoint"

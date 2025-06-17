@@ -433,13 +433,27 @@ func (s *Server) handleListBackups(params []interface{}) (interface{}, error) {
 		return nil, fmt.Errorf("auth_code must be a string")
 	}
 
-	// List backups using auth code
-	backups, err := server.ListBackupsByAuthCode(s.db, authCode)
+	// Convert to Python-compatible format: array of arrays [uid, did, bid, version, num_guesses, max_guesses, expiration]
+	// Get the database info to include DID
+	dbBackups, err := s.db.ListBackupsByAuthCode(authCode)
 	if err != nil {
 		return nil, err
 	}
 
-	return backups, nil
+	result := make([][]interface{}, len(dbBackups))
+	for i, dbBackup := range dbBackups {
+		result[i] = []interface{}{
+			"",                  // uid not exposed when using auth code (index 0)
+			dbBackup.DID,        // did (index 1)
+			dbBackup.BID,        // bid (index 2)
+			dbBackup.Version,    // version (index 3)
+			dbBackup.NumGuesses, // num_guesses (index 4)
+			dbBackup.MaxGuesses, // max_guesses (index 5)
+			dbBackup.Expiration, // expiration (index 6)
+		}
+	}
+
+	return result, nil
 }
 
 // Start starts the JSON-RPC server

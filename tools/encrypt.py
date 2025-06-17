@@ -171,16 +171,12 @@ def encrypt_file(input_filename: str, password: str,
     import secrets
     nonce = secrets.token_bytes(NONCE_SIZE)
 
-    # 8. Create metadata including authentication codes
+    # 8. Create metadata using Go-compatible format (version 1.0)
     metadata = {
         "servers": server_urls_used,
         "threshold": threshold,
-        "auth_enabled": True,
-        "version": "2.0",  # Version 2.0 uses authentication codes
-        "auth_codes": {
-            "base_auth_code": base_auth_code,
-            "server_auth_codes": {url: server_auth_codes[url] for url in server_urls_used}
-        },
+        "version": "1.0",  # Version 1.0 for Go compatibility
+        "auth_code": base_auth_code,  # Single base auth code (Go format)
         "user_id": user_id
     }
     metadata_json = json.dumps(metadata, separators=(',', ':')).encode('utf-8')

@@ -450,17 +450,18 @@ func (c *OpenADPClient) ListBackupsWithAuthCode(authCode string) ([]ListBackupsR
 	var backups []ListBackupsResult
 	for _, item := range resultArray {
 		backupArray, ok := item.([]interface{})
-		if !ok || len(backupArray) < 6 {
+		if !ok || len(backupArray) < 7 {
 			continue // Skip invalid entries
 		}
 
-		// Parse backup entry: [uid, bid, version, num_guesses, max_guesses, expiration]
+		// Parse backup entry: [uid, did, bid, version, num_guesses, max_guesses, expiration]
 		uid, _ := backupArray[0].(string)
-		bid, _ := backupArray[1].(string)
-		version, _ := backupArray[2].(float64)
-		numGuesses, _ := backupArray[3].(float64)
-		maxGuesses, _ := backupArray[4].(float64)
-		expiration, _ := backupArray[5].(float64)
+		// did is at index 1, but we don't need it for ListBackupsResult
+		bid, _ := backupArray[2].(string)
+		version, _ := backupArray[3].(float64)
+		numGuesses, _ := backupArray[4].(float64)
+		maxGuesses, _ := backupArray[5].(float64)
+		expiration, _ := backupArray[6].(float64)
 
 		backups = append(backups, ListBackupsResult{
 			UID:        uid,

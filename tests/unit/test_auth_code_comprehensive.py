@@ -370,7 +370,7 @@ class TestDatabaseAuthCode(unittest.TestCase):
         self.assertEqual(len(result), 3)
         
         # Verify backup info
-        backup_ids = [(r[1], r[2]) for r in result]  # (did, bid)
+        backup_ids = [(r[0], r[1]) for r in result]  # (did, bid)
         for bid, did in backups:
             self.assertIn((did, bid), backup_ids)
     

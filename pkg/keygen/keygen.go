@@ -334,8 +334,29 @@ func RecoverEncryptionKey(filename, password, userID string, serverURLs []string
 		serverURL := liveServerURLs[i]
 		authCode := authCodes.ServerAuthCodes[serverURL]
 
-		// Get current guess number for this backup (start with 0)
-		guessNum := 0
+		// Get current guess number for this backup from the server
+		fmt.Printf("Debug: Getting current guess number from server %d\n", i+1)
+		backups, err := client.ListBackupsWithAuthCode(authCode)
+		guessNum := 0 // Default to 0 if we can't determine current state
+		if err != nil {
+			fmt.Printf("Warning: Could not list backups from server %d: %v\n", i+1, err)
+		} else {
+			fmt.Printf("Debug: Server %d returned %d backups\n", i+1, len(backups))
+			// Find our backup in the list from this server
+			for j, backup := range backups {
+				fmt.Printf("Debug: Backup %d: BID=%s, NumGuesses=%d\n", j, backup.BID, backup.NumGuesses)
+				if backup.BID == bid {
+					guessNum = backup.NumGuesses
+					fmt.Printf("Debug: Found matching backup with guess_num=%d\n", guessNum)
+					break
+				}
+			}
+			if guessNum == 0 {
+				fmt.Printf("Debug: No matching backup found for BID=%s\n", bid)
+			}
+		}
+
+		fmt.Printf("Debug: Using guess_num=%d for server %d\n", guessNum, i+1)
 
 		// Use compressed point format (base64 string) - standard for all servers
 		fmt.Printf("Debug: Using compressed point format for server %d\n", i+1)

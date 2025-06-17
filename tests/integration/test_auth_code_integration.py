@@ -147,7 +147,7 @@ class TestAuthCodeEndToEnd(unittest.TestCase):
         self.assertEqual(len(backup_list), 3)
         
         # Verify backup information
-        found_backups = [(row[2], row[1]) for row in backup_list]  # (bid, did)
+        found_backups = [(row[1], row[0]) for row in backup_list]  # (bid, did)
         for bid, did in backups:
             self.assertIn((bid, did), found_backups)
     

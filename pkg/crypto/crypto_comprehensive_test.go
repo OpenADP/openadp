@@ -392,7 +392,7 @@ func TestHFunctionBasic(t *testing.T) {
 	}
 
 	// Test that the result is a valid point
-	if !pointValid(point1) {
+	if !testPointValid(point1) {
 		t.Errorf("H function should return a valid point")
 	}
 }
@@ -401,7 +401,7 @@ func TestHFunctionBasic(t *testing.T) {
 func TestHFunctionEdgeCases(t *testing.T) {
 	// Test with empty inputs
 	point1 := H([]byte{}, []byte{}, []byte{}, []byte{})
-	if !pointValid(point1) {
+	if !testPointValid(point1) {
 		t.Errorf("H function should handle empty inputs")
 	}
 
@@ -412,7 +412,7 @@ func TestHFunctionEdgeCases(t *testing.T) {
 	}
 
 	point2 := H(longInput, longInput, longInput, longInput[:2])
-	if !pointValid(point2) {
+	if !testPointValid(point2) {
 		t.Errorf("H function should handle long inputs")
 	}
 
@@ -564,7 +564,7 @@ func TestConstantsValidity(t *testing.T) {
 	}
 
 	// Test that G is a valid point
-	if !pointValid(G) {
+	if !testPointValid(G) {
 		t.Errorf("Base point G should be valid")
 	}
 
@@ -581,8 +581,8 @@ func TestConstantsValidity(t *testing.T) {
 	}
 }
 
-// Helper function to check if a point is valid (simplified version)
-func pointValid(p *Point4D) bool {
+// Helper function to check if a point is valid (test version)
+func testPointValid(p *Point4D) bool {
 	if p == nil || p.X == nil || p.Y == nil || p.Z == nil || p.T == nil {
 		return false
 	}
