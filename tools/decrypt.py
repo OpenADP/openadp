@@ -234,18 +234,46 @@ def recover_encryption_key_with_auth_codes(filename: str, password: str, user_id
             # Get current guess number for this backup from this specific server
             print(f"DEBUG: Getting backups from server {i+1}")
             backups, error = client.list_backups(auth_code, encrypted=False)
+            guess_num = 0  # Default to 0 if we can't determine current state
+            
             if error:
                 print(f"Warning: Could not list backups from server {i+1}: {error}")
-                guess_num = 0  # Start with 0 if we can't determine current state
             else:
+                print(f"DEBUG: Server {i+1} returned {len(backups) if backups else 0} backups")
                 # Find our backup in the list from this server
-                guess_num = 0
-                for backup in backups:
-                    # backup is a dictionary, not a tuple
-                    backup_bid = backup.get('bid', '') if isinstance(backup, dict) else ""
-                    if backup_bid == bid:
-                        guess_num = backup.get('num_guesses', 0) if isinstance(backup, dict) else 0
-                        break
+                found_backup = False
+                for j, backup in enumerate(backups or []):
+                    if isinstance(backup, (list, tuple)) and len(backup) >= 6:
+                        # Server actually returns: [did, bid, version, num_guesses, max_guesses, expiration]
+                        backup_did = backup[0]
+                        backup_bid = backup[1]
+                        backup_version = backup[2]
+                        backup_num_guesses = backup[3]
+                        backup_max_guesses = backup[4]
+                        backup_expiration = backup[5]
+                        
+                        print(f"DEBUG: Backup {j}: BID={backup_bid}, NumGuesses={backup_num_guesses}")
+                        
+                        if backup_bid == bid:
+                            guess_num = backup_num_guesses
+                            print(f"DEBUG: Found matching backup with guess_num={guess_num}")
+                            found_backup = True
+                            break
+                    elif isinstance(backup, dict):
+                        # Fallback to dict format (if server returns different format)
+                        backup_bid = backup.get('bid', '')
+                        backup_num_guesses = backup.get('num_guesses', 0)
+                        
+                        print(f"DEBUG: Backup {j}: BID={backup_bid}, NumGuesses={backup_num_guesses}")
+                        
+                        if backup_bid == bid:
+                            guess_num = backup_num_guesses
+                            print(f"DEBUG: Found matching backup with guess_num={guess_num}")
+                            found_backup = True
+                            break
+                
+                if not found_backup:
+                    print(f"DEBUG: No matching backup found for BID={bid}")
             
             print(f"DEBUG: Using guess_num={guess_num} for server {i+1}")
             
