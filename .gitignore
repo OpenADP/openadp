@@ -8,7 +8,3 @@ fuzz_test_*.db-journal
 
 # Build artifacts  
 build/
-
-# Temporary files
-fooo
-monitoring_instructions
