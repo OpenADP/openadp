@@ -331,11 +331,11 @@
                     <h3>Network Requirements</h3>
                     <p><strong>Choose your hosting approach:</strong></p>
                     <ul>
-                        <li><strong>Option A - Direct Public IP:</strong> Static IP or Dynamic DNS, Port 8080 accessible</li>
+                        <li><strong>Option A - Direct Public IP:</strong> Static IP or Dynamic DNS, any port accessible</li>
                         <li><strong>Option B - Cloudflare Proxy:</strong> Hide your IP behind Cloudflare (recommended for home users)</li>
-                        <li><strong>Domain name</strong> (optional but recommended)</li>
-                        <li><strong>SSL certificate</strong> (Let's Encrypt recommended)</li>
                     </ul>
+                    <p><strong>For Direct Public IP only:</strong> Domain name and SSL certificate (Let's Encrypt) recommended</p>
+                    <p><strong>For Cloudflare Proxy:</strong> We provide subdomain (like xyzzy.openadp.org) and SSL automatically</p>
                 </div>
             </div>
 
@@ -396,58 +396,52 @@ go version
                     </div>
 
                     <div class="step">
-                        <h3>Clone and Build OpenADP</h3>
-                        <p>Get the latest OpenADP source code and build it:</p>
-                        <div class="code-block" data-title="Build OpenADP">
+                        <h3>🚀 One-Command Installation</h3>
+                        <p>OpenADP includes an automated installation script that does everything for you!</p>
+                        <div class="code-block" data-title="Automated Installation">
 # Clone the repository
 cd ~
 git clone https://github.com/OpenADP/openadp.git
 cd openadp
 
-# Build the server
-make build
+# Run the automated installer (does everything!)
+sudo ./scripts/update-openadp-node.sh
 
-# Verify the build
-./bin/openadp-server -version
+# That's it! The script will:
+# - Install dependencies (Go, build tools, etc.)
+# - Build OpenADP server and tools
+# - Create service user and directories
+# - Set up systemd service
+# - Start the server
+# - Run health checks
+                        </div>
+                        
+                        <div class="success">
+                            <h4>✨ What the Script Does Automatically:</h4>
+                            <ul>
+                                <li>Detects your OS (Raspberry Pi OS, Fedora, etc.)</li>
+                                <li>Installs the right packages for your system</li>
+                                <li>Downloads and installs Go compiler</li>
+                                <li>Builds OpenADP server binary</li>
+                                <li>Creates service user and directories</li>
+                                <li>Sets up systemd service</li>
+                                <li>Starts the server and runs tests</li>
+                            </ul>
                         </div>
                     </div>
 
                     <div class="step">
-                        <h3>Create Server Directory</h3>
-                        <p>Set up the directory structure for your server:</p>
-                        <div class="code-block" data-title="Directory Setup">
-# Create server directory
-sudo mkdir -p /opt/openadp/bin
-sudo mkdir -p /opt/openadp/data
-sudo mkdir -p /opt/openadp/logs
-sudo mkdir -p /opt/openadp/config
-
-# Copy binary
-sudo cp ~/openadp/bin/openadp-server /opt/openadp/bin/
-
-# Create openadp user
-sudo useradd -r -s /bin/false -d /opt/openadp openadp
-
-# Set permissions
-sudo chown -R openadp:openadp /opt/openadp
-sudo chmod +x /opt/openadp/bin/openadp-server
-                        </div>
-                    </div>
-
-                    <div class="step">
-                        <h3>Generate Server Keys</h3>
-                        <p>Create cryptographic keys for your server:</p>
-                        <div class="code-block" data-title="Key Generation">
-# Generate Noise-NK keys
+                        <h3>🔄 Easy Updates</h3>
+                        <p>To update your server later, just run the same script again:</p>
+                        <div class="code-block" data-title="Update Server">
+# Update to latest version
 cd ~/openadp
-./bin/openadp-keygen -output /tmp/server-key.key
+sudo ./scripts/update-openadp-node.sh
 
-# Move to server directory
-sudo mv /tmp/server-key.key /opt/openadp/config/
-sudo chown openadp:openadp /opt/openadp/config/server-key.key
-sudo chmod 600 /opt/openadp/config/server-key.key
-
-# The public key will be displayed - save it for later
+# The script will:
+# - Pull latest code from git
+# - Rebuild binaries
+# - Restart service with new version
                         </div>
                     </div>
                 </div>
@@ -459,35 +453,41 @@ sudo chmod 600 /opt/openadp/config/server-key.key
 
                 <div class="step">
                     <h3>Option A: Direct Public IP Hosting</h3>
-                    <p>Host your server directly with your own public IP address. This gives you full control but exposes your home IP.</p>
+                    <p>Host your server directly with your own public IP address. This gives you full control but exposes your IP address.</p>
                     
                     <div class="requirements">
                         <h4>Requirements:</h4>
                         <ul>
                             <li>Static IP address or Dynamic DNS service</li>
-                            <li>Router port forwarding (port 8080 → your Pi)</li>
+                            <li>Router port forwarding (your chosen port → your Pi)</li>
                             <li>Firewall configuration (covered in installation steps)</li>
+                            <li>Domain name (optional but recommended)</li>
+                            <li>SSL certificate setup (Let's Encrypt recommended)</li>
                         </ul>
                     </div>
 
                     <div class="code-block" data-title="Router Port Forwarding">
-# Configure your router to forward port 8080 to your Pi
-# Example: 203.0.113.1:8080 → 192.168.1.100:8080
+# Configure your router to forward your chosen port to your Pi
+# Examples:
+# Port 80:   203.0.113.1:80 → 192.168.1.100:8080 (standard web port)
+# Port 8080: 203.0.113.1:8080 → 192.168.1.100:8080 (default)
+# Port 3000: 203.0.113.1:3000 → 192.168.1.100:8080 (custom)
 # (This varies by router - check your router's admin interface)
                     </div>
                 </div>
 
                 <div class="step">
                     <h3>Option B: Cloudflare Proxy (Recommended for Home Users)</h3>
-                    <p><strong>Hide your home IP address behind Cloudflare's network!</strong> This is perfect for home users who want privacy and don't want to expose their residential IP.</p>
+                    <p><strong>Hide your IP address behind Cloudflare's network!</strong> This is perfect for home users who want privacy and don't want to expose their residential IP.</p>
                     
                     <div class="success">
                         <h4>✅ Benefits of Cloudflare Proxy:</h4>
                         <ul>
-                            <li><strong>IP Privacy:</strong> Your home IP stays hidden</li>
+                            <li><strong>IP Privacy:</strong> Your IP address stays hidden</li>
+                            <li><strong>Free Subdomain:</strong> We provide yourname.openadp.org (like xyzzy.openadp.org)</li>
+                            <li><strong>Automatic SSL:</strong> HTTPS encryption included, no setup needed</li>
                             <li><strong>DDoS Protection:</strong> Cloudflare handles attacks</li>
                             <li><strong>No Port Forwarding:</strong> No router configuration needed</li>
-                            <li><strong>SSL/TLS:</strong> Automatic HTTPS encryption</li>
                             <li><strong>Global CDN:</strong> Better performance worldwide</li>
                         </ul>
                     </div>
@@ -496,6 +496,7 @@ sudo chmod 600 /opt/openadp/config/server-key.key
                         <h4>🚨 Setup Required on Discord</h4>
                         <p><strong>You MUST ping us on Discord for Cloudflare setup!</strong> We need to:</p>
                         <ul>
+                            <li>Assign you a subdomain (like dave.openadp.org)</li>
                             <li>Create a CNAME DNS record for your server</li>
                             <li>Provide you with 2 commands to run on your Pi</li>
                             <li>Configure the Cloudflare tunnel connection</li>
@@ -521,74 +522,49 @@ cloudflared tunnel --url localhost:8080 --name your-server-name
 
                     <div class="success">
                         <h4>🎯 Perfect for Dave and Home Users!</h4>
-                        <p>This option is ideal for volunteers like Dave who want to contribute a server but don't want to expose their home network. Two simple commands and you're protected by Cloudflare's global network!</p>
+                        <p>This option is ideal for volunteers like Dave who want to contribute a server but don't want to expose their network. Two simple commands and you're protected by Cloudflare's global network!</p>
+                    </div>
+
+                    <div class="success">
+                        <h4>📝 Port Flexibility</h4>
+                        <p><strong>You can use any port you want!</strong> Common choices:</p>
+                        <ul>
+                            <li><strong>Port 80:</strong> Standard web port (no port number in URL)</li>
+                            <li><strong>Port 8080:</strong> Default OpenADP port</li>
+                            <li><strong>Custom ports:</strong> 3000, 8000, 9000, etc.</li>
+                        </ul>
+                        <p>When you register on Discord, we'll include your chosen port in <code>api/servers.json</code> so clients can find you correctly.</p>
                     </div>
                 </div>
             </div>
 
             <div class="section" id="configuration">
-                <h2>⚙️ Configuration</h2>
+                <h2>⚙️ Configuration (Optional)</h2>
+                <p>The installation script creates a working configuration automatically. You can customize it if needed:</p>
 
                 <div class="step">
-                    <h3>Create Configuration File</h3>
-                    <p>Create the server configuration:</p>
-                    <div class="code-block" data-title="/opt/openadp/config/server.conf">
-# OpenADP Server Configuration
+                    <h3>Customize Server Settings</h3>
+                    <p>Edit the configuration file if you want to change ports or other settings:</p>
+                    <div class="code-block" data-title="Edit Configuration">
+# Edit the server configuration
+sudo nano /opt/openadp/openadp-server.conf
 
-# Server settings
-port=8080
-host=0.0.0.0
+# Common settings to change:
+# - port: Change from 8080 to your preferred port
+# - log_level: Change from "info" to "debug" for more details
 
-# Database
-database_path=/opt/openadp/data/openadp.db
-
-# Noise-NK encryption
-noise_private_key_path=/opt/openadp/config/server-key.key
-
-# Authentication
-auth_enabled=true
-min_entropy=100
-ddos_defense=true
-
-# Logging
-log_level=info
-log_file=/opt/openadp/logs/server.log
-
-# Limits
-max_guess_limit=10
-default_expiration=2592000  # 30 days
+# After making changes, restart the service:
+sudo systemctl restart openadp-server
                     </div>
-                </div>
-
-                <div class="step">
-                    <h3>Create Systemd Service</h3>
-                    <p>Set up OpenADP as a system service:</p>
-                    <div class="code-block" data-title="/etc/systemd/system/openadp.service">
-[Unit]
-Description=OpenADP Server
-After=network.target
-Wants=network.target
-
-[Service]
-Type=simple
-User=openadp
-Group=openadp
-WorkingDirectory=/opt/openadp
-ExecStart=/opt/openadp/bin/openadp-server -config /opt/openadp/config/server.conf
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-
-# Security settings
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/opt/openadp/data /opt/openadp/logs
-
-[Install]
-WantedBy=multi-user.target
+                    
+                    <div class="warning">
+                        <h4>⚠️ Configuration Notes</h4>
+                        <ul>
+                            <li>The script creates a secure default configuration</li>
+                            <li>Server keys are generated automatically</li>
+                            <li>Database and logs are set up in /opt/openadp/</li>
+                            <li>Only edit if you need custom settings</li>
+                        </ul>
                     </div>
                 </div>
 
@@ -605,7 +581,7 @@ sudo apt install -y ufw
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 sudo ufw allow ssh
-sudo ufw allow 8080/tcp
+sudo ufw allow 8080/tcp  # Change 8080 to your chosen port
 
 # Enable firewall
 sudo ufw --force enable
@@ -621,7 +597,7 @@ sudo systemctl start firewalld
 
 # Open necessary ports
 sudo firewall-cmd --permanent --add-service=ssh
-sudo firewall-cmd --permanent --add-port=8080/tcp
+sudo firewall-cmd --permanent --add-port=8080/tcp  # Change 8080 to your chosen port
 
 # Reload firewall rules
 sudo firewall-cmd --reload
@@ -793,7 +769,7 @@ sudo systemctl status openadp
 sudo journalctl -u openadp -n 100
 
 # Test network connectivity
-netstat -tlnp | grep 8080
+netstat -tlnp | grep 8080  # Change 8080 to your chosen port
 
 # Check file permissions
 ls -la /opt/openadp/config/
