@@ -149,28 +149,24 @@ func (c *EncryptedOpenADPClient) makeEncryptedRequest(method string, params inte
 	return encryptedResponse.Result, nil
 }
 
-// makeRequest makes either encrypted or unencrypted request based on parameters
+// makeRequest makes encrypted requests using Noise-NK (no fallback to unencrypted)
 func (c *EncryptedOpenADPClient) makeRequest(method string, params interface{}, encrypted bool, authData map[string]interface{}) (interface{}, error) {
 	c.requestID++
 
-	if encrypted && c.serverPublicKey != nil {
-		return c.makeEncryptedRequest(method, params, c.requestID, authData)
+	// Require server public key for all requests - no fallback to unencrypted
+	if c.serverPublicKey == nil {
+		return nil, fmt.Errorf("server public key not available - encrypted communication required")
 	}
 
-	// Fall back to unencrypted request
-	response, err := c.OpenADPClient.makeRequest(method, params)
-	if err != nil {
-		return nil, err
-	}
-
-	return response.Result, nil
+	// Always use encrypted request - ignore the encrypted parameter
+	return c.makeEncryptedRequest(method, params, c.requestID, authData)
 }
 
-// RegisterSecret registers a secret with optional encryption
+// RegisterSecret registers a secret with mandatory encryption
 func (c *EncryptedOpenADPClient) RegisterSecret(authCode, did, bid string, version, x int, y string, maxGuesses, expiration int, encrypted bool, authData map[string]interface{}) (bool, error) {
 	params := []interface{}{authCode, "", did, bid, version, x, y, maxGuesses, expiration}
 
-	result, err := c.makeRequest("RegisterSecret", params, encrypted, authData)
+	result, err := c.makeRequest("RegisterSecret", params, true, authData)
 	if err != nil {
 		return false, err
 	}
@@ -183,11 +179,11 @@ func (c *EncryptedOpenADPClient) RegisterSecret(authCode, did, bid string, versi
 	return success, nil
 }
 
-// RecoverSecret recovers a secret with optional encryption
+// RecoverSecret recovers a secret with mandatory encryption
 func (c *EncryptedOpenADPClient) RecoverSecret(authCode, did, bid, b string, guessNum int, encrypted bool, authData map[string]interface{}) (map[string]interface{}, error) {
 	params := []interface{}{authCode, "", did, bid, b, guessNum}
 
-	result, err := c.makeRequest("RecoverSecret", params, encrypted, authData)
+	result, err := c.makeRequest("RecoverSecret", params, true, authData)
 	if err != nil {
 		return nil, err
 	}
@@ -200,11 +196,11 @@ func (c *EncryptedOpenADPClient) RecoverSecret(authCode, did, bid, b string, gue
 	return response, nil
 }
 
-// ListBackups lists backups with optional encryption
+// ListBackups lists backups with mandatory encryption
 func (c *EncryptedOpenADPClient) ListBackups(authCode string, encrypted bool, authData map[string]interface{}) ([]map[string]interface{}, error) {
 	params := []interface{}{authCode, ""}
 
-	result, err := c.makeRequest("ListBackups", params, encrypted, authData)
+	result, err := c.makeRequest("ListBackups", params, true, authData)
 	if err != nil {
 		return nil, err
 	}
@@ -225,11 +221,11 @@ func (c *EncryptedOpenADPClient) ListBackups(authCode string, encrypted bool, au
 	return backupList, nil
 }
 
-// Echo sends an echo message with optional encryption
+// Echo sends an echo message with mandatory encryption
 func (c *EncryptedOpenADPClient) Echo(message string, encrypted bool) (string, error) {
 	params := []interface{}{message}
 
-	result, err := c.makeRequest("Echo", params, encrypted, nil)
+	result, err := c.makeRequest("Echo", params, true, nil)
 	if err != nil {
 		return "", err
 	}
@@ -295,26 +291,26 @@ func ParseServerPublicKey(keyB64 string) ([]byte, error) {
 
 // Convenience functions for one-off operations
 
-// RegisterSecretSimple registers a secret using a simple interface
+// RegisterSecretSimple registers a secret using a simple interface with mandatory encryption
 func RegisterSecretSimple(authCode, did, bid string, version, x int, y string, maxGuesses, expiration int, serverURL string) (bool, error) {
 	client := CreateClient(serverURL)
-	return client.RegisterSecret(authCode, did, bid, version, x, y, maxGuesses, expiration, false, nil)
+	return client.RegisterSecret(authCode, did, bid, version, x, y, maxGuesses, expiration, true, nil)
 }
 
-// RecoverSecretSimple recovers a secret using a simple interface
+// RecoverSecretSimple recovers a secret using a simple interface with mandatory encryption
 func RecoverSecretSimple(authCode, did, bid, b string, guessNum int, serverURL string) (map[string]interface{}, error) {
 	client := CreateClient(serverURL)
-	return client.RecoverSecret(authCode, did, bid, b, guessNum, false, nil)
+	return client.RecoverSecret(authCode, did, bid, b, guessNum, true, nil)
 }
 
-// ListBackupsSimple lists backups using a simple interface
+// ListBackupsSimple lists backups using a simple interface with mandatory encryption
 func ListBackupsSimple(authCode, serverURL string) ([]map[string]interface{}, error) {
 	client := CreateClient(serverURL)
-	return client.ListBackups(authCode, false, nil)
+	return client.ListBackups(authCode, true, nil)
 }
 
-// EchoSimple sends an echo message using a simple interface
+// EchoSimple sends an echo message using a simple interface with mandatory encryption
 func EchoSimple(message, serverURL string) (string, error) {
 	client := CreateClient(serverURL)
-	return client.Echo(message, false)
+	return client.Echo(message, true)
 }
