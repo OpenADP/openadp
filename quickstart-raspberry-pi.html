@@ -271,6 +271,7 @@
                     <li><a href="#overview">Overview</a></li>
                     <li><a href="#requirements">Requirements</a></li>
                     <li><a href="#installation">Installation Steps</a></li>
+                    <li><a href="#hosting">Hosting Options</a></li>
                     <li><a href="#configuration">Configuration</a></li>
                     <li><a href="#testing">Testing Your Server</a></li>
                     <li><a href="#maintenance">Maintenance</a></li>
@@ -328,9 +329,10 @@
 
                 <div class="requirements">
                     <h3>Network Requirements</h3>
+                    <p><strong>Choose your hosting approach:</strong></p>
                     <ul>
-                        <li><strong>Static IP</strong> or <strong>Dynamic DNS</strong></li>
-                        <li><strong>Port 8080</strong> accessible from the internet</li>
+                        <li><strong>Option A - Direct Public IP:</strong> Static IP or Dynamic DNS, Port 8080 accessible</li>
+                        <li><strong>Option B - Cloudflare Proxy:</strong> Hide your IP behind Cloudflare (recommended for home users)</li>
                         <li><strong>Domain name</strong> (optional but recommended)</li>
                         <li><strong>SSL certificate</strong> (Let's Encrypt recommended)</li>
                     </ul>
@@ -447,6 +449,79 @@ sudo chmod 600 /opt/openadp/config/server-key.key
 
 # The public key will be displayed - save it for later
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section" id="hosting">
+                <h2>🌐 Hosting Options</h2>
+                <p>Choose how you want to make your server accessible to the internet:</p>
+
+                <div class="step">
+                    <h3>Option A: Direct Public IP Hosting</h3>
+                    <p>Host your server directly with your own public IP address. This gives you full control but exposes your home IP.</p>
+                    
+                    <div class="requirements">
+                        <h4>Requirements:</h4>
+                        <ul>
+                            <li>Static IP address or Dynamic DNS service</li>
+                            <li>Router port forwarding (port 8080 → your Pi)</li>
+                            <li>Firewall configuration (covered in installation steps)</li>
+                        </ul>
+                    </div>
+
+                    <div class="code-block" data-title="Router Port Forwarding">
+# Configure your router to forward port 8080 to your Pi
+# Example: 203.0.113.1:8080 → 192.168.1.100:8080
+# (This varies by router - check your router's admin interface)
+                    </div>
+                </div>
+
+                <div class="step">
+                    <h3>Option B: Cloudflare Proxy (Recommended for Home Users)</h3>
+                    <p><strong>Hide your home IP address behind Cloudflare's network!</strong> This is perfect for home users who want privacy and don't want to expose their residential IP.</p>
+                    
+                    <div class="success">
+                        <h4>✅ Benefits of Cloudflare Proxy:</h4>
+                        <ul>
+                            <li><strong>IP Privacy:</strong> Your home IP stays hidden</li>
+                            <li><strong>DDoS Protection:</strong> Cloudflare handles attacks</li>
+                            <li><strong>No Port Forwarding:</strong> No router configuration needed</li>
+                            <li><strong>SSL/TLS:</strong> Automatic HTTPS encryption</li>
+                            <li><strong>Global CDN:</strong> Better performance worldwide</li>
+                        </ul>
+                    </div>
+
+                    <div class="warning">
+                        <h4>🚨 Setup Required on Discord</h4>
+                        <p><strong>You MUST ping us on Discord for Cloudflare setup!</strong> We need to:</p>
+                        <ul>
+                            <li>Create a CNAME DNS record for your server</li>
+                            <li>Provide you with 2 commands to run on your Pi</li>
+                            <li>Configure the Cloudflare tunnel connection</li>
+                        </ul>
+                        <p><strong>Join Discord:</strong> <a href="https://discord.gg/TaHNeGsE8j" target="_blank">https://discord.gg/TaHNeGsE8j</a></p>
+                    </div>
+
+                    <div class="code-block" data-title="Cloudflare Setup Process">
+# 1. Join Discord and request Cloudflare proxy setup
+# 2. We'll provide you with 2 commands like these:
+
+# Command 1: Install cloudflared
+curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -o cloudflared
+sudo mv cloudflared /usr/local/bin/
+sudo chmod +x /usr/local/bin/cloudflared
+
+# Command 2: Connect your tunnel (we'll provide the exact command)
+cloudflared tunnel --url localhost:8080 --name your-server-name
+
+# Note: The exact commands will be customized for your setup
+# and provided by our team on Discord
+                    </div>
+
+                    <div class="success">
+                        <h4>🎯 Perfect for Dave and Home Users!</h4>
+                        <p>This option is ideal for volunteers like Dave who want to contribute a server but don't want to expose their home network. Two simple commands and you're protected by Cloudflare's global network!</p>
                     </div>
                 </div>
             </div>
@@ -603,6 +678,18 @@ curl http://localhost:8080/health
                         <li>No errors in the logs</li>
                     </ul>
                 </div>
+
+                <div class="warning">
+                    <h3>🚨 CRITICAL: Server Registration Required</h3>
+                    <p><strong>Your server won't be discoverable by clients until it's added to the network!</strong></p>
+                    <ul>
+                        <li>Join our <a href="https://discord.gg/TaHNeGsE8j" target="_blank"><strong>Discord server</strong></a> immediately</li>
+                        <li>Share your server details with the team</li>
+                        <li>We must manually add your server to <code>api/servers.json</code></li>
+                        <li>Only then will clients be able to find and use your server</li>
+                    </ul>
+                    <p><strong>Don't skip this step!</strong> A working server that isn't registered is invisible to the network.</p>
+                </div>
             </div>
 
             <div class="section" id="maintenance">
@@ -687,6 +774,16 @@ df -h /opt/openadp/data
                     </ul>
                 </div>
 
+                <div class="warning">
+                    <h4>⚠️ Cloudflare Tunnel Issues</h4>
+                    <ul>
+                        <li>Check if cloudflared is running: <code>ps aux | grep cloudflared</code></li>
+                        <li>Restart tunnel: <code>sudo systemctl restart cloudflared</code></li>
+                        <li>Check tunnel logs: <code>journalctl -u cloudflared -f</code></li>
+                        <li>Ping Discord if tunnel stops working</li>
+                    </ul>
+                </div>
+
                 <h3>Diagnostic Commands</h3>
                 <div class="code-block" data-title="Universal Diagnostics">
 # Check service status
@@ -763,6 +860,7 @@ dnf list installed | grep package-name
                     
                     <p><strong>Next steps:</strong></p>
                     <ul>
+                        <li><strong>🚨 FIRST:</strong> <a href="https://discord.gg/TaHNeGsE8j" target="_blank">Join Discord</a> and ping us to add your server to the network!</li>
                         <li>Register your server at <a href="https://servers.openadp.org" target="_blank">servers.openadp.org</a></li>
                         <li>Set up SSL/TLS with Let's Encrypt</li>
                         <li>Configure monitoring and alerting</li>
