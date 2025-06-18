@@ -262,8 +262,30 @@ export async function hashContent(content) {
  * Validates that ChaCha20-Poly1305 is supported
  * @returns {boolean} True if supported
  */
-export function isChaCha20Poly1305Supported() {
-  return 'subtle' in crypto && 'ChaCha20-Poly1305' in crypto.subtle;
+export async function isChaCha20Poly1305Supported() {
+  try {
+    // Check if the crypto API is available
+    if (!crypto || !crypto.subtle) {
+      return false;
+    }
+    
+    // Try to import a ChaCha20-Poly1305 key
+    const testKey = new Uint8Array(32);
+    crypto.getRandomValues(testKey);
+    
+    await crypto.subtle.importKey(
+      'raw',
+      testKey,
+      { name: 'ChaCha20-Poly1305' },
+      false,
+      ['encrypt', 'decrypt']
+    );
+    
+    return true;
+  } catch (error) {
+    // ChaCha20-Poly1305 not supported, will fallback to AES-GCM
+    return false;
+  }
 }
 
 /**
@@ -311,6 +333,212 @@ export async function encryptOpenADPFormatFallback(plaintext, key, metadata) {
   result.set(ciphertextBytes, offset);
   
   return result;
+}
+
+/**
+ * Generate a 32-byte encryption key
+ */
+export async function generateKey() {
+  const keyData = new Uint8Array(32);
+  crypto.getRandomValues(keyData);
+  return keyData;
+}
+
+/**
+ * Generate a 12-byte nonce for ChaCha20-Poly1305
+ */
+export function generateNonce() {
+  const nonce = new Uint8Array(12);
+  crypto.getRandomValues(nonce);
+  return nonce;
+}
+
+/**
+ * Encrypt data using ChaCha20-Poly1305 (or AES-GCM fallback)
+ * Returns format compatible with openadp-encrypt.go:
+ * [metadata_length][metadata][nonce][encrypted_data]
+ */
+export async function encryptData(data, key, metadata = {}) {
+  const encoder = new TextEncoder();
+  const dataBytes = encoder.encode(data);
+  const metadataBytes = encoder.encode(JSON.stringify(metadata));
+  const nonce = generateNonce();
+  
+  try {
+    // Try ChaCha20-Poly1305 first
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      key,
+      { name: 'ChaCha20-Poly1305' },
+      false,
+      ['encrypt']
+    );
+    
+    const encrypted = await crypto.subtle.encrypt(
+      {
+        name: 'ChaCha20-Poly1305',
+        counter: nonce,
+        additionalData: metadataBytes
+      },
+      cryptoKey,
+      dataBytes
+    );
+    
+    return {
+      metadata: metadataBytes,
+      nonce: nonce,
+      encryptedData: new Uint8Array(encrypted)
+    };
+    
+  } catch (error) {
+    // Fallback to AES-GCM
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      key,
+      { name: 'AES-GCM' },
+      false,
+      ['encrypt']
+    );
+    
+    const encrypted = await crypto.subtle.encrypt(
+      {
+        name: 'AES-GCM',
+        iv: nonce,
+        additionalData: metadataBytes
+      },
+      cryptoKey,
+      dataBytes
+    );
+    
+    return {
+      metadata: metadataBytes,
+      nonce: nonce,
+      encryptedData: new Uint8Array(encrypted)
+    };
+  }
+}
+
+/**
+ * Decrypt data encrypted with encryptData
+ */
+export async function decryptData(encryptedBlob, key, expectedMetadata = null) {
+  const decoder = new TextDecoder();
+  
+  // Parse metadata
+  const metadata = JSON.parse(decoder.decode(encryptedBlob.metadata));
+  
+  // Verify metadata if provided
+  if (expectedMetadata && JSON.stringify(metadata) !== JSON.stringify(expectedMetadata)) {
+    throw new Error('Metadata mismatch - authentication failed');
+  }
+  
+  try {
+    // Try ChaCha20-Poly1305 first
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      key,
+      { name: 'ChaCha20-Poly1305' },
+      false,
+      ['decrypt']
+    );
+    
+    const decrypted = await crypto.subtle.decrypt(
+      {
+        name: 'ChaCha20-Poly1305',
+        counter: encryptedBlob.nonce,
+        additionalData: encryptedBlob.metadata
+      },
+      cryptoKey,
+      encryptedBlob.encryptedData
+    );
+    
+    return decoder.decode(decrypted);
+    
+  } catch (error) {
+    // Fallback to AES-GCM
+    try {
+      const cryptoKey = await crypto.subtle.importKey(
+        'raw',
+        key,
+        { name: 'AES-GCM' },
+        false,
+        ['decrypt']
+      );
+      
+      const decrypted = await crypto.subtle.decrypt(
+        {
+          name: 'AES-GCM',
+          iv: encryptedBlob.nonce,
+          additionalData: encryptedBlob.metadata
+        },
+        cryptoKey,
+        encryptedBlob.encryptedData
+      );
+      
+      return decoder.decode(decrypted);
+    } catch (decryptError) {
+      throw new Error('Decryption failed - wrong key or corrupted data');
+    }
+  }
+}
+
+/**
+ * Derive a key from a password using PBKDF2
+ */
+export async function deriveKeyFromPassword(password, salt, iterations = 100000) {
+  const encoder = new TextEncoder();
+  const passwordBytes = encoder.encode(password);
+  
+  const baseKey = await crypto.subtle.importKey(
+    'raw',
+    passwordBytes,
+    { name: 'PBKDF2' },
+    false,
+    ['deriveKey']
+  );
+  
+  const derivedKey = await crypto.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt: salt,
+      iterations: iterations,
+      hash: 'SHA-256'
+    },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt']
+  );
+  
+  const keyBytes = await crypto.subtle.exportKey('raw', derivedKey);
+  return new Uint8Array(keyBytes);
+}
+
+/**
+ * Generate a random salt for key derivation
+ */
+export function generateSalt() {
+  const salt = new Uint8Array(16);
+  crypto.getRandomValues(salt);
+  return salt;
+}
+
+/**
+ * Convert bytes to hex string
+ */
+export function bytesToHex(bytes) {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Convert hex string to bytes
+ */
+export function hexToBytes(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+  }
+  return bytes;
 }
 
 // Export utility functions
