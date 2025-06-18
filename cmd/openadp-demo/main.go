@@ -89,7 +89,7 @@ func main() {
 	}
 
 	fmt.Printf("✅ Backup created successfully!\n")
-	fmt.Printf("   • Base auth code: %s\n", baseAuthCode)
+	fmt.Printf("   • Base auth code: [REDACTED]\n")
 	fmt.Printf("   • Server codes: %d generated\n", len(serverAuthCodes))
 	fmt.Println()
 
@@ -142,7 +142,7 @@ func (demo *AuthCodeDemo) CreateBackup(fileData []byte, userPin, deviceID, backu
 
 	serverAuthCodes := demo.authManager.GetServerCodes(baseAuthCode, demo.serverURLs)
 
-	fmt.Printf("🔑 Generated base authentication code: %s\n", baseAuthCode)
+	fmt.Printf("🔑 Generated base authentication code: [REDACTED]\n")
 	fmt.Printf("🌐 Derived %d server-specific codes\n", len(serverAuthCodes))
 
 	// 2. OpenADP Protocol: Generate cryptographic materials
@@ -184,11 +184,11 @@ func (demo *AuthCodeDemo) CreateBackup(fileData []byte, userPin, deviceID, backu
 		}
 
 		share := shares[i]
-		serverAuthCode := serverAuthCodes[serverURL]
+		_ = serverAuthCodes[serverURL] // Use auth code in production
 
 		// In a real implementation, this would use the JSON-RPC client
-		fmt.Printf("  ✅ Would register share %s with %s (auth: %s...)\n",
-			share.X.String(), serverURL, serverAuthCode[:8])
+		fmt.Printf("  ✅ Would register share %s with %s (auth: [REDACTED])\n",
+			share.X.String(), serverURL)
 	}
 
 	// 5. Simulate file encryption
@@ -227,11 +227,11 @@ func (demo *AuthCodeDemo) DemonstrateRecovery(baseAuthCode, userPin, deviceID, b
 			break // Only need threshold shares
 		}
 
-		serverAuthCode := serverAuthCodes[serverURL]
+		_ = serverAuthCodes[serverURL] // Use auth code in production
 
 		// In a real implementation, this would use the JSON-RPC client
-		fmt.Printf("  ✅ Would collect share %d from %s (auth: %s...)\n",
-			i+1, serverURL, serverAuthCode[:8])
+		fmt.Printf("  ✅ Would collect share %d from %s (auth: [REDACTED])\n",
+			i+1, serverURL)
 	}
 
 	// 5. Simulate secret reconstruction

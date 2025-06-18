@@ -145,9 +145,7 @@ func GenerateEncryptionKey(filename, password, userID string, maxGuesses, expira
 	U := crypto.H([]byte(uid), []byte(did), []byte(bid), pin)
 	S := crypto.PointMul(secret, U)
 
-	// Debug: Print the point S during encryption
-	SCompressed := crypto.PointCompress(S)
-	fmt.Printf("DEBUG ENCRYPT: Point S = %x\n", SCompressed)
+	// Production: Do not log secret points
 
 	// Step 7: Create shares using secret sharing
 	threshold := max(1, min(2, len(liveClients))) // At least 1, prefer 2 if available
@@ -182,14 +180,7 @@ func GenerateEncryptionKey(filename, password, userID string, maxGuesses, expira
 		serverURL := liveServerURLs[i]
 		authCode := authCodes.ServerAuthCodes[serverURL]
 
-		// DEBUG: Print the scalar share si and compute si*U
-		si := share.Y
-		siU := crypto.PointMul(si, U)
-		siUCompressed := crypto.PointCompress(siU)
-		UCompressed := crypto.PointCompress(U)
-		fmt.Printf("DEBUG ENCRYPT: Share[%d] si = %x\n", i+1, si)
-		fmt.Printf("DEBUG ENCRYPT: Share[%d] U = %x\n", i+1, UCompressed)
-		fmt.Printf("DEBUG ENCRYPT: Share[%d] si*U (SENT) = %x\n", i+1, siUCompressed)
+		// Production: Do not log secret shares or cryptographic material
 
 		// Convert share Y to integer string (server expects integer, not base64)
 		yInt := share.Y.String()
@@ -383,24 +374,7 @@ func RecoverEncryptionKey(filename, password, userID string, serverURLs []string
 			Point: siB, // This is si*B point returned by server
 		}
 
-		// DEBUG: Print what we got from the server
-		fmt.Printf("DEBUG: Server %d returned X=%d, siB=(%x, %x)\n", i+1, result.X, siB.X, siB.Y)
-		fmt.Printf("DEBUG: Created PointShare with X=%s, Point=(%x, %x)\n", pointShare.X.String(), pointShare.Point.X, pointShare.Point.Y)
-
-		// DEBUG: Convert si*B back to si*U to verify
-		// We have si*B, and B = r*U, so si*U = r^-1 * (si*B)
-		siBExtended := crypto.Expand(siB)
-		siU := crypto.PointMul(rInv, siBExtended)
-		siUCompressed := crypto.PointCompress(siU)
-
-		// DEBUG: Also compute what si should be by extracting it from si*B
-		// Since si*B = si * (r*U), we need to figure out si from the server response
-		// The server should have returned the original si value somehow
-		UCompressed := crypto.PointCompress(U)
-		fmt.Printf("DEBUG DECRYPT: Share[%d] U = %x\n", i+1, UCompressed)
-		fmt.Printf("DEBUG DECRYPT: Share[%d] si*U (RECOVERED) = %x\n", i+1, siUCompressed)
-
-		// TODO: We need to get the actual si value from the server to compare
+		// Production: Do not log secret shares or cryptographic points
 
 		recoveredPointShares = append(recoveredPointShares, pointShare)
 		fmt.Printf("OpenADP: Recovered share %d from server %d\n", result.X, i+1)
@@ -428,9 +402,7 @@ func RecoverEncryptionKey(filename, password, userID string, serverURLs []string
 	recoveredSB4D := crypto.Expand(recoveredSB)
 	originalSU := crypto.PointMul(rInv, recoveredSB4D)
 
-	// Debug: Print the recovered point S during decryption
-	recoveredSCompressed := crypto.PointCompress(originalSU)
-	fmt.Printf("DEBUG DECRYPT: Point S = %x\n", recoveredSCompressed)
+	// Production: Do not log recovered secret points
 
 	// Step 8: Derive same encryption key
 	encKey := crypto.DeriveEncKey(originalSU)

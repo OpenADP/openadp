@@ -181,7 +181,7 @@ func decryptFile(inputFilename, password string, overrideServers []string) error
 	// DEBUG: Print metadata during decryption
 	fmt.Printf("DEBUG DECRYPT: Metadata JSON: %s\n", string(metadataJSON))
 	fmt.Printf("DEBUG DECRYPT: UserID: %s\n", metadata.UserID)
-	fmt.Printf("DEBUG DECRYPT: BaseAuthCode: %s\n", metadata.AuthCode)
+	// Production: Do not log auth codes
 
 	serverURLs := metadata.Servers
 	if len(serverURLs) == 0 {

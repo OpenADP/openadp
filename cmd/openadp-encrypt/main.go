@@ -192,10 +192,7 @@ func encryptFile(inputFilename, password string, serverURLs []string, serversURL
 		return fmt.Errorf("failed to marshal metadata: %v", err)
 	}
 
-	// DEBUG: Print metadata during encryption
-	fmt.Printf("DEBUG ENCRYPT: Metadata JSON: %s\n", string(metadataJSON))
-	fmt.Printf("DEBUG ENCRYPT: UserID: %s\n", userID)
-	fmt.Printf("DEBUG ENCRYPT: AuthCode: %s\n", authCodes.BaseAuthCode)
+	// Production: Do not log sensitive metadata containing auth codes
 
 	// Encrypt the file using metadata as additional authenticated data
 	cipher, err := chacha20poly1305.New(encKey)

@@ -124,7 +124,7 @@ func generateAuthCode() {
 		return
 	}
 
-	fmt.Printf("✅ Generated Authentication Code: %s\n", authCode)
+	fmt.Printf("✅ Generated Authentication Code: [REDACTED]\n")
 	fmt.Printf("📏 Length: %d characters (128 bits)\n", len(authCode))
 
 	// Format with spacing for readability
@@ -175,9 +175,7 @@ func deriveKey(filename, userID, serversStr string) {
 	fmt.Printf("   DID: %s\n", did)
 	fmt.Printf("   BID: %s\n", bid)
 
-	// Convert password to PIN
-	pin := keygen.PasswordToPin(password)
-	fmt.Printf("🔢 PIN: %02x%02x\n", pin[0], pin[1])
+	// PIN derived from password (not logged for security)
 
 	// Generate key
 	fmt.Printf("🔄 Generating encryption key using %d servers...\n", len(serverURLs))
@@ -192,7 +190,7 @@ func deriveKey(filename, userID, serversStr string) {
 	fmt.Printf("🔑 Key length: %d bytes\n", len(result.EncryptionKey))
 	fmt.Printf("🌐 Servers used: %d\n", len(result.ServerURLs))
 	fmt.Printf("🎯 Threshold: %d\n", result.Threshold)
-	fmt.Printf("🔐 Key preview: %x...\n", result.EncryptionKey[:8])
+	fmt.Printf("🔐 Key: [REDACTED for security]\n")
 }
 
 func runTests() {

@@ -45,7 +45,7 @@ func testAuthCodeManager() {
 		log.Fatalf("Failed to generate auth code: %v", err)
 	}
 
-	fmt.Printf("   Generated auth code: %s\n", authCode)
+	fmt.Printf("   Generated auth code: [REDACTED]\n")
 	fmt.Printf("   Auth code length: %d characters\n", len(authCode))
 
 	// Validate format
@@ -166,9 +166,9 @@ func testKeyGeneration() {
 	uid, did, bid := keygen.DeriveIdentifiers(filename, userID, "")
 	fmt.Printf("   Derived identifiers: UID=%s, DID=%s, BID=%s\n", uid, did, bid)
 
-	// Test password to PIN conversion
-	pin := keygen.PasswordToPin(password)
-	fmt.Printf("   PIN from password: %02x%02x\n", pin[0], pin[1])
+	// Test password to PIN conversion (not logged for security)
+	_ = keygen.PasswordToPin(password)
+	fmt.Printf("   PIN from password: [REDACTED]\n")
 
 	// Test key generation (simplified)
 	result := keygen.GenerateEncryptionKey(filename, password, userID, 10, 0, serverURLs)
