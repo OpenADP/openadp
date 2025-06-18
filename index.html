@@ -19,6 +19,7 @@
                     <li><a href="#about">About</a></li>
                     <li><a href="#how-it-works">How It Works</a></li>
                     <li><a href="#benefits">Benefits</a></li>
+                    <li><a href="#network-status">Network Status</a></li>
                     <li><a href="#get-involved">Get Involved!</a></li>
                     <li><a href="#implementation">Implementation</a></li>
                     <li><a href="#contact">Contact</a></li>
@@ -37,6 +38,7 @@
             <div class="hero-buttons">
                 <a href="https://discord.gg/TaHNeGsE8j" class="btn btn-primary">💬 Join Discord & Get Involved</a>
                 <a href="#how-it-works" class="btn btn-secondary">Learn How It Works</a>
+                <a href="https://health.openadp.org/" class="btn btn-secondary">🔍 Network Health</a>
                 <a href="https://github.com/waywardgeek/openadp" class="btn btn-secondary">View on GitHub</a>
             </div>
         </div>
@@ -103,6 +105,72 @@
                         <div class="step-content">
                             <h3>Key Reconstruction</h3>
                             <p>The client automatically reconstructs the encryption key from the recovered shares - completely transparent to you.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="network-status" class="section">
+            <div class="container">
+                <h2 class="section-title">Live Network Status</h2>
+                <div class="network-overview">
+                    <p class="network-intro">OpenADP is already running with live servers protecting user data. Monitor the network health and explore the server infrastructure in real-time.</p>
+                    
+                    <div class="status-cards">
+                        <div class="status-card">
+                            <div class="status-icon">🔍</div>
+                            <h3>Health Monitoring Dashboard</h3>
+                            <p>Real-time monitoring of all OpenADP servers with response times, uptime tracking, and geographic distribution. Beautiful web interface with automatic 5-minute health checks.</p>
+                            <div class="status-features">
+                                <span class="feature-tag">⚡ Real-time Metrics</span>
+                                <span class="feature-tag">🌍 Geographic View</span>
+                                <span class="feature-tag">📊 Historical Data</span>
+                                <span class="feature-tag">🔔 Alert System</span>
+                            </div>
+                            <a href="https://health.openadp.org/" class="btn btn-status-primary" target="_blank">View Live Dashboard</a>
+                        </div>
+                        
+                        <div class="status-card">
+                            <div class="status-icon">🖥️</div>
+                            <h3>Server Network Directory</h3>
+                            <p>Complete list of all OpenADP servers in the network with their capabilities, locations, and connection information. Updated automatically as new servers join.</p>
+                            <div class="status-features">
+                                <span class="feature-tag">📍 Server Locations</span>
+                                <span class="feature-tag">🔧 Capabilities</span>
+                                <span class="feature-tag">🔗 Connection Info</span>
+                                <span class="feature-tag">✅ Verification Status</span>
+                            </div>
+                            <a href="https://servers.openadp.org/" class="btn btn-status-secondary" target="_blank">Browse Server List</a>
+                        </div>
+                    </div>
+                    
+                    <div class="network-stats">
+                        <div class="stat-item">
+                            <div class="stat-number">3+</div>
+                            <div class="stat-label">Active Servers</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">2</div>
+                            <div class="stat-label">Countries</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">5min</div>
+                            <div class="stat-label">Health Check Interval</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">24/7</div>
+                            <div class="stat-label">Monitoring</div>
+                        </div>
+                    </div>
+                    
+                    <div class="transparency-note">
+                        <h4>🔍 Complete Transparency</h4>
+                        <p>All network health data is public and automatically committed to GitHub. You can see exactly which servers are online, their response times, and historical performance. No hidden metrics, no secret monitoring - everything is open for community verification.</p>
+                        <div class="transparency-links">
+                            <a href="https://health.openadp.org/health" class="transparency-link">📊 API Access</a>
+                            <a href="https://health.openadp.org/health/history" class="transparency-link">📈 Historical Data</a>
+                            <a href="https://github.com/waywardgeek/openadp/tree/main/monitoring" class="transparency-link">💻 Monitoring Code</a>
                         </div>
                     </div>
                 </div>
@@ -658,10 +726,11 @@ python3 decrypt.py sensitive_document.txt.enc</code></pre>
                 <div class="footer-section">
                     <h4>Resources</h4>
                     <ul>
-                        <li><a href="https://github.com/waywardgeek/openadp">GitHub Repository</a></li>
-                        <li><a href="#get-involved">Get Involved</a></li>
-                        <li><a href="#implementation">Node Setup Guide</a></li>
-                        <li><a href="https://servers.openadp.org">Server Network</a></li>
+                        <li><a href="https://health.openadp.org/">🔍 Network Health Dashboard</a></li>
+                        <li><a href="https://servers.openadp.org">🖥️ Server Network Directory</a></li>
+                        <li><a href="https://github.com/waywardgeek/openadp">💻 GitHub Repository</a></li>
+                        <li><a href="#get-involved">🤝 Get Involved</a></li>
+                        <li><a href="#implementation">🚀 Node Setup Guide</a></li>
                     </ul>
                 </div>
                 <div class="footer-section">
