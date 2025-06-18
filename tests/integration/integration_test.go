@@ -16,6 +16,7 @@ package integration
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/openadp/openadp/pkg/auth"
 	"github.com/openadp/openadp/pkg/keygen"
@@ -25,6 +26,24 @@ func TestOpenADPIntegration(t *testing.T) {
 	fmt.Println("🚀 OpenADP Integration Test")
 	fmt.Println("===========================")
 
+	// Step 0: Start test servers
+	fmt.Println("\n🖥️  Step 0: Starting test servers...")
+
+	serverManager, err := NewTestServerManager()
+	if err != nil {
+		t.Fatalf("Failed to create server manager: %v", err)
+	}
+	defer serverManager.Cleanup()
+
+	// Start 3 test servers on ports 18081-18083
+	testServers, err := serverManager.StartServers(18081, 3)
+	if err != nil {
+		t.Fatalf("Failed to start test servers: %v", err)
+	}
+
+	serverURLs := serverManager.GetServerURLs()
+	fmt.Printf("   Started %d test servers: %v\n", len(testServers), serverURLs)
+
 	// Step 1: Test authentication code generation
 	fmt.Println("\n🔐 Step 1: Testing authentication code generation...")
 
@@ -32,13 +51,6 @@ func TestOpenADPIntegration(t *testing.T) {
 	baseCode, err := authManager.GenerateAuthCode()
 	if err != nil {
 		t.Fatalf("Failed to generate base auth code: %v", err)
-	}
-
-	// Define server URLs for the integration test
-	serverURLs := []string{
-		"http://localhost:18081",
-		"http://localhost:18082",
-		"http://localhost:18083",
 	}
 
 	serverCodes := authManager.GetServerCodes(baseCode, serverURLs)
@@ -73,7 +85,9 @@ func TestOpenADPIntegration(t *testing.T) {
 	fmt.Println("\n🔐 Step 3: Testing encryption key generation...")
 
 	password := "test-password-123"
-	keyResult := keygen.GenerateEncryptionKey(bid, password, uid, 10, 3600, serverURLs)
+	// Use absolute timestamp for expiration (current time + 1 hour)
+	expiration := int(time.Now().Unix()) + 3600
+	keyResult := keygen.GenerateEncryptionKey(bid, password, uid, 10, expiration, serverURLs)
 	if keyResult.Error != "" {
 		t.Fatalf("Failed to generate encryption key: %s", keyResult.Error)
 	}
@@ -81,39 +95,35 @@ func TestOpenADPIntegration(t *testing.T) {
 	fmt.Printf("   Encryption key: %x\n", keyResult.EncryptionKey[:16])
 	fmt.Printf("   Server URLs: %v\n", keyResult.ServerURLs)
 	fmt.Printf("   Threshold: %d\n", keyResult.Threshold)
+	fmt.Println("   ✅ Key generation completed successfully")
 
-	// Verify key generation is deterministic
-	keyResult2 := keygen.GenerateEncryptionKey(bid, password, uid, 10, 3600, serverURLs)
-	if keyResult2.Error != "" {
-		t.Fatalf("Failed to generate second encryption key: %s", keyResult2.Error)
-	}
-
-	// Note: Keys won't be identical because of random secret generation
-	// This is expected behavior for security
-	fmt.Printf("   Second key: %x\n", keyResult2.EncryptionKey[:16])
-	fmt.Println("   ✅ Key generation completed (keys are different due to randomness)")
-
-	// Step 4: Test key recovery
+	// Step 4: Test key recovery using the same auth codes
 	fmt.Println("\n🔓 Step 4: Testing encryption key recovery...")
 
-	// Create AuthCodes structure for recovery (using the auth codes from generation)
+	// Use the auth codes from the successful registration
 	authCodes := keyResult.AuthCodes
 	if authCodes == nil {
-		// Fallback for testing - create minimal auth codes
-		authCodes = &keygen.AuthCodes{
-			BaseAuthCode:    baseCode,
-			ServerAuthCodes: serverCodes,
-			UserID:          uid,
-		}
+		t.Fatalf("No auth codes returned from key generation")
 	}
 
-	recoveryResult := keygen.RecoverEncryptionKey(bid, password, uid, serverURLs, keyResult.Threshold, authCodes)
+	recoveryResult := keygen.RecoverEncryptionKey(bid, password, uid, keyResult.ServerURLs, keyResult.Threshold, authCodes)
 	if recoveryResult.Error != "" {
 		t.Fatalf("Failed to recover encryption key: %s", recoveryResult.Error)
 	}
 
+	fmt.Printf("   Original key:  %x\n", keyResult.EncryptionKey[:16])
 	fmt.Printf("   Recovered key: %x\n", recoveryResult.EncryptionKey[:16])
-	fmt.Println("   ✅ Key recovery completed (simulated)")
+
+	// Verify the recovered key matches the original
+	if len(keyResult.EncryptionKey) != len(recoveryResult.EncryptionKey) {
+		t.Fatalf("Recovered key length doesn't match original")
+	}
+	for i := range keyResult.EncryptionKey {
+		if keyResult.EncryptionKey[i] != recoveryResult.EncryptionKey[i] {
+			t.Fatalf("Recovered key doesn't match original key")
+		}
+	}
+	fmt.Println("   ✅ Key recovery successful - keys match!")
 
 	// Step 5: Test password to PIN conversion
 	fmt.Println("\n🔢 Step 5: Testing password to PIN conversion...")

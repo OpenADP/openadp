@@ -396,6 +396,9 @@ to verify that guess numbers are properly tracked via listBackups calls.`
 	t.Log("✅ Encryption successful")
 	t.Logf("📄 Encrypted file: %s", wrongPasswordEncryptedFilePath)
 
+	// Remove the original plaintext file to ensure we're testing actual decryption behavior
+	os.Remove(wrongPasswordTestFilePath)
+
 	// Step 2: Attempt decryption with wrong password (should fail and increment guess count)
 	t.Log("\n🔓 Step 2: Attempting decryption with wrong password...")
 	decryptTool := "../../build/openadp-decrypt"
@@ -405,7 +408,7 @@ to verify that guess numbers are properly tracked via listBackups calls.`
 
 	// Wrong password should fail
 	if err == nil {
-		t.Error("Wrong password should fail but it succeeded")
+		t.Fatalf("Wrong password should fail but it succeeded")
 	} else {
 		t.Log("✅ Wrong password correctly failed")
 		t.Logf("📝 Error message: %s", string(decryptWrongOutput))
@@ -413,9 +416,10 @@ to verify that guess numbers are properly tracked via listBackups calls.`
 
 	// Verify decrypted file was NOT created
 	decryptedFilePath := strings.TrimSuffix(wrongPasswordEncryptedFilePath, ".enc")
-	if _, err := os.Stat(decryptedFilePath); !os.IsNotExist(err) {
-		t.Error("Decrypted file should NOT be created with wrong password")
+	if _, err := os.Stat(decryptedFilePath); err == nil {
+		t.Fatalf("Decrypted file should NOT be created with wrong password")
 	}
+	// File not existing is the expected behavior, so we continue
 
 	// Step 3: Attempt decryption with wrong password again (should fail and increment guess count again)
 	t.Log("\n🔓 Step 3: Attempting decryption with wrong password again...")
@@ -424,7 +428,7 @@ to verify that guess numbers are properly tracked via listBackups calls.`
 
 	// Wrong password should fail again
 	if err == nil {
-		t.Error("Wrong password should fail again but it succeeded")
+		t.Fatalf("Wrong password should fail again but it succeeded")
 	} else {
 		t.Log("✅ Wrong password correctly failed again")
 		t.Logf("📝 Error message: %s", string(decryptWrongOutput2))
@@ -444,7 +448,7 @@ to verify that guess numbers are properly tracked via listBackups calls.`
 
 	// Verify decrypted file was created and has correct content
 	if _, err := os.Stat(decryptedFilePath); os.IsNotExist(err) {
-		t.Error("Decrypted file should be created with correct password")
+		t.Fatalf("Decrypted file should be created with correct password")
 	} else {
 		decryptedContent, err := os.ReadFile(decryptedFilePath)
 		if err != nil {
@@ -452,7 +456,7 @@ to verify that guess numbers are properly tracked via listBackups calls.`
 		}
 
 		if string(decryptedContent) != wrongPasswordTestContent {
-			t.Error("Decrypted content should match original")
+			t.Fatalf("Decrypted content should match original")
 		} else {
 			t.Log("✅ File content verification passed")
 		}

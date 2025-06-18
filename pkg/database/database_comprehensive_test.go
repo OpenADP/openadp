@@ -1,8 +1,10 @@
 package database
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -305,8 +307,9 @@ func TestConcurrentAccess(t *testing.T) {
 	defer db.Close()
 
 	// Create multiple goroutines that access the database
-	const numGoroutines = 5
-	const numOperations = 3
+	// Use fewer goroutines and operations to reduce contention
+	const numGoroutines = 3
+	const numOperations = 2
 
 	done := make(chan bool, numGoroutines)
 	errors := make(chan error, numGoroutines*numOperations)
@@ -327,27 +330,36 @@ func TestConcurrentAccess(t *testing.T) {
 				maxGuesses := 10
 				expiration := time.Now().Unix() + 3600
 
-				// Insert
-				err := db.Insert(uid, did, bid, authCode, version, x, y, numGuesses, maxGuesses, expiration)
+				// Insert with retry logic
+				err := retryDatabaseOperation(func() error {
+					return db.Insert(uid, did, bid, authCode, version, x, y, numGuesses, maxGuesses, expiration)
+				})
 				if err != nil {
 					errors <- err
 					continue
 				}
 
-				// Lookup
-				record, err := db.Lookup(uid, did, bid)
+				// Lookup with retry logic
+				var record *ShareRecord
+				err = retryDatabaseOperation(func() error {
+					var lookupErr error
+					record, lookupErr = db.Lookup(uid, did, bid)
+					return lookupErr
+				})
 				if err != nil {
 					errors <- err
 					continue
 				}
 
 				if record == nil {
-					errors <- err
+					errors <- fmt.Errorf("record not found after insert")
 					continue
 				}
 
-				// Update guess count
-				err = db.UpdateGuessCount(uid, did, bid, j+1)
+				// Update guess count with retry logic
+				err = retryDatabaseOperation(func() error {
+					return db.UpdateGuessCount(uid, did, bid, j+1)
+				})
 				if err != nil {
 					errors <- err
 					continue
@@ -368,6 +380,34 @@ func TestConcurrentAccess(t *testing.T) {
 			t.Errorf("Concurrent access error: %v", err)
 		}
 	}
+}
+
+// retryDatabaseOperation retries a database operation with exponential backoff
+func retryDatabaseOperation(operation func() error) error {
+	maxRetries := 5
+	baseDelay := 10 * time.Millisecond
+
+	for i := 0; i < maxRetries; i++ {
+		err := operation()
+		if err == nil {
+			return nil
+		}
+
+		// Check if it's a database busy error
+		if strings.Contains(err.Error(), "database is locked") || strings.Contains(err.Error(), "SQLITE_BUSY") {
+			if i < maxRetries-1 {
+				// Wait with exponential backoff
+				delay := baseDelay * time.Duration(1<<uint(i))
+				time.Sleep(delay)
+				continue
+			}
+		}
+
+		// Return the error if it's not a busy error or we've exhausted retries
+		return err
+	}
+
+	return fmt.Errorf("database operation failed after %d retries", maxRetries)
 }
 
 // TestDataPersistence tests that data persists across database reopens

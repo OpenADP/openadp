@@ -47,12 +47,20 @@ func TestSecretSharingBasic(t *testing.T) {
 func TestSecretSharingWithServer(t *testing.T) {
 	fmt.Println("Testing secret sharing with server...")
 
-	// Initialize client
-	fallbackServers := []string{
-		"http://localhost:9200",
-		"http://localhost:9201",
-		"http://localhost:9202",
+	// Start test servers
+	serverManager, err := NewTestServerManager()
+	if err != nil {
+		t.Fatalf("Failed to create server manager: %v", err)
 	}
+	defer serverManager.Cleanup()
+
+	testServers, err := serverManager.StartServers(9200, 3)
+	if err != nil {
+		t.Fatalf("Failed to start test servers: %v", err)
+	}
+
+	fallbackServers := serverManager.GetServerURLs()
+	fmt.Printf("Started %d test servers: %v\n", len(testServers), fallbackServers)
 
 	c := client.NewClient("", fallbackServers, 5*time.Second, 3)
 
@@ -108,12 +116,20 @@ func TestSecretSharingWithServer(t *testing.T) {
 func TestSecretSharingRecovery(t *testing.T) {
 	fmt.Println("Testing secret sharing recovery...")
 
-	// Initialize client
-	fallbackServers := []string{
-		"http://localhost:9200",
-		"http://localhost:9201",
-		"http://localhost:9202",
+	// Start test servers
+	serverManager, err := NewTestServerManager()
+	if err != nil {
+		t.Fatalf("Failed to create server manager: %v", err)
 	}
+	defer serverManager.Cleanup()
+
+	testServers, err := serverManager.StartServers(9210, 3)
+	if err != nil {
+		t.Fatalf("Failed to start test servers: %v", err)
+	}
+
+	fallbackServers := serverManager.GetServerURLs()
+	fmt.Printf("Started %d test servers: %v\n", len(testServers), fallbackServers)
 
 	c := client.NewClient("", fallbackServers, 5*time.Second, 3)
 

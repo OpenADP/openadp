@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // Database represents a connection to the OpenADP SQLite database
@@ -41,9 +41,15 @@ type BackupInfo struct {
 
 // NewDatabase creates a new database connection and initializes tables
 func NewDatabase(dbPath string) (*Database, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %v", err)
+	}
+
+	// Configure SQLite for better concurrent access
+	if err := configureSQLite(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to configure SQLite: %v", err)
 	}
 
 	database := &Database{
@@ -57,6 +63,26 @@ func NewDatabase(dbPath string) (*Database, error) {
 	}
 
 	return database, nil
+}
+
+// configureSQLite sets up SQLite for better concurrent access
+func configureSQLite(db *sql.DB) error {
+	// Enable WAL mode for better concurrent access
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		return fmt.Errorf("failed to enable WAL mode: %v", err)
+	}
+
+	// Set busy timeout to handle concurrent access
+	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		return fmt.Errorf("failed to set busy timeout: %v", err)
+	}
+
+	// Enable foreign keys
+	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+		return fmt.Errorf("failed to enable foreign keys: %v", err)
+	}
+
+	return nil
 }
 
 // createTablesIfNeeded creates the necessary tables if they don't exist
