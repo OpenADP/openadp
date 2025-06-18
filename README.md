@@ -6,8 +6,7 @@ This project is recruiting!  Consider helping out!
 
 ## Motivation
 
-WaywardGeek helped build [Google's version of Advanced Data Protection](https://developer.android.com/about/versions/pie/security/ckv-whitepaper)
-back in 2018.  Today, such systems [are under attack](https://www.bloomberg.com/news/articles/2025-02-21/apple-removes-end-to-end-encryption-feature-from-uk-after-backdoor-order).
+Today, systems like Apple's Advanced Data Protection [are under attack](https://www.bloomberg.com/news/articles/2025-02-21/apple-removes-end-to-end-encryption-feature-from-uk-after-backdoor-order).
 There is a real threat that governments will order creation of secret mass surveillance backdoors like [what Yahoo was forced to build](https://www.reuters.com/article/technology/yahoo-secretly-scanned-customer-emails-for-us-intelligence-sources-idUSKCN1241YV/).
 Existing systems defend backups from warrants, but there is no transparency, and no way for the public to know if the system has been compromised.
 
