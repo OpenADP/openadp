@@ -1,0 +1,31 @@
+name = "openadp-health-monitor"
+main = "cloudflare-worker.js"
+compatibility_date = "2024-01-15"
+
+# Environment variables (set these in Cloudflare dashboard)
+[env.production.vars]
+SERVERS_JSON_URL = "https://servers.openadp.org/api/servers.json"
+GITHUB_REPO = "waywardgeek/servers.openadp.org"
+POLL_INTERVAL_MINUTES = "5"
+ERROR_THRESHOLD_PERCENT = "15"
+ERROR_DURATION_MINUTES = "30"
+
+# Secrets (set these via wrangler secret put)
+# GITHUB_TOKEN = "github_pat_..."
+# DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/..."
+
+# KV namespace for storing health data
+[[kv_namespaces]]
+binding = "HEALTH_DATA"
+id = "your-kv-namespace-id"
+preview_id = "your-preview-kv-namespace-id"
+
+# Cron trigger - runs every 5 minutes
+[triggers]
+crons = ["*/5 * * * *"]
+
+# Custom domain (optional)
+[env.production]
+routes = [
+  { pattern = "health.openadp.org/*", custom_domain = true }
+] 

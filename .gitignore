@@ -1,2 +1,14 @@
 __pycache__
 .venv
+
+# Test artifacts
+*.test
+fuzz_test_*.db
+fuzz_test_*.db-journal
+
+# Build artifacts  
+build/
+
+# Temporary files
+fooo
+monitoring_instructions

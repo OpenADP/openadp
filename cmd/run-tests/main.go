@@ -192,6 +192,37 @@ func (tr *TestRunner) runCmdTests(verbose, race, short bool, timeout string) boo
 	return tr.runCommand(cmd, "Command Tests (cmd/...)", tr.projectRoot)
 }
 
+// runAuthTests runs authentication tests
+func (tr *TestRunner) runAuthTests(verbose, short bool, timeout string) bool {
+	// Check if auth tests exist
+	authDir := filepath.Join(tr.projectRoot, "tests", "auth")
+	if _, err := os.Stat(authDir); os.IsNotExist(err) {
+		fmt.Printf("\n%s\n", strings.Repeat("=", 60))
+		fmt.Printf("🧪 Auth Tests (tests/auth/)\n")
+		fmt.Printf("%s\n", strings.Repeat("=", 60))
+		fmt.Println("No auth tests directory found")
+		fmt.Println("✅ Auth Tests (tests/auth/) - PASSED (no tests)")
+		tr.testResults["Auth Tests (tests/auth/)"] = true
+		return true
+	}
+
+	cmd := []string{"go", "test"}
+
+	if verbose {
+		cmd = append(cmd, "-v")
+	}
+	if short {
+		cmd = append(cmd, "-short")
+	}
+	if timeout != "" {
+		cmd = append(cmd, "-timeout", timeout)
+	}
+
+	cmd = append(cmd, "./tests/auth/...")
+
+	return tr.runCommand(cmd, "Auth Tests (tests/auth/)", tr.projectRoot)
+}
+
 // runBuildTests verifies that all packages build successfully
 func (tr *TestRunner) runBuildTests() bool {
 	cmd := []string{"go", "build", "./..."}
@@ -431,6 +462,16 @@ func main() {
 
 	if runAll || *integrationOnly {
 		success = runner.runIntegrationTests(*verbose, false, "") && success
+	}
+
+	// Run cmd tests (includes fuzz tests for server API)
+	if runAll {
+		success = runner.runCmdTests(*verbose, false, false, "") && success
+	}
+
+	// Run auth tests
+	if runAll {
+		success = runner.runAuthTests(*verbose, false, "") && success
 	}
 
 	if runAll || *bench {
