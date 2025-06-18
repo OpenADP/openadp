@@ -1,0 +1,338 @@
+/* Reset and Base Styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    line-height: 1.6;
+    color: #1f2937;
+    background-color: #f9fafb;
+    min-height: 100vh;
+}
+
+/* App Layout */
+#app {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    max-width: 800px;
+    margin: 0 auto;
+    background-color: white;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Header */
+.app-header {
+    background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+    color: white;
+    padding: 2rem 1.5rem;
+    text-align: center;
+}
+
+.app-header h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.subtitle {
+    opacity: 0.9;
+    font-size: 0.9rem;
+}
+
+/* Main Content */
+.main-content {
+    flex: 1;
+    padding: 2rem 1.5rem;
+}
+
+/* Test Sections (Development) */
+.test-section {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.test-section h2 {
+    color: #374151;
+    margin-bottom: 1rem;
+    font-size: 1.25rem;
+}
+
+.test-controls {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.test-results {
+    background: white;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 1rem;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.test-results.success {
+    border-color: #10b981;
+    background-color: #f0fdf4;
+}
+
+.test-results.error {
+    border-color: #ef4444;
+    background-color: #fef2f2;
+}
+
+/* Buttons */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    min-height: 36px;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-primary {
+    background-color: #2563eb;
+    color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background-color: #1d4ed8;
+}
+
+.btn-secondary {
+    background-color: #6b7280;
+    color: white;
+}
+
+.btn-secondary:hover:not(:disabled) {
+    background-color: #4b5563;
+}
+
+.btn-success {
+    background-color: #10b981;
+    color: white;
+}
+
+.btn-danger {
+    background-color: #ef4444;
+    color: white;
+}
+
+/* Forms */
+input[type="password"],
+input[type="search"],
+input[type="text"] {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 1rem;
+    transition: border-color 0.2s ease;
+}
+
+input:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+/* Notes Interface (Future) */
+.notes-controls {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    align-items: center;
+}
+
+.notes-controls input[type="search"] {
+    flex: 1;
+}
+
+.notes-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.note-item {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 1rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.note-item:hover {
+    border-color: #2563eb;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.note-preview {
+    font-size: 0.875rem;
+    color: #6b7280;
+    line-height: 1.4;
+    max-height: 3rem;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+/* Footer */
+.app-footer {
+    background-color: #f8fafc;
+    border-top: 1px solid #e5e7eb;
+    padding: 1rem 1.5rem;
+    text-align: center;
+    font-size: 0.875rem;
+    color: #6b7280;
+}
+
+.sync-status {
+    font-weight: 500;
+}
+
+.sync-status.online {
+    color: #10b981;
+}
+
+.sync-status.syncing {
+    color: #f59e0b;
+}
+
+.sync-status.error {
+    color: #ef4444;
+}
+
+.device-id {
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+    font-size: 0.75rem;
+}
+
+/* Utility Classes */
+.hidden {
+    display: none !important;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.text-success {
+    color: #10b981;
+}
+
+.text-error {
+    color: #ef4444;
+}
+
+.text-warning {
+    color: #f59e0b;
+}
+
+/* Loading States */
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #e5e7eb;
+    border-radius: 50%;
+    border-top-color: #2563eb;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Responsive Design */
+@media (max-width: 640px) {
+    #app {
+        box-shadow: none;
+    }
+    
+    .app-header {
+        padding: 1.5rem 1rem;
+    }
+    
+    .app-header h1 {
+        font-size: 1.75rem;
+    }
+    
+    .main-content {
+        padding: 1.5rem 1rem;
+    }
+    
+    .test-section {
+        padding: 1rem;
+    }
+    
+    .test-controls {
+        flex-direction: column;
+    }
+    
+    .btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .notes-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Focus Styles for Keyboard Navigation */
+.btn:focus-visible,
+input:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+
+/* Dark Mode Support (Future) */
+@media (prefers-color-scheme: dark) {
+    /* Dark mode styles can be added here in the future */
+} 

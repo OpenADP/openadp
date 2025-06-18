@@ -21,8 +21,7 @@
     "format:check": "prettier --check src/**/*.{js,ts,css,html}",
     "deploy": "npm run build && gh-pages -d dist",
     "analyze": "npm run build && npx vite-bundle-analyzer dist",
-    "clean": "rm -rf dist node_modules/.vite",
-    "prepare": "husky install"
+    "clean": "rm -rf dist node_modules/.vite"
   },
   "keywords": [
     "openadp",

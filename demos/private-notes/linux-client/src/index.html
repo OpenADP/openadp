@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Private Notes - OpenADP Demo</title>
+    <meta name="description" content="Private Notes - A demonstration of OpenADP distributed cryptography">
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#2563eb">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Private Notes">
+    
+    <!-- Security Headers -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://*.r2.cloudflarestorage.com https://*.openadp.org">
+    
+    <link rel="stylesheet" href="./css/main.css">
+    <link rel="manifest" href="./assets/manifest.json">
+</head>
+<body>
+    <div id="app">
+        <header class="app-header">
+            <h1>Private Notes</h1>
+            <p class="subtitle">OpenADP Demo - Distributed Cryptography</p>
+        </header>
+
+        <main class="main-content">
+            <!-- Crypto Test Section (Development Only) -->
+            <section id="crypto-test" class="test-section">
+                <h2>🔐 Crypto Foundation Test</h2>
+                <div class="test-controls">
+                    <button id="test-crypto-btn" class="btn btn-primary">Test ChaCha20-Poly1305</button>
+                    <button id="test-hash-btn" class="btn btn-secondary">Test Content Hashing</button>
+                </div>
+                <div id="test-results" class="test-results">
+                    <p>Click buttons above to test crypto functionality...</p>
+                </div>
+            </section>
+
+            <!-- Vector Clock Test Section -->
+            <section id="vector-clock-test" class="test-section">
+                <h2>⏰ Vector Clock Test</h2>
+                <div class="test-controls">
+                    <button id="test-vector-clock-btn" class="btn btn-primary">Test Vector Clocks</button>
+                </div>
+                <div id="vector-clock-results" class="test-results">
+                    <p>Click button above to test vector clock functionality...</p>
+                </div>
+            </section>
+
+            <!-- Future: Login Section -->
+            <section id="login-section" class="hidden">
+                <h2>🔑 Enter PIN</h2>
+                <form id="login-form">
+                    <input type="password" id="pin-input" placeholder="Enter your PIN" maxlength="20" autocomplete="current-password">
+                    <button type="submit" class="btn btn-primary">Unlock Notes</button>
+                </form>
+            </section>
+
+            <!-- Future: Notes Section -->
+            <section id="notes-section" class="hidden">
+                <h2>📝 Your Notes</h2>
+                <div class="notes-controls">
+                    <button id="new-note-btn" class="btn btn-primary">+ New Note</button>
+                    <input type="search" id="search-input" placeholder="Search notes...">
+                </div>
+                <div id="notes-list" class="notes-list">
+                    <!-- Notes will be dynamically added here -->
+                </div>
+            </section>
+        </main>
+
+        <footer class="app-footer">
+            <p>
+                <span id="sync-status" class="sync-status">Offline</span> |
+                <span id="device-id" class="device-id">Device: Loading...</span>
+            </p>
+        </footer>
+    </div>
+
+    <!-- Development Scripts -->
+    <script type="module" src="./js/crypto-test.ts"></script>
+    <script type="module" src="./js/vector-clock-test.ts"></script>
+    
+    <!-- Main Application (Future) -->
+    <!-- <script type="module" src="./js/app.ts"></script> -->
+</body>
+</html> 
