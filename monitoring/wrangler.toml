@@ -17,15 +17,11 @@ ERROR_DURATION_MINUTES = "30"
 # KV namespace for storing health data
 [[kv_namespaces]]
 binding = "HEALTH_DATA"
-id = "your-kv-namespace-id"
-preview_id = "your-preview-kv-namespace-id"
+id = "b8b5c346673043f482b4604d9c885249"
+preview_id = "26fa6011f86341bc9c13785c65e69dde"
 
 # Cron trigger - runs every 5 minutes
 [triggers]
 crons = ["*/5 * * * *"]
 
-# Custom domain (optional)
-[env.production]
-routes = [
-  { pattern = "health.openadp.org/*", custom_domain = true }
-] 
+# Note: Custom domain health.openadp.org configured via Cloudflare dashboard 

@@ -42,6 +42,15 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Function to get wrangler command (local or global)
+get_wrangler() {
+    if [ -f "node_modules/.bin/wrangler" ]; then
+        echo "./node_modules/.bin/wrangler"
+    else
+        echo "wrangler"
+    fi
+}
+
 # Function to prompt for user input
 prompt_user() {
     local prompt="$1"
@@ -100,8 +109,20 @@ echo -e "${GREEN}✅ npm found: $(npm --version)${NC}"
 
 # Check for wrangler
 if ! command_exists wrangler; then
-    echo -e "${YELLOW}⚠️  Wrangler CLI not found. Installing...${NC}"
-    run_command "Installing Wrangler CLI" "npm install -g wrangler"
+    echo -e "${YELLOW}⚠️  Wrangler CLI not found. Installing locally...${NC}"
+    
+    # Initialize package.json if it doesn't exist
+    if [ ! -f "package.json" ]; then
+        echo '{"name": "openadp-monitoring", "private": true}' > package.json
+    fi
+    
+    # Install wrangler locally
+    run_command "Installing Wrangler CLI locally" "npm install wrangler --save-dev"
+    
+    # Add wrangler to PATH for this session
+    export PATH="$PWD/node_modules/.bin:$PATH"
+    
+    echo -e "${GREEN}✅ Wrangler CLI installed locally${NC}"
 else
     echo -e "${GREEN}✅ Wrangler CLI found: $(wrangler --version)${NC}"
 fi
@@ -120,6 +141,19 @@ echo ""
 echo -e "${BLUE}🔐 Step 2: Cloudflare Authentication${NC}"
 echo "===================================="
 
+# Create a minimal wrangler.toml for authentication
+cat > wrangler.toml.minimal << 'EOF'
+name = "openadp-health-monitor"
+main = "cloudflare-worker.js"
+compatibility_date = "2024-01-15"
+EOF
+
+# Backup original wrangler.toml and use minimal version
+if [ -f "wrangler.toml" ]; then
+    mv wrangler.toml wrangler.toml.backup
+fi
+mv wrangler.toml.minimal wrangler.toml
+
 echo "Checking Cloudflare authentication..."
 if wrangler whoami >/dev/null 2>&1; then
     echo -e "${GREEN}✅ Already authenticated with Cloudflare${NC}"
@@ -127,7 +161,7 @@ if wrangler whoami >/dev/null 2>&1; then
 else
     echo -e "${YELLOW}⚠️  Not authenticated with Cloudflare${NC}"
     echo "Opening browser for authentication..."
-    run_command "Authenticating with Cloudflare" "wrangler auth login"
+    run_command "Authenticating with Cloudflare" "wrangler login"
 fi
 
 echo ""
@@ -138,7 +172,7 @@ echo "=================================="
 
 echo "Creating KV namespace for health data..."
 KV_OUTPUT=$(wrangler kv:namespace create "HEALTH_DATA" 2>/dev/null || true)
-if [ $? -eq 0 ]; then
+if [ $? -eq 0 ] && [ -n "$KV_OUTPUT" ]; then
     PROD_KV_ID=$(echo "$KV_OUTPUT" | grep -o 'id = "[^"]*"' | cut -d'"' -f2)
     echo -e "${GREEN}✅ Production KV namespace created: $PROD_KV_ID${NC}"
 else
@@ -149,7 +183,7 @@ fi
 
 echo "Creating preview KV namespace..."
 PREVIEW_KV_OUTPUT=$(wrangler kv:namespace create "HEALTH_DATA" --preview 2>/dev/null || true)
-if [ $? -eq 0 ]; then
+if [ $? -eq 0 ] && [ -n "$PREVIEW_KV_OUTPUT" ]; then
     PREVIEW_KV_ID=$(echo "$PREVIEW_KV_OUTPUT" | grep -o 'id = "[^"]*"' | cut -d'"' -f2)
     echo -e "${GREEN}✅ Preview KV namespace created: $PREVIEW_KV_ID${NC}"
 else
@@ -158,10 +192,15 @@ else
     prompt_user "Enter your preview KV namespace ID:" "PREVIEW_KV_ID"
 fi
 
+# Restore original wrangler.toml and update it with KV IDs
+if [ -f "wrangler.toml.backup" ]; then
+    mv wrangler.toml.backup wrangler.toml
+fi
+
 # Update wrangler.toml with KV IDs
 echo "Updating wrangler.toml with KV namespace IDs..."
-sed -i.bak "s/id = \"your-kv-namespace-id\"/id = \"$PROD_KV_ID\"/" wrangler.toml
-sed -i.bak "s/preview_id = \"your-preview-kv-namespace-id\"/preview_id = \"$PREVIEW_KV_ID\"/" wrangler.toml
+sed -i.bak "s/id = \"\"/id = \"$PROD_KV_ID\"/" wrangler.toml
+sed -i.bak "s/preview_id = \"\"/preview_id = \"$PREVIEW_KV_ID\"/" wrangler.toml
 echo -e "${GREEN}✅ wrangler.toml updated with KV namespace IDs${NC}"
 
 echo ""

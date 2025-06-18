@@ -55,6 +55,8 @@ async function handleRequest(request) {
 
   try {
     switch (path) {
+      case '/':
+        return handleDashboardEndpoint(corsHeaders);
       case '/health':
         return handleHealthEndpoint(corsHeaders);
       case '/health/servers':
@@ -376,6 +378,562 @@ async function commitHealthDataToGitHub(healthData) {
   } catch (error) {
     console.error('Failed to commit to GitHub:', error);
   }
+}
+
+/**
+ * Handle / endpoint (dashboard)
+ */
+async function handleDashboardEndpoint(corsHeaders) {
+  const dashboardHTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenADP Network Health Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card h2 {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            color: #4a5568;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-overview {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat {
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            background: #f8f9fa;
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .healthy { color: #10b981; }
+        .unhealthy { color: #ef4444; }
+        .warning { color: #f59e0b; }
+
+        .servers-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+
+        .server-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            border-left: 4px solid #e5e7eb;
+            transition: all 0.3s ease;
+        }
+
+        .server-card.healthy {
+            border-left-color: #10b981;
+        }
+
+        .server-card.unhealthy {
+            border-left-color: #ef4444;
+        }
+
+        .server-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .server-url {
+            font-weight: 600;
+            color: #1f2937;
+            font-size: 1.1rem;
+        }
+
+        .server-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.healthy {
+            background: #10b981;
+        }
+
+        .status-dot.unhealthy {
+            background: #ef4444;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .server-metrics {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .metric {
+            text-align: center;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .metric-value {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #4a5568;
+        }
+
+        .metric-label {
+            font-size: 0.8rem;
+            color: #6b7280;
+            margin-top: 2px;
+        }
+
+        .error-message {
+            background: #fef2f2;
+            color: #dc2626;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            margin-top: 10px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: white;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .refresh-btn {
+            background: #4f46e5;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            margin: 20px auto;
+            display: block;
+        }
+
+        .refresh-btn:hover {
+            background: #4338ca;
+        }
+
+        .last-updated {
+            text-align: center;
+            color: rgba(255,255,255,0.8);
+            font-size: 0.9rem;
+            margin-top: 20px;
+        }
+
+        .country-flag {
+            font-size: 1.2rem;
+            margin-right: 8px;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+            
+            .servers-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .container {
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ OpenADP Network Health</h1>
+            <p>Real-time monitoring of OpenADP servers worldwide</p>
+        </div>
+
+        <div id="loading" class="loading">
+            <div class="loading-spinner"></div>
+            <p>Loading server health data...</p>
+        </div>
+
+        <div id="dashboard" class="dashboard" style="display: none;">
+            <div class="card">
+                <h2>📊 Network Overview</h2>
+                <div class="status-overview">
+                    <div class="stat">
+                        <div class="stat-number healthy" id="healthy-count">-</div>
+                        <div class="stat-label">Healthy</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number unhealthy" id="unhealthy-count">-</div>
+                        <div class="stat-label">Down</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number" id="total-count">-</div>
+                        <div class="stat-label">Total</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number" id="avg-response">-</div>
+                        <div class="stat-label">Avg Response</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>🌍 Geographic Distribution</h2>
+                <div id="geo-stats" class="status-overview">
+                    <!-- Geographic stats will be populated here -->
+                </div>
+            </div>
+        </div>
+
+        <div id="servers-container" style="display: none;">
+            <div class="servers-grid" id="servers-grid">
+                <!-- Server cards will be populated here -->
+            </div>
+        </div>
+
+        <button class="refresh-btn" onclick="loadHealthData()">🔄 Refresh Data</button>
+        <div class="last-updated" id="last-updated"></div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        
+        // Country code to flag emoji mapping
+        const countryFlags = {
+            'US': '🇺🇸',
+            'CA': '🇨🇦',
+            'GB': '🇬🇧',
+            'DE': '🇩🇪',
+            'FR': '🇫🇷',
+            'JP': '🇯🇵',
+            'AU': '🇦🇺',
+            'BR': '🇧🇷',
+            'IN': '🇮🇳',
+            'SG': '🇸🇬'
+        };
+
+        async function loadHealthData() {
+            try {
+                showLoading(true);
+                
+                const response = await fetch(\`\${API_BASE}/health\`);
+                if (!response.ok) {
+                    throw new Error(\`HTTP \${response.status}: \${response.statusText}\`);
+                }
+                
+                const data = await response.json();
+                displayHealthData(data);
+                
+            } catch (error) {
+                console.error('Failed to load health data:', error);
+                showError(\`Failed to load health data: \${error.message}\`);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function displayHealthData(data) {
+            // Update overview stats
+            document.getElementById('healthy-count').textContent = data.summary.healthy;
+            document.getElementById('unhealthy-count').textContent = data.summary.unhealthy;
+            document.getElementById('total-count').textContent = data.summary.total;
+            
+            // Calculate average response time
+            const healthyServers = data.servers.filter(s => s.healthy && s.responseTime);
+            const avgResponse = healthyServers.length > 0 
+                ? Math.round(healthyServers.reduce((sum, s) => sum + s.responseTime, 0) / healthyServers.length)
+                : 0;
+            document.getElementById('avg-response').textContent = avgResponse > 0 ? \`\${avgResponse}ms\` : 'N/A';
+
+            // Update geographic distribution
+            displayGeographicStats(data.servers);
+
+            // Display server cards
+            displayServers(data.servers);
+
+            // Update timestamp
+            const timestamp = new Date(data.timestamp);
+            document.getElementById('last-updated').textContent = 
+                \`Last updated: \${timestamp.toLocaleString()}\`;
+
+            // Show dashboard
+            document.getElementById('dashboard').style.display = 'grid';
+            document.getElementById('servers-container').style.display = 'block';
+        }
+
+        function displayGeographicStats(servers) {
+            const geoStats = {};
+            servers.forEach(server => {
+                const country = server.country || 'Unknown';
+                if (!geoStats[country]) {
+                    geoStats[country] = { total: 0, healthy: 0 };
+                }
+                geoStats[country].total++;
+                if (server.healthy) {
+                    geoStats[country].healthy++;
+                }
+            });
+
+            const geoContainer = document.getElementById('geo-stats');
+            geoContainer.innerHTML = '';
+
+            Object.entries(geoStats).forEach(([country, stats]) => {
+                const flag = countryFlags[country] || '🌍';
+                const healthyPercent = Math.round((stats.healthy / stats.total) * 100);
+                
+                const statDiv = document.createElement('div');
+                statDiv.className = 'stat';
+                statDiv.innerHTML = \`
+                    <div class="stat-number">\${flag}</div>
+                    <div class="stat-label">\${country}</div>
+                    <div style="font-size: 0.8rem; margin-top: 5px; color: \${healthyPercent === 100 ? '#10b981' : '#f59e0b'}">
+                        \${stats.healthy}/\${stats.total} (\${healthyPercent}%)
+                    </div>
+                \`;
+                geoContainer.appendChild(statDiv);
+            });
+        }
+
+        function displayServers(servers) {
+            const container = document.getElementById('servers-grid');
+            container.innerHTML = '';
+
+            servers.forEach(server => {
+                const serverCard = createServerCard(server);
+                container.appendChild(serverCard);
+            });
+        }
+
+        function createServerCard(server) {
+            const card = document.createElement('div');
+            card.className = \`server-card \${server.healthy ? 'healthy' : 'unhealthy'}\`;
+            
+            const flag = countryFlags[server.country] || '🌍';
+            const url = new URL(server.url);
+            const domain = url.hostname;
+
+            let metricsHTML = '';
+            if (server.healthy) {
+                const uptime = server.monitoring?.uptime_start 
+                    ? formatUptime(server.monitoring.uptime_start) 
+                    : 'Unknown';
+                
+                metricsHTML = \`
+                    <div class="server-metrics">
+                        <div class="metric">
+                            <div class="metric-value">\${server.responseTime}ms</div>
+                            <div class="metric-label">Response Time</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-value">\${uptime}</div>
+                            <div class="metric-label">Uptime</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-value">\${server.monitoring?.queries_current_hour || 0}</div>
+                            <div class="metric-label">Queries/Hour</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-value">\${server.monitoring?.error_rate_percent || 0}%</div>
+                            <div class="metric-label">Error Rate</div>
+                        </div>
+                    </div>
+                \`;
+            } else {
+                metricsHTML = \`
+                    <div class="error-message">
+                        ❌ \${server.error || 'Server is not responding'}
+                    </div>
+                \`;
+            }
+
+            card.innerHTML = \`
+                <div class="server-header">
+                    <div>
+                        <div class="server-url">
+                            <span class="country-flag">\${flag}</span>
+                            \${domain}
+                        </div>
+                        <div style="font-size: 0.9rem; color: #6b7280; margin-top: 2px;">
+                            \${server.country} • v\${server.version || 'Unknown'}
+                        </div>
+                    </div>
+                    <div class="server-status">
+                        <div class="status-dot \${server.healthy ? 'healthy' : 'unhealthy'}"></div>
+                        \${server.healthy ? 'Online' : 'Offline'}
+                    </div>
+                </div>
+                \${metricsHTML}
+            \`;
+
+            return card;
+        }
+
+        function formatUptime(uptimeStart) {
+            const start = new Date(uptimeStart);
+            const now = new Date();
+            const diffMs = now - start;
+            
+            const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            
+            if (days > 0) {
+                return \`\${days}d \${hours}h\`;
+            } else if (hours > 0) {
+                return \`\${hours}h\`;
+            } else {
+                return '< 1h';
+            }
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+            if (!show) {
+                document.getElementById('dashboard').style.display = 'grid';
+                document.getElementById('servers-container').style.display = 'block';
+            }
+        }
+
+        function showError(message) {
+            document.getElementById('loading').innerHTML = \`
+                <div style="color: #ef4444;">
+                    <h3>❌ Error</h3>
+                    <p>\${message}</p>
+                    <button class="refresh-btn" onclick="loadHealthData()" style="margin-top: 20px;">
+                        Try Again
+                    </button>
+                </div>
+            \`;
+        }
+
+        // Auto-refresh every 5 minutes
+        setInterval(loadHealthData, 5 * 60 * 1000);
+
+        // Load initial data
+        loadHealthData();
+    </script>
+</body>
+</html>`;
+
+  return new Response(dashboardHTML, {
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'text/html',
+    },
+  });
 }
 
 /**

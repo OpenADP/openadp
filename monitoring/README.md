@@ -63,6 +63,42 @@ The monitoring system:
 - `GET /health/history?hours=24` - Historical health data
 - `POST /health/trigger-check` - Manual health check
 
+### 🔗 **Live Monitoring URLs**
+- **🌟 Health Dashboard**: https://health.openadp.org/ (Beautiful Web UI)
+- **Health API**: https://health.openadp.org/health
+- **Server Status**: https://health.openadp.org/health/servers
+- **Health History**: https://health.openadp.org/health/history?hours=24
+- **Manual Health Check**: https://health.openadp.org/health/trigger-check
+
+### 🎯 **Quick Test Commands**
+
+```bash
+# View the beautiful dashboard (open in browser)
+open https://health.openadp.org/
+
+# Get current health status (JSON API)
+curl https://health.openadp.org/health
+
+# Get server list with health indicators  
+curl https://health.openadp.org/health/servers
+
+# Trigger manual health check
+curl https://health.openadp.org/health/trigger-check
+
+# Get 24-hour health history
+curl https://health.openadp.org/health/history?hours=24
+```
+
+### 📊 **Current Status**
+
+The monitoring system is **LIVE** and automatically:
+- ✅ **Polls all OpenADP servers** every 5 minutes
+- ✅ **Discovers servers** from https://servers.openadp.org/api/servers.json
+- ✅ **Tracks health metrics** (uptime, response times, error rates)
+- ✅ **Stores historical data** in Cloudflare KV
+- ✅ **Sends Discord alerts** for server issues
+- ✅ **Commits health data** to GitHub repository
+
 ### 📁 **GitHub Integration**
 - **Automatic commits** of health data to repository
 - **Transparent monitoring** - public access to health metrics
