@@ -350,10 +350,10 @@ func (cm *ClientManager) GetLiveServerURLs() []string {
 }
 
 // RegisterSecretWithAuthCode registers a secret share with the server using authentication codes
-func (c *OpenADPClient) RegisterSecretWithAuthCode(authCode, did, bid string, version, x int, y string, maxGuesses, expiration int) (bool, error) {
+func (c *OpenADPClient) RegisterSecretWithAuthCode(authCode, uid, did, bid string, version, x int, y string, maxGuesses, expiration int) (bool, error) {
 	// Server expects: [auth_code, uid, did, bid, version, x, y, max_guesses, expiration]
-	// When using auth codes, uid is empty string (server derives it from auth_code)
-	params := []interface{}{authCode, "", did, bid, version, x, y, maxGuesses, expiration}
+	// uid is the actual user identifier, auth_code is the sensitive authentication secret
+	params := []interface{}{authCode, uid, did, bid, version, x, y, maxGuesses, expiration}
 
 	response, err := c.makeRequest("RegisterSecret", params)
 	if err != nil {

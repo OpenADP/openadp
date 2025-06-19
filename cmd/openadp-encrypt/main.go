@@ -94,16 +94,41 @@ func main() {
 	// Get server list
 	var serverURLs []string
 	if *serversFlag != "" {
+		fmt.Println("📋 Using manually specified servers...")
 		serverURLs = strings.Split(*serversFlag, ",")
 		for i, url := range serverURLs {
 			serverURLs[i] = strings.TrimSpace(url)
 		}
+		fmt.Printf("   Servers specified: %d\n", len(serverURLs))
+		for i, url := range serverURLs {
+			fmt.Printf("   %d. %s\n", i+1, url)
+		}
 	} else {
-		serverURLs = client.DiscoverServerURLs(*serversURL)
+		fmt.Printf("🌐 Discovering servers from registry: %s\n", *serversURL)
+
+		// Try to scrape from registry first
+		registryURL := *serversURL + "/api/servers.json"
+		fmt.Printf("   Fetching server list from: %s\n", registryURL)
+
+		scraped, err := client.ScrapeServerURLs(*serversURL)
+		if err != nil || len(scraped) == 0 {
+			fmt.Printf("   ⚠️  Failed to fetch from registry: %v\n", err)
+			fmt.Println("   🔄 Falling back to hardcoded servers...")
+			serverURLs = client.GetFallbackServers()
+			fmt.Printf("   Fallback servers: %d\n", len(serverURLs))
+		} else {
+			fmt.Printf("   ✅ Successfully fetched %d servers from registry\n", len(scraped))
+			serverURLs = scraped
+		}
+
+		fmt.Println("   📋 Server list:")
+		for i, url := range serverURLs {
+			fmt.Printf("      %d. %s\n", i+1, url)
+		}
 	}
 
 	if len(serverURLs) == 0 {
-		fmt.Println("Error: No servers available")
+		fmt.Println("❌ Error: No servers available")
 		os.Exit(1)
 	}
 
@@ -132,12 +157,20 @@ OPTIONS:
     -version              Show version information
     -help                 Show this help message
 
+SERVER DISCOVERY:
+    By default, the tool fetches the server list from servers.openadp.org/api/servers.json
+    If the registry is unavailable, it falls back to hardcoded servers.
+    Use -servers to specify your own server list and skip discovery.
+
 EXAMPLES:
-    # Encrypt a file using discovered servers
+    # Encrypt a file using discovered servers (fetches from servers.openadp.org)
     openadp-encrypt -file document.txt
 
-    # Encrypt using specific servers
+    # Encrypt using specific servers (skip discovery)
     openadp-encrypt -file document.txt -servers "https://server1.com,https://server2.com"
+
+    # Use a different server registry
+    openadp-encrypt -file document.txt -servers-url "https://my-registry.com"
 
 The encrypted file will be saved as <filename>.enc
 `)
@@ -166,6 +199,14 @@ func encryptFile(inputFilename, password string, serverURLs []string, serversURL
 	fmt.Printf("🔑 Generated authentication codes for %d servers\n", len(authCodes.ServerAuthCodes))
 	fmt.Printf("🔑 Key generated successfully (UID=%s, DID=%s, BID=%s)\n", userID, getHostname(), "file://"+filepath.Base(inputFilename))
 
+	// Show which servers were actually used for key generation
+	if len(actualServerURLs) > 0 && len(actualServerURLs) != len(serverURLs) {
+		fmt.Printf("📋 Servers actually used for key generation (%d):\n", len(actualServerURLs))
+		for i, url := range actualServerURLs {
+			fmt.Printf("   %d. %s\n", i+1, url)
+		}
+	}
+
 	// Read input file
 	plaintext, err := os.ReadFile(inputFilename)
 	if err != nil {
@@ -191,11 +232,6 @@ func encryptFile(inputFilename, password string, serverURLs []string, serversURL
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata: %v", err)
 	}
-
-	// DEBUG: Print metadata during encryption
-	fmt.Printf("DEBUG ENCRYPT: Metadata JSON: %s\n", string(metadataJSON))
-	fmt.Printf("DEBUG ENCRYPT: UserID: %s\n", userID)
-	fmt.Printf("DEBUG ENCRYPT: AuthCode: %s\n", authCodes.BaseAuthCode)
 
 	// Encrypt the file using metadata as additional authenticated data
 	cipher, err := chacha20poly1305.New(encKey)
@@ -238,6 +274,12 @@ func encryptFile(inputFilename, password string, serverURLs []string, serversURL
 	fmt.Printf("🔐 Encryption: ChaCha20-Poly1305\n")
 	fmt.Printf("🌐 Servers: %d servers used\n", len(actualServerURLs))
 	fmt.Printf("🎯 Threshold: %d-of-%d recovery\n", threshold, len(actualServerURLs))
+
+	// Show final server list stored in metadata
+	fmt.Printf("📋 Servers stored in encrypted file metadata:\n")
+	for i, url := range actualServerURLs {
+		fmt.Printf("   %d. %s\n", i+1, url)
+	}
 
 	return nil
 }

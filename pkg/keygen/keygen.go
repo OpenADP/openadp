@@ -145,10 +145,6 @@ func GenerateEncryptionKey(filename, password, userID string, maxGuesses, expira
 	U := crypto.H([]byte(uid), []byte(did), []byte(bid), pin)
 	S := crypto.PointMul(secret, U)
 
-	// Debug: Print the point S during encryption
-	SCompressed := crypto.PointCompress(S)
-	fmt.Printf("DEBUG ENCRYPT: Point S = %x\n", SCompressed)
-
 	// Step 7: Create shares using secret sharing
 	threshold := max(1, min(2, len(liveClients))) // At least 1, prefer 2 if available
 	numShares := len(liveClients)
@@ -182,27 +178,18 @@ func GenerateEncryptionKey(filename, password, userID string, maxGuesses, expira
 		serverURL := liveServerURLs[i]
 		authCode := authCodes.ServerAuthCodes[serverURL]
 
-		// DEBUG: Print the scalar share si and compute si*U
-		si := share.Y
-		siU := crypto.PointMul(si, U)
-		siUCompressed := crypto.PointCompress(siU)
-		UCompressed := crypto.PointCompress(U)
-		fmt.Printf("DEBUG ENCRYPT: Share[%d] si = %x\n", i+1, si)
-		fmt.Printf("DEBUG ENCRYPT: Share[%d] U = %x\n", i+1, UCompressed)
-		fmt.Printf("DEBUG ENCRYPT: Share[%d] si*U (SENT) = %x\n", i+1, siUCompressed)
-
 		// Convert share Y to integer string (server expects integer, not base64)
 		yInt := share.Y.String()
 
 		success, err := client.RegisterSecretWithAuthCode(
-			authCode, did, bid, version, int(share.X.Int64()), yInt, maxGuesses, expiration)
+			authCode, uid, did, bid, version, int(share.X.Int64()), yInt, maxGuesses, expiration)
 
 		if err != nil {
-			registrationErrors = append(registrationErrors, fmt.Sprintf("Server %d: %v", i+1, err))
+			registrationErrors = append(registrationErrors, fmt.Sprintf("Server %d (%s): %v", i+1, serverURL, err))
 		} else if !success {
-			registrationErrors = append(registrationErrors, fmt.Sprintf("Server %d: Registration returned false", i+1))
+			registrationErrors = append(registrationErrors, fmt.Sprintf("Server %d (%s): Registration returned false", i+1, serverURL))
 		} else {
-			fmt.Printf("OpenADP: Registered share %s with server %d\n", share.X.String(), i+1)
+			fmt.Printf("OpenADP: Registered share %s with server %d (%s)\n", share.X.String(), i+1, serverURL)
 			successfulRegistrations++
 		}
 	}
