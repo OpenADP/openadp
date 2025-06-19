@@ -2,13 +2,13 @@
 
 Apparently, you can't write servers that handle gRPC requests behind
 Cloudflare.  This seems super lame, but until this changes or until we no
-longer support running bhind Cloudflare, we can't use anything but HTTP
+longer support running behind Cloudflare, we can't use anything but HTTP
 requests.
 
 Cloudflare _does_ support gRPC between tunnel endpoints via private networks.
-Their public messaging is conofusing, saying only that they support gRPC, and
+Their public messaging is confusing, saying only that they support gRPC, and
 when you try to follow their docs, you don't find out you're screwed until your
-server is running, and you can't connect from tthe client.
+server is running, and you can't connect from the client.
 
 # Compiling
 
