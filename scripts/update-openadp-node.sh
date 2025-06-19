@@ -26,6 +26,7 @@ DEFAULT_PORT="8080"
 # Script options
 SKIP_DEPS=false
 SKIP_TESTS=false
+SKIP_GIT_UPDATE=false
 DRY_RUN=false
 VERBOSE=false
 BACKUP_CONFIG=true
@@ -80,6 +81,7 @@ show_usage() {
     echo "  -n, --dry-run        Show what would be done without executing"
     echo "  -s, --skip-deps      Skip system dependency installation"
     echo "  -t, --skip-tests     Skip service tests after installation"
+    echo "  -g, --skip-git       Skip git pull (use current source code)"
     echo "  -b, --no-backup      Don't backup existing configuration"
     echo "  -p, --port PORT      Set service port (default: 8080)"
     echo ""
@@ -87,6 +89,7 @@ show_usage() {
     echo "  $0                   # Full install/update with all checks"
     echo "  $0 --dry-run         # Preview what would be done"
     echo "  $0 --skip-deps       # Update only (skip system packages)"
+    echo "  $0 --skip-git        # Build from current source (no git pull)"
     echo "  $0 --port 8081       # Install with custom port"
     echo ""
     echo "This script performs the following actions:"
@@ -126,6 +129,10 @@ parse_args() {
                 ;;
             -t|--skip-tests)
                 SKIP_TESTS=true
+                shift
+                ;;
+            -g|--skip-git)
+                SKIP_GIT_UPDATE=true
                 shift
                 ;;
             -b|--no-backup)
@@ -343,7 +350,16 @@ backup_config() {
 
 # Update source code
 update_source() {
+    if [ "$SKIP_GIT_UPDATE" = true ]; then
+        log_step "Skipping git update (using current source code)..."
+        log_success "Using existing source code"
+        return
+    fi
+    
     log_step "Updating source code from git..."
+    
+    # Ensure we're in the project directory
+    cd "$PROJECT_DIR"
     
     # Get current branch and status
     CURRENT_BRANCH=$(git branch --show-current)
@@ -364,9 +380,13 @@ update_source() {
     
     # Pull latest changes
     log_info "Pulling latest changes..."
-    exec_cmd git pull
-    
-    log_success "Source code updated"
+    if exec_cmd git pull; then
+        log_success "Source code updated"
+    else
+        log_warn "Git pull failed - this might be due to SSH key access or network issues"
+        log_info "Continuing with existing source code..."
+        log_info "To fix this, ensure the user running this script has git access configured"
+    fi
 }
 
 # Create service user and directories
