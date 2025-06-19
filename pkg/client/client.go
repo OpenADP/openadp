@@ -132,9 +132,9 @@ func (c *Client) testSingleServer(url string) *EncryptedOpenADPClient {
 	// Create encrypted client directly - it will auto-discover server info
 	client := CreateClient(url)
 
-	// Test with echo - use a simple test message with mandatory encryption
+	// Test with echo - use a simple test message
 	testMessage := fmt.Sprintf("liveness_test_%d", time.Now().Unix())
-	result, err := client.Echo(testMessage, true)
+	result, err := client.Echo(testMessage, false)
 
 	if err != nil {
 		log.Printf("  ❌ %s: %v", url, err)
@@ -146,12 +146,11 @@ func (c *Client) testSingleServer(url string) *EncryptedOpenADPClient {
 		return nil
 	}
 
-	// Server must support encryption to be considered live
+	// Check if server has public key for encryption
 	if client.serverPublicKey != nil {
 		log.Printf("  ✅ %s: Live (encrypted)", url)
 	} else {
-		log.Printf("  ❌ %s: No encryption support - rejected", url)
-		return nil
+		log.Printf("  ✅ %s: Live (no encryption)", url)
 	}
 
 	return client
@@ -198,10 +197,10 @@ func (c *Client) RegisterSecret(uid, did, bid string, version, x int, y []byte, 
 	// Convert y bytes to base64 string for JSON-RPC (server expects decimal or base64)
 	yStr := base64.StdEncoding.EncodeToString(y)
 
-	// Try each server until one succeeds - all with mandatory encryption
+	// Try each server until one succeeds
 	var lastErr error
 	for _, client := range liveServers {
-		success, err := client.RegisterSecret("", did, bid, version, x, yStr, maxGuesses, expiration, true, authData)
+		success, err := client.RegisterSecret("", did, bid, version, x, yStr, maxGuesses, expiration, false, authData)
 		if err == nil && success {
 			return true, nil
 		}
@@ -223,10 +222,10 @@ func (c *Client) RecoverSecret(uid, did, bid, b string, guessNum int, authData m
 		return nil, fmt.Errorf("no live servers available")
 	}
 
-	// Try each server until one succeeds - all with mandatory encryption
+	// Try each server until one succeeds
 	var lastErr error
 	for _, client := range liveServers {
-		result, err := client.RecoverSecret("", did, bid, b, guessNum, true, authData)
+		result, err := client.RecoverSecret("", did, bid, b, guessNum, false, authData)
 		if err == nil {
 			return result, nil
 		}
@@ -248,10 +247,10 @@ func (c *Client) ListBackups(uid string) ([]map[string]interface{}, error) {
 		return nil, fmt.Errorf("no live servers available")
 	}
 
-	// Try each server until one succeeds - all with mandatory encryption
+	// Try each server until one succeeds
 	var lastErr error
 	for _, client := range liveServers {
-		result, err := client.ListBackups("", true, nil)
+		result, err := client.ListBackups("", false, nil)
 		if err == nil {
 			return result, nil
 		}
@@ -273,8 +272,8 @@ func (c *Client) Echo(message string) (string, error) {
 		return "", fmt.Errorf("no live servers available")
 	}
 
-	// Use the first live server for echo - with mandatory encryption
-	return liveServers[0].Echo(message, true)
+	// Use the first live server for echo
+	return liveServers[0].Echo(message, false)
 }
 
 // GetServerInfo gets server information from the first available server

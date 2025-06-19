@@ -89,8 +89,6 @@ func ValidateRegisterInputs(uid, did, bid string, x int, y []byte, maxGuesses in
 		return fmt.Errorf("too many shares")
 	}
 	if len(y) > MaxYSize {
-		// Debug logging for Y share size issue
-		fmt.Printf("DEBUG: Y validation failed - len(y)=%d, MaxYSize=%d, y bytes: %v\n", len(y), MaxYSize, y)
 		return fmt.Errorf("Y share too large")
 	}
 	if maxGuesses > MaxGuesses {
@@ -225,19 +223,6 @@ func RecoverSecretByAuthCode(db *database.Database, authCode, did, bid string, b
 	if record == nil {
 		return nil, fmt.Errorf("share not found")
 	}
-
-	// Debug: Print what we retrieved from database
-	yIntFromDB := new(big.Int)
-	yBytesFromDB := make([]byte, len(record.Y))
-	copy(yBytesFromDB, record.Y)
-
-	// Y is stored in little-endian format
-	for i, j := 0, len(yBytesFromDB)-1; i < j; i, j = i+1, j-1 {
-		yBytesFromDB[i], yBytesFromDB[j] = yBytesFromDB[j], yBytesFromDB[i]
-	}
-	yIntFromDB.SetBytes(yBytesFromDB)
-	fmt.Printf("DATABASE RETRIEVED: x=%d, y=%s (hex: %x)\n",
-		record.X, yIntFromDB.String(), record.Y)
 
 	// Verify expected guess number (for idempotency)
 	if guessNum != record.NumGuesses {

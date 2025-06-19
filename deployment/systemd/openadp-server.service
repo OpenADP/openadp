@@ -1,0 +1,41 @@
+[Unit]
+Description=OpenADP Go JSON-RPC Server
+Documentation=https://github.com/waywardgeek/openadp
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=openadp
+Group=openadp
+WorkingDirectory=/opt/openadp
+ExecStart=/opt/openadp/bin/openadp-server -port 8080 -db /opt/openadp/data/openadp.db -auth true
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Load environment variables from configuration file
+EnvironmentFile=-/opt/openadp/openadp-server.conf
+
+# Default environment variables (can be overridden in openadp-server.conf)
+Environment=OPENADP_PORT=8080
+Environment=OPENADP_DB=/opt/openadp/data/openadp.db
+Environment=OPENADP_AUTH=true
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/openadp/data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# Resource limits
+LimitNOFILE=65536
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target 

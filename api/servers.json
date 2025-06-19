@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "updated": "2024-01-15T10:30:00Z",
+  "servers": [
+    {
+              "url": "https://xyzzy.openadp.org",
+      "public_key": "ed25519:ZCcXAp6wjREVQ9c+31V59aWWOu9u7HdsCIchCiocNyY=",
+      "country": "US"
+    },
+    {
+      "url": "https://sky.openadp.org",
+      "public_key": "ed25519:YeqSp+tLclkZpcDOYYDDbQl233JKjgLfbxx3Xt+Y2QU=",
+      "country": "US"
+    },
+    {
+      "url": "https://minime.openadp.org",
+      "public_key": "ed25519:x3l6IfRCaU8/lTOg7PF6337xhKh3l68CVDjmMY4ZCWI=",
+      "country": "US"
+    },
+    {
+      "url": "https://akash.network",
+      "public_key": "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder3AkashNetworkTestKey111Demo",
+      "country": "CA"
+    }
+  ]
+} 

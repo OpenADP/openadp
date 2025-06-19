@@ -378,7 +378,7 @@ OPTIONS:
     --bench             Run benchmarks
     --lint              Run linting (requires golangci-lint)
     --coverage          Generate coverage reports
-    --verbose           Verbose test output
+    --verbose, -v       Verbose test output
     --help              Show this help message
     --version           Show version information
 
@@ -386,8 +386,8 @@ EXAMPLES:
     # Run all tests with coverage
     run-tests --coverage --verbose
     
-    # Run only unit tests
-    run-tests --unit-only
+    # Run only unit tests with verbose output
+    run-tests --unit-only -v
     
     # Build tools and run integration tests
     run-tests --build-only --integration-only
@@ -411,6 +411,7 @@ func main() {
 		lint            = flag.Bool("lint", false, "Run linting")
 		coverage        = flag.Bool("coverage", false, "Generate coverage reports")
 		verbose         = flag.Bool("verbose", false, "Verbose output")
+		verboseShort    = flag.Bool("v", false, "Verbose output (short form)")
 		showVersion     = flag.Bool("version", false, "Show version")
 		help            = flag.Bool("help", false, "Show help")
 	)
@@ -427,8 +428,11 @@ func main() {
 		return
 	}
 
+	// Combine verbose flags
+	isVerbose := *verbose || *verboseShort
+
 	runner := NewTestRunner()
-	runner.verbose = *verbose
+	runner.verbose = isVerbose
 	runner.coverage = *coverage
 
 	fmt.Println("🚀 OpenADP Go Test Runner")
@@ -457,25 +461,25 @@ func main() {
 
 	// Run selected test suites
 	if runAll || *unitOnly {
-		success = runner.runUnitTests(*verbose, *coverage, false, false, "", 0) && success
+		success = runner.runUnitTests(isVerbose, *coverage, false, false, "", 0) && success
 	}
 
 	if runAll || *integrationOnly {
-		success = runner.runIntegrationTests(*verbose, false, "") && success
+		success = runner.runIntegrationTests(isVerbose, false, "") && success
 	}
 
 	// Run cmd tests (includes fuzz tests for server API)
 	if runAll {
-		success = runner.runCmdTests(*verbose, false, false, "") && success
+		success = runner.runCmdTests(isVerbose, false, false, "") && success
 	}
 
 	// Run auth tests
 	if runAll {
-		success = runner.runAuthTests(*verbose, false, "") && success
+		success = runner.runAuthTests(isVerbose, false, "") && success
 	}
 
 	if runAll || *bench {
-		success = runner.runBenchmarkTests(*verbose, "") && success
+		success = runner.runBenchmarkTests(isVerbose, "") && success
 	}
 
 	if runAll || *lint {
