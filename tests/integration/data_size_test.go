@@ -27,6 +27,19 @@ var testCases = []struct {
 func TestLargeYValues(t *testing.T) {
 	fmt.Println("Testing large Y values...")
 
+	// Start test servers using the existing helper
+	serverManager, err := NewTestServerManager()
+	if err != nil {
+		t.Fatalf("Failed to create server manager: %v", err)
+	}
+	defer serverManager.Cleanup()
+
+	servers, err := serverManager.StartServers(9200, 3)
+	if err != nil {
+		t.Fatalf("Failed to start test servers: %v", err)
+	}
+	defer serverManager.StopAllServers()
+
 	// Test cases with different Y values
 	testCases := []struct {
 		value       *big.Int
@@ -39,19 +52,15 @@ func TestLargeYValues(t *testing.T) {
 		{new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil), "2^256"},
 	}
 
-	// Initialize client
-	fallbackServers := []string{
-		"http://localhost:9200",
-		"http://localhost:9201",
-		"http://localhost:9202",
-	}
-
-	c := client.NewClient("", fallbackServers, 5*time.Second, 3)
+	// Initialize client with our test servers
+	c := client.NewClient("", serverManager.GetServerURLs(), 5*time.Second, 3)
 
 	liveCount := c.GetLiveServerCount()
 	if liveCount == 0 {
-		t.Skip("No live servers available - make sure local test servers are running")
+		t.Fatalf("No live servers available after starting test servers")
 	}
+
+	t.Logf("Started %d test servers, %d are live", len(servers), liveCount)
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
@@ -107,6 +116,19 @@ func testYSize(t *testing.T, c *client.Client, yInt *big.Int, description string
 func TestBasicRegistration(t *testing.T) {
 	fmt.Println("Testing basic secret registration...")
 
+	// Start test servers using the existing helper
+	serverManager, err := NewTestServerManager()
+	if err != nil {
+		t.Fatalf("Failed to create server manager: %v", err)
+	}
+	defer serverManager.Cleanup()
+
+	servers, err := serverManager.StartServers(9200, 3)
+	if err != nil {
+		t.Fatalf("Failed to start test servers: %v", err)
+	}
+	defer serverManager.StopAllServers()
+
 	// Test parameters
 	uid := "test@example.com"
 	did := "test_device"
@@ -124,20 +146,15 @@ func TestBasicRegistration(t *testing.T) {
 	fmt.Printf("y as integer: %s\n", yInt.String())
 	fmt.Printf("y as bytes length: %d\n", len(yBytes))
 
-	// Initialize client
-	fallbackServers := []string{
-		"http://localhost:9200",
-		"http://localhost:9201",
-		"http://localhost:9202",
-	}
-
-	c := client.NewClient("", fallbackServers, 5*time.Second, 3)
+	// Initialize client with our test servers
+	c := client.NewClient("", serverManager.GetServerURLs(), 5*time.Second, 3)
 
 	liveCount := c.GetLiveServerCount()
 	if liveCount == 0 {
-		t.Skip("No live servers available")
+		t.Fatalf("No live servers available after starting test servers")
 	}
 
+	t.Logf("Started %d test servers, %d are live", len(servers), liveCount)
 	fmt.Printf("Using %d live servers\n", liveCount)
 
 	// Try to register
@@ -157,19 +174,28 @@ func TestBasicRegistration(t *testing.T) {
 func TestEdgeCaseValues(t *testing.T) {
 	fmt.Println("Testing edge case values...")
 
-	// Initialize client
-	fallbackServers := []string{
-		"http://localhost:9200",
-		"http://localhost:9201",
-		"http://localhost:9202",
+	// Start test servers using the existing helper
+	serverManager, err := NewTestServerManager()
+	if err != nil {
+		t.Fatalf("Failed to create server manager: %v", err)
 	}
+	defer serverManager.Cleanup()
 
-	c := client.NewClient("", fallbackServers, 5*time.Second, 3)
+	servers, err := serverManager.StartServers(9200, 3)
+	if err != nil {
+		t.Fatalf("Failed to start test servers: %v", err)
+	}
+	defer serverManager.StopAllServers()
+
+	// Initialize client with our test servers
+	c := client.NewClient("", serverManager.GetServerURLs(), 5*time.Second, 3)
 
 	liveCount := c.GetLiveServerCount()
 	if liveCount == 0 {
-		t.Skip("No live servers available")
+		t.Fatalf("No live servers available after starting test servers")
 	}
+
+	t.Logf("Started %d test servers, %d are live", len(servers), liveCount)
 
 	// Test cases for edge values
 	edgeCases := []struct {
@@ -232,19 +258,28 @@ func TestEdgeCaseValues(t *testing.T) {
 func TestConcurrentRegistrations(t *testing.T) {
 	fmt.Println("Testing concurrent registrations...")
 
-	// Initialize client
-	fallbackServers := []string{
-		"http://localhost:9200",
-		"http://localhost:9201",
-		"http://localhost:9202",
+	// Start test servers using the existing helper
+	serverManager, err := NewTestServerManager()
+	if err != nil {
+		t.Fatalf("Failed to create server manager: %v", err)
 	}
+	defer serverManager.Cleanup()
 
-	c := client.NewClient("", fallbackServers, 5*time.Second, 3)
+	servers, err := serverManager.StartServers(9200, 3)
+	if err != nil {
+		t.Fatalf("Failed to start test servers: %v", err)
+	}
+	defer serverManager.StopAllServers()
+
+	// Initialize client with our test servers
+	c := client.NewClient("", serverManager.GetServerURLs(), 5*time.Second, 3)
 
 	liveCount := c.GetLiveServerCount()
 	if liveCount == 0 {
-		t.Skip("No live servers available")
+		t.Fatalf("No live servers available after starting test servers")
 	}
+
+	t.Logf("Started %d test servers, %d are live", len(servers), liveCount)
 
 	// Test parameters
 	uid := "concurrent_test@example.com"
