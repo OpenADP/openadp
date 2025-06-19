@@ -132,8 +132,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("🌐 Using %d servers for encryption\n", len(serverURLs))
-
 	// Encrypt the file
 	if err := encryptFile(*filename, passwordStr, serverURLs, *serversURL); err != nil {
 		fmt.Printf("❌ Encryption failed: %v\n", err)

@@ -178,11 +178,6 @@ func decryptFile(inputFilename, password string, overrideServers []string) error
 		return fmt.Errorf("failed to parse metadata: %v", err)
 	}
 
-	// DEBUG: Print metadata during decryption
-	fmt.Printf("DEBUG DECRYPT: Metadata JSON: %s\n", string(metadataJSON))
-	fmt.Printf("DEBUG DECRYPT: UserID: %s\n", metadata.UserID)
-	fmt.Printf("DEBUG DECRYPT: BaseAuthCode: %s\n", metadata.AuthCode)
-
 	serverURLs := metadata.Servers
 	if len(serverURLs) == 0 {
 		return fmt.Errorf("no server URLs found in metadata")
@@ -191,10 +186,20 @@ func decryptFile(inputFilename, password string, overrideServers []string) error
 	fmt.Printf("Found metadata with %d servers, threshold %d\n", len(serverURLs), metadata.Threshold)
 	fmt.Printf("File version: %s\n", metadata.Version)
 
+	// Show servers from metadata
+	fmt.Printf("📋 Servers from encrypted file metadata:\n")
+	for i, url := range serverURLs {
+		fmt.Printf("   %d. %s\n", i+1, url)
+	}
+
 	// Use override servers if provided
 	if len(overrideServers) > 0 {
-		fmt.Printf("Overriding metadata servers with %d custom servers\n", len(overrideServers))
+		fmt.Printf("🔄 Overriding metadata servers with %d custom servers\n", len(overrideServers))
 		serverURLs = overrideServers
+		fmt.Printf("📋 Override servers:\n")
+		for i, url := range serverURLs {
+			fmt.Printf("   %d. %s\n", i+1, url)
+		}
 	}
 
 	// Check authentication requirements
@@ -223,18 +228,11 @@ func decryptFile(inputFilename, password string, overrideServers []string) error
 		return fmt.Errorf("failed to create cipher: %v", err)
 	}
 
-	fmt.Printf("Debug: About to decrypt with key length: %d, nonce length: %d, ciphertext length: %d, metadata length: %d\n",
-		len(encKey), len(nonce), len(ciphertext), len(metadataJSON))
-
 	plaintext, err := cipher.Open(nil, nonce, ciphertext, metadataJSON)
 	if err != nil {
-		fmt.Printf("Debug: ChaCha20-Poly1305 decryption error: %v\n", err)
 		// AEAD authentication failure should always be fatal
 		return fmt.Errorf("decryption failed: %v (wrong password or corrupted file)", err)
 	}
-
-	fmt.Printf("Debug: ChaCha20-Poly1305 decryption succeeded\n")
-	fmt.Printf("Debug: Plaintext length: %d\n", len(plaintext))
 
 	// Write the decrypted file
 	if err := os.WriteFile(outputFilename, plaintext, 0644); err != nil {
@@ -246,6 +244,12 @@ func decryptFile(inputFilename, password string, overrideServers []string) error
 	fmt.Printf("🌐 Servers: %d servers used\n", len(serverURLs))
 	fmt.Printf("🎯 Threshold: %d-of-%d recovery\n", metadata.Threshold, len(serverURLs))
 	fmt.Printf("🔐 Authentication: Enabled (Authentication Codes)\n")
+
+	// Show final server list used for recovery
+	fmt.Printf("📋 Servers used for decryption:\n")
+	for i, url := range serverURLs {
+		fmt.Printf("   %d. %s\n", i+1, url)
+	}
 
 	return nil
 }

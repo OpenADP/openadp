@@ -11,7 +11,6 @@ package sharing
 import (
 	"crypto/rand"
 	"errors"
-	"fmt"
 	"math/big"
 
 	"github.com/openadp/openadp/pkg/crypto"
@@ -160,7 +159,6 @@ func RecoverSB(shares []*PointShare) (*crypto.Point2D, error) {
 	}
 
 	result := crypto.Unexpand(sb)
-	fmt.Printf("DEBUG LAGRANGE: Final recovered s*B = (%x, %x)\n", result.X, result.Y)
 	return result, nil
 }
 
@@ -223,11 +221,6 @@ func RecoverPointSecret(shares []*PointShare) (*crypto.Point2D, error) {
 		return nil, errors.New("no shares provided")
 	}
 
-	fmt.Printf("DEBUG LAGRANGE: Starting with %d point shares\n", len(shares))
-	for i, share := range shares {
-		fmt.Printf("DEBUG LAGRANGE: Share %d: X=%s, Point=(%x, %x)\n", i, share.X.String(), share.Point.X, share.Point.Y)
-	}
-
 	prime := crypto.Q
 
 	// Compute Lagrange interpolation weights w[i]
@@ -274,12 +267,8 @@ func RecoverPointSecret(shares []*PointShare) (*crypto.Point2D, error) {
 
 		weightedPoint := crypto.PointMul(weights[i], extendedPoint)
 		sb = crypto.PointAdd(sb, weightedPoint)
-
-		fmt.Printf("DEBUG LAGRANGE: Weight[%d] = %x\n", i, weights[i])
-		fmt.Printf("DEBUG LAGRANGE: Weighted point[%d] contributes to sum\n", i)
 	}
 
 	result := crypto.Unexpand(sb)
-	fmt.Printf("DEBUG LAGRANGE: Final recovered s*B = (%x, %x)\n", result.X, result.Y)
 	return result, nil
 }

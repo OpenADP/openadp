@@ -322,42 +322,30 @@ func RecoverEncryptionKey(filename, password, userID string, serverURLs []string
 		authCode := authCodes.ServerAuthCodes[serverURL]
 
 		// Get current guess number for this backup from the server
-		fmt.Printf("Debug: Getting current guess number from server %d\n", i+1)
 		backups, err := client.ListBackupsWithAuthCode(authCode)
 		guessNum := 0 // Default to 0 if we can't determine current state
 		if err != nil {
 			fmt.Printf("Warning: Could not list backups from server %d: %v\n", i+1, err)
 		} else {
-			fmt.Printf("Debug: Server %d returned %d backups\n", i+1, len(backups))
 			// Find our backup in the list from this server
-			for j, backup := range backups {
-				fmt.Printf("Debug: Backup %d: BID=%s, NumGuesses=%d\n", j, backup.BID, backup.NumGuesses)
+			for _, backup := range backups {
 				if backup.BID == bid {
 					guessNum = backup.NumGuesses
-					fmt.Printf("Debug: Found matching backup with guess_num=%d\n", guessNum)
 					break
 				}
 			}
-			if guessNum == 0 {
-				fmt.Printf("Debug: No matching backup found for BID=%s\n", bid)
-			}
 		}
-
-		fmt.Printf("Debug: Using guess_num=%d for server %d\n", guessNum, i+1)
-
-		// Use compressed point format (base64 string) - standard for all servers
-		fmt.Printf("Debug: Using compressed point format for server %d\n", i+1)
 		result, err := client.RecoverSecretWithAuthCode(authCode, did, bid, bBase64Format, guessNum)
 
 		if err != nil {
-			fmt.Printf("Server %d recovery failed: %v\n", i+1, err)
+			fmt.Printf("Server %d (%s) recovery failed: %v\n", i+1, serverURL, err)
 			continue
 		}
 
 		// Decompress si_b from the result
 		siB4D, err := crypto.PointDecompress(result.SiBBytes)
 		if err != nil {
-			fmt.Printf("Server %d: Failed to decompress si_b: %v\n", i+1, err)
+			fmt.Printf("Server %d (%s): Failed to decompress si_b: %v\n", i+1, serverURL, err)
 			continue
 		}
 
@@ -370,27 +358,8 @@ func RecoverEncryptionKey(filename, password, userID string, serverURLs []string
 			Point: siB, // This is si*B point returned by server
 		}
 
-		// DEBUG: Print what we got from the server
-		fmt.Printf("DEBUG: Server %d returned X=%d, siB=(%x, %x)\n", i+1, result.X, siB.X, siB.Y)
-		fmt.Printf("DEBUG: Created PointShare with X=%s, Point=(%x, %x)\n", pointShare.X.String(), pointShare.Point.X, pointShare.Point.Y)
-
-		// DEBUG: Convert si*B back to si*U to verify
-		// We have si*B, and B = r*U, so si*U = r^-1 * (si*B)
-		siBExtended := crypto.Expand(siB)
-		siU := crypto.PointMul(rInv, siBExtended)
-		siUCompressed := crypto.PointCompress(siU)
-
-		// DEBUG: Also compute what si should be by extracting it from si*B
-		// Since si*B = si * (r*U), we need to figure out si from the server response
-		// The server should have returned the original si value somehow
-		UCompressed := crypto.PointCompress(U)
-		fmt.Printf("DEBUG DECRYPT: Share[%d] U = %x\n", i+1, UCompressed)
-		fmt.Printf("DEBUG DECRYPT: Share[%d] si*U (RECOVERED) = %x\n", i+1, siUCompressed)
-
-		// TODO: We need to get the actual si value from the server to compare
-
 		recoveredPointShares = append(recoveredPointShares, pointShare)
-		fmt.Printf("OpenADP: Recovered share %d from server %d\n", result.X, i+1)
+		fmt.Printf("OpenADP: Recovered share %d from server %d (%s)\n", result.X, i+1, serverURL)
 	}
 
 	if len(recoveredPointShares) < threshold {
@@ -414,10 +383,6 @@ func RecoverEncryptionKey(filename, password, userID string, serverURLs []string
 	// This matches Python: rec_s_point = crypto.point_mul(r_inv, crypto.expand(rec_sb))
 	recoveredSB4D := crypto.Expand(recoveredSB)
 	originalSU := crypto.PointMul(rInv, recoveredSB4D)
-
-	// Debug: Print the recovered point S during decryption
-	recoveredSCompressed := crypto.PointCompress(originalSU)
-	fmt.Printf("DEBUG DECRYPT: Point S = %x\n", recoveredSCompressed)
 
 	// Step 8: Derive same encryption key
 	encKey := crypto.DeriveEncKey(originalSU)
