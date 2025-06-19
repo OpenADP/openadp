@@ -131,6 +131,9 @@
             overflow-x: auto;
             font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
             position: relative;
+            white-space: pre-wrap;
+            word-break: break-all;
+            line-height: 1.5;
         }
 
         .code-block::before {
@@ -350,7 +353,8 @@
                         <h4>🍓 For Raspberry Pi OS (Debian-based):</h4>
                         <div class="code-block" data-title="Raspberry Pi OS Setup">
 # Update your system
-sudo apt update && sudo apt upgrade -y
+sudo apt update
+sudo apt upgrade -y
 
 # Install essential packages
 sudo apt install -y git curl wget build-essential
@@ -509,7 +513,8 @@ sudo ./scripts/update-openadp-node.sh
 # 2. We'll provide you with 2 commands like these:
 
 # Command 1: Install cloudflared
-curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -o cloudflared
+curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 \
+     -o cloudflared
 sudo mv cloudflared /usr/local/bin/
 sudo chmod +x /usr/local/bin/cloudflared
 
