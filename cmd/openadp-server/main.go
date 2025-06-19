@@ -57,14 +57,21 @@ type JSONRPCError struct {
 	Data    interface{} `json:"data,omitempty"`
 }
 
+// RequestContext tracks whether a request came through encrypted channel
+type RequestContext struct {
+	IsEncrypted bool
+	SessionID   string
+}
+
 // Server represents the OpenADP JSON-RPC server
 type Server struct {
-	db          *database.Database
-	serverKey   []byte
-	authEnabled bool
-	port        int
-	dbPath      string
-	monitoring  *server.MonitoringTracker
+	db             *database.Database
+	serverKey      []byte
+	authEnabled    bool
+	port           int
+	dbPath         string
+	monitoring     *server.MonitoringTracker
+	sessionManager *server.NoiseSessionManager // Add session manager
 }
 
 // NewServer creates a new OpenADP server instance
@@ -82,12 +89,13 @@ func NewServer(dbPath string, port int, authEnabled bool) (*Server, error) {
 	}
 
 	return &Server{
-		db:          db,
-		serverKey:   serverKey,
-		authEnabled: authEnabled,
-		port:        port,
-		dbPath:      dbPath,
-		monitoring:  server.NewMonitoringTracker(),
+		db:             db,
+		serverKey:      serverKey,
+		authEnabled:    authEnabled,
+		port:           port,
+		dbPath:         dbPath,
+		monitoring:     server.NewMonitoringTracker(),
+		sessionManager: server.NewNoiseSessionManager(nil), // Will generate server key
 	}, nil
 }
 
@@ -165,8 +173,24 @@ func (s *Server) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Route to appropriate method
-	result, err := s.routeMethod(req.Method, req.Params)
+	// Route to appropriate method based on 2-round Noise-NK approach
+	var result interface{}
+	var err error
+
+	switch req.Method {
+	case "noise_handshake":
+		// Round 1: Establish Noise-NK session
+		result, err = s.handleNoiseHandshake(req.Params)
+	case "encrypted_call":
+		// Round 2: Process encrypted request and return encrypted response
+		result, err = s.handleEncryptedCall(req.Params)
+	default:
+		// Regular unencrypted methods
+		result, err = s.routeMethodWithContext(req.Method, req.Params, &RequestContext{
+			IsEncrypted: false,
+			SessionID:   "",
+		})
+	}
 
 	// Build response
 	response := JSONRPCResponse{
@@ -190,16 +214,26 @@ func (s *Server) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// routeMethod routes JSON-RPC method calls to appropriate handlers
-func (s *Server) routeMethod(method string, params []interface{}) (interface{}, error) {
+// routeMethodWithContext routes JSON-RPC method calls with request context
+func (s *Server) routeMethodWithContext(method string, params []interface{}, ctx *RequestContext) (interface{}, error) {
 	switch method {
 	case "Echo":
 		return s.handleEcho(params)
 	case "GetServerInfo":
 		return s.handleGetServerInfo(params)
+	case "NoiseHandshake":
+		return s.handleNoiseHandshake(params)
 	case "RegisterSecret":
+		// Enforce encryption for RegisterSecret
+		if !ctx.IsEncrypted {
+			return nil, fmt.Errorf("RegisterSecret requires Noise-NK encryption")
+		}
 		return s.handleRegisterSecret(params)
 	case "RecoverSecret":
+		// Enforce encryption for RecoverSecret
+		if !ctx.IsEncrypted {
+			return nil, fmt.Errorf("RecoverSecret requires Noise-NK encryption")
+		}
 		return s.handleRecoverSecret(params)
 	case "ListBackups":
 		return s.handleListBackups(params)
@@ -465,6 +499,125 @@ func (s *Server) handleListBackups(params []interface{}) (interface{}, error) {
 	}
 
 	return result, nil
+}
+
+// handleNoiseHandshake handles Round 1: Noise-NK handshake establishment
+func (s *Server) handleNoiseHandshake(params []interface{}) (interface{}, error) {
+	if len(params) != 1 {
+		return nil, fmt.Errorf("noise_handshake requires exactly 1 parameter")
+	}
+
+	// Parse params which should be {"session": "sessionId", "message": "base64_msg"}
+	paramsObj, ok := params[0].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("noise_handshake params must be an object")
+	}
+
+	sessionID, ok := paramsObj["session"].(string)
+	if !ok {
+		return nil, fmt.Errorf("noise_handshake requires 'session' field")
+	}
+
+	msgB64, ok := paramsObj["message"].(string)
+	if !ok {
+		return nil, fmt.Errorf("noise_handshake requires 'message' field")
+	}
+
+	// Decode handshake message
+	handshakeMsg, err := base64.StdEncoding.DecodeString(msgB64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base64 handshake message: %v", err)
+	}
+
+	// Start handshake - this processes client's message and returns server response
+	serverHandshakeResponse, err := s.sessionManager.StartHandshake(sessionID, handshakeMsg)
+	if err != nil {
+		return nil, fmt.Errorf("handshake failed: %v", err)
+	}
+
+	// Return server's handshake response
+	return map[string]interface{}{
+		"message": base64.StdEncoding.EncodeToString(serverHandshakeResponse),
+	}, nil
+}
+
+// handleEncryptedCall handles Round 2: Encrypted method call
+func (s *Server) handleEncryptedCall(params []interface{}) (interface{}, error) {
+	if len(params) != 1 {
+		return nil, fmt.Errorf("encrypted_call requires exactly 1 parameter")
+	}
+
+	// Parse params which should be {"session": "sessionId", "data": "base64_encrypted_data"}
+	paramsObj, ok := params[0].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("encrypted_call params must be an object")
+	}
+
+	sessionID, ok := paramsObj["session"].(string)
+	if !ok {
+		return nil, fmt.Errorf("encrypted_call requires 'session' field")
+	}
+
+	dataB64, ok := paramsObj["data"].(string)
+	if !ok {
+		return nil, fmt.Errorf("encrypted_call requires 'data' field")
+	}
+
+	// Decode encrypted data
+	encryptedData, err := base64.StdEncoding.DecodeString(dataB64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base64 encrypted data: %v", err)
+	}
+
+	// Decrypt the call
+	decryptedCall, err := s.sessionManager.DecryptCall(sessionID, encryptedData)
+	if err != nil {
+		return nil, fmt.Errorf("decryption failed: %v", err)
+	}
+
+	// Extract method and params from decrypted call
+	method, ok := decryptedCall["method"].(string)
+	if !ok {
+		return nil, fmt.Errorf("decrypted call missing method")
+	}
+
+	callParams, ok := decryptedCall["params"].([]interface{})
+	if !ok {
+		// params might be nil or not an array
+		callParams = []interface{}{}
+	}
+
+	// Route the decrypted method call (mark as encrypted)
+	result, err := s.routeMethodWithContext(method, callParams, &RequestContext{
+		IsEncrypted: true,
+		SessionID:   sessionID,
+	})
+
+	// Prepare response for encryption
+	responseDict := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      decryptedCall["id"],
+	}
+
+	if err != nil {
+		responseDict["error"] = map[string]interface{}{
+			"code":    -32603,
+			"message": err.Error(),
+		}
+	} else {
+		responseDict["result"] = result
+	}
+
+	// Encrypt the response
+	encryptedResponse, err := s.sessionManager.EncryptResponse(sessionID, responseDict)
+	if err != nil {
+		return nil, fmt.Errorf("response encryption failed: %v", err)
+	}
+
+	// Return encrypted response
+	return map[string]interface{}{
+		"data": base64.StdEncoding.EncodeToString(encryptedResponse),
+	}, nil
 }
 
 // Start starts the JSON-RPC server
