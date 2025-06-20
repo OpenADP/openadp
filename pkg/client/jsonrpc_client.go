@@ -168,18 +168,11 @@ func (c *OpenADPClient) makeRequest(method string, params interface{}) (*JSONRPC
 
 // RegisterSecret registers a secret share with the server
 func (c *OpenADPClient) RegisterSecret(uid, did, bid string, version, x int, y string, maxGuesses, expiration int) (bool, error) {
-	params := map[string]interface{}{
-		"uid":         uid,
-		"did":         did,
-		"bid":         bid,
-		"version":     version,
-		"x":           x,
-		"y":           y,
-		"max_guesses": maxGuesses,
-		"expiration":  expiration,
-	}
+	// Server expects: [auth_code, uid, did, bid, version, x, y, max_guesses, expiration] (9 parameters)
+	// For basic client, we don't have auth_code, so we'll pass empty string
+	params := []interface{}{"", uid, did, bid, version, x, y, maxGuesses, expiration}
 
-	response, err := c.makeRequest("register_secret", params)
+	response, err := c.makeRequest("RegisterSecret", params)
 	if err != nil {
 		return false, err
 	}
@@ -194,15 +187,11 @@ func (c *OpenADPClient) RegisterSecret(uid, did, bid string, version, x int, y s
 
 // RecoverSecret recovers a secret share from the server
 func (c *OpenADPClient) RecoverSecret(uid, did, bid string, b *crypto.Point2D, guessNum int) (*RecoverSecretResult, error) {
-	params := map[string]interface{}{
-		"uid":       uid,
-		"did":       did,
-		"bid":       bid,
-		"b":         b,
-		"guess_num": guessNum,
-	}
+	// Server expects: [auth_code, uid, did, bid, b, guess_num] (6 parameters)
+	// For basic client, we don't have auth_code, so we'll pass empty string
+	params := []interface{}{"", uid, did, bid, b, guessNum}
 
-	response, err := c.makeRequest("recover_secret", params)
+	response, err := c.makeRequest("RecoverSecret", params)
 	if err != nil {
 		return nil, err
 	}
@@ -223,9 +212,10 @@ func (c *OpenADPClient) RecoverSecret(uid, did, bid string, b *crypto.Point2D, g
 
 // ListBackups lists all backups for a user
 func (c *OpenADPClient) ListBackups(uid string) ([]ListBackupsResult, error) {
-	params := map[string]string{"uid": uid}
+	// Server expects: [uid] (1 parameter)
+	params := []interface{}{uid}
 
-	response, err := c.makeRequest("list_backups", params)
+	response, err := c.makeRequest("ListBackups", params)
 	if err != nil {
 		return nil, err
 	}

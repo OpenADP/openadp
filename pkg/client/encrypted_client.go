@@ -280,8 +280,9 @@ func (c *EncryptedOpenADPClient) RegisterSecret(authCode, uid, did, bid string, 
 }
 
 // RecoverSecret recovers a secret with optional encryption
-func (c *EncryptedOpenADPClient) RecoverSecret(authCode, did, bid, b string, guessNum int, encrypted bool, authData map[string]interface{}) (map[string]interface{}, error) {
-	params := []interface{}{authCode, did, bid, b, guessNum}
+func (c *EncryptedOpenADPClient) RecoverSecret(authCode, uid, did, bid, b string, guessNum int, encrypted bool, authData map[string]interface{}) (map[string]interface{}, error) {
+	// Server expects: [auth_code, uid, did, bid, b, guess_num] (6 parameters)
+	params := []interface{}{authCode, uid, did, bid, b, guessNum}
 
 	result, err := c.makeRequest("RecoverSecret", params, encrypted, authData)
 	if err != nil {
@@ -296,9 +297,10 @@ func (c *EncryptedOpenADPClient) RecoverSecret(authCode, did, bid, b string, gue
 	return response, nil
 }
 
-// ListBackups lists backups for a user with auth code verification
-func (c *EncryptedOpenADPClient) ListBackups(uid, authCode string, encrypted bool, authData map[string]interface{}) ([]map[string]interface{}, error) {
-	params := []interface{}{uid, authCode}
+// ListBackups lists backups for a user
+func (c *EncryptedOpenADPClient) ListBackups(uid string, encrypted bool, authData map[string]interface{}) ([]map[string]interface{}, error) {
+	// Server expects: [uid] (1 parameter)
+	params := []interface{}{uid}
 
 	result, err := c.makeRequest("ListBackups", params, encrypted, authData)
 	if err != nil {

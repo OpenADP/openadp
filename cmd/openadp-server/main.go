@@ -411,28 +411,33 @@ func (s *Server) handleRegisterSecret(params []interface{}) (interface{}, error)
 
 // handleRecoverSecret handles the RecoverSecret method
 func (s *Server) handleRecoverSecret(params []interface{}) (interface{}, error) {
-	if len(params) != 5 {
-		return nil, fmt.Errorf("RecoverSecret requires exactly 5 parameters")
+	if len(params) != 6 {
+		return nil, fmt.Errorf("RecoverSecret requires exactly 6 parameters")
 	}
 
-	// Parse parameters: [auth_code, did, bid, b, guess_num]
+	// Parse parameters: [auth_code, uid, did, bid, b, guess_num]
 	authCode, ok := params[0].(string)
 	if !ok {
 		return nil, fmt.Errorf("auth_code must be a string")
 	}
 
-	did, ok := params[1].(string)
+	uid, ok := params[1].(string)
+	if !ok {
+		return nil, fmt.Errorf("uid must be a string")
+	}
+
+	did, ok := params[2].(string)
 	if !ok {
 		return nil, fmt.Errorf("did must be a string")
 	}
 
-	bid, ok := params[2].(string)
+	bid, ok := params[3].(string)
 	if !ok {
 		return nil, fmt.Errorf("bid must be a string")
 	}
 
 	// Parse point B (expecting base64 encoded compressed point only)
-	bStr, ok := params[3].(string)
+	bStr, ok := params[4].(string)
 	if !ok {
 		return nil, fmt.Errorf("b must be a base64-encoded compressed point string")
 	}
@@ -449,18 +454,18 @@ func (s *Server) handleRecoverSecret(params []interface{}) (interface{}, error) 
 	}
 	b := crypto.Unexpand(b4D)
 
-	guessNumFloat, ok := params[4].(float64)
+	guessNumFloat, ok := params[5].(float64)
 	if !ok {
 		return nil, fmt.Errorf("guess_num must be a number")
 	}
 	guessNum := int(guessNumFloat)
 
 	// Debug: Print what we're about to recover
-	fmt.Printf("SERVER %d RECOVERING: did=%s, bid=%s, guess_num=%d\n",
-		s.port, did, bid, guessNum)
+	fmt.Printf("SERVER %d RECOVERING: uid=%s, did=%s, bid=%s, guess_num=%d\n",
+		s.port, uid, did, bid, guessNum)
 
-	// Recover the secret using auth code
-	response, err := server.RecoverSecretByAuthCode(s.db, authCode, did, bid, b, guessNum)
+	// Recover the secret using auth code and primary key
+	response, err := server.RecoverSecretWithAuthCode(s.db, authCode, uid, did, bid, b, guessNum)
 	if err != nil {
 		return nil, err
 	}
@@ -490,27 +495,13 @@ func (s *Server) handleRecoverSecret(params []interface{}) (interface{}, error) 
 
 // handleListBackups handles the ListBackups method
 func (s *Server) handleListBackups(params []interface{}) (interface{}, error) {
-	if len(params) != 2 {
-		return nil, fmt.Errorf("ListBackups requires exactly 2 parameters: uid and auth_code")
+	if len(params) != 1 {
+		return nil, fmt.Errorf("ListBackups requires exactly 1 parameter: uid")
 	}
 
 	uid, ok := params[0].(string)
 	if !ok {
 		return nil, fmt.Errorf("uid must be a string")
-	}
-
-	authCode, ok := params[1].(string)
-	if !ok {
-		return nil, fmt.Errorf("auth_code must be a string")
-	}
-
-	// Verify the auth code is valid for this user
-	valid, err := s.db.VerifyAuthCodeForUser(uid, authCode)
-	if err != nil {
-		return nil, fmt.Errorf("failed to verify auth code: %v", err)
-	}
-	if !valid {
-		return nil, fmt.Errorf("invalid auth code for user")
 	}
 
 	// Get all backups for this user using the proper ListBackups function

@@ -286,7 +286,7 @@ func (c *Client) RegisterSecret(uid, did, bid string, version, x int, y []byte, 
 }
 
 // RecoverSecret recovers a secret from servers with failover
-func (c *Client) RecoverSecret(uid, did, bid, b string, guessNum int, authData map[string]interface{}) (map[string]interface{}, error) {
+func (c *Client) RecoverSecret(authCode, uid, did, bid, b string, guessNum int, authData map[string]interface{}) (map[string]interface{}, error) {
 	c.mu.RLock()
 	liveServers := make([]*EncryptedOpenADPClient, len(c.liveServers))
 	copy(liveServers, c.liveServers)
@@ -299,7 +299,7 @@ func (c *Client) RecoverSecret(uid, did, bid, b string, guessNum int, authData m
 	// Try each server until one succeeds
 	var lastErr error
 	for _, client := range liveServers {
-		result, err := client.RecoverSecret("", did, bid, b, guessNum, true, authData)
+		result, err := client.RecoverSecret(authCode, uid, did, bid, b, guessNum, true, authData)
 		if err == nil {
 			return result, nil
 		}
@@ -311,7 +311,7 @@ func (c *Client) RecoverSecret(uid, did, bid, b string, guessNum int, authData m
 }
 
 // ListBackups lists backups for a user from the first available server
-func (c *Client) ListBackups(uid, authCode string) ([]map[string]interface{}, error) {
+func (c *Client) ListBackups(uid string) ([]map[string]interface{}, error) {
 	c.mu.RLock()
 	liveServers := make([]*EncryptedOpenADPClient, len(c.liveServers))
 	copy(liveServers, c.liveServers)
@@ -324,7 +324,7 @@ func (c *Client) ListBackups(uid, authCode string) ([]map[string]interface{}, er
 	// Try each server until one succeeds
 	var lastErr error
 	for _, client := range liveServers {
-		result, err := client.ListBackups(uid, authCode, false, nil)
+		result, err := client.ListBackups(uid, false, nil)
 		if err == nil {
 			return result, nil
 		}

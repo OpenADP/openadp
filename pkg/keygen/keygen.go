@@ -372,7 +372,7 @@ func RecoverEncryptionKey(filename, password, userID string, serverURLs []string
 		authCode := authCodes.ServerAuthCodes[serverURL]
 
 		// Get current guess number for this backup from the server
-		backups, err := client.ListBackups(uid, authCode, false, nil)
+		backups, err := client.ListBackups(uid, false, nil)
 		guessNum := 0 // Default to 0 for first guess (0-based indexing)
 		if err != nil {
 			fmt.Printf("Warning: Could not list backups from server %d: %v\n", i+1, err)
@@ -394,7 +394,7 @@ func RecoverEncryptionKey(filename, password, userID string, serverURLs []string
 		}
 
 		// Try recovery with current guess number, retry once if guess number is wrong
-		resultMap, err := client.RecoverSecret(authCode, did, bid, bBase64Format, guessNum, true, nil)
+		resultMap, err := client.RecoverSecret(authCode, uid, did, bid, bBase64Format, guessNum, true, nil)
 
 		// If we get a guess number error, try to parse the expected number and retry
 		if err != nil && strings.Contains(err.Error(), "expecting guess_num =") {
@@ -407,7 +407,7 @@ func RecoverEncryptionKey(filename, password, userID string, serverURLs []string
 				}
 				if expectedGuess, parseErr := strconv.Atoi(expectedStr); parseErr == nil {
 					fmt.Printf("Server %d (%s): Retrying with expected guess_num = %d\n", i+1, serverURL, expectedGuess)
-					resultMap, err = client.RecoverSecret(authCode, did, bid, bBase64Format, expectedGuess, true, nil)
+					resultMap, err = client.RecoverSecret(authCode, uid, did, bid, bBase64Format, expectedGuess, true, nil)
 				}
 			}
 		}
@@ -604,7 +604,7 @@ func RecoverEncryptionKeyWithServerInfo(filename, password, userID string, serve
 		authCode := authCodes.ServerAuthCodes[serverURL]
 
 		// Get current guess number for this backup from the server
-		backups, err := client.ListBackups(uid, authCode, false, nil)
+		backups, err := client.ListBackups(uid, false, nil)
 		guessNum := 0 // Default to 0 for first guess (0-based indexing)
 		if err != nil {
 			fmt.Printf("Warning: Could not list backups from server %d: %v\n", i+1, err)
@@ -626,7 +626,7 @@ func RecoverEncryptionKeyWithServerInfo(filename, password, userID string, serve
 		}
 
 		// Try recovery with current guess number, retry once if guess number is wrong
-		resultMap, err := client.RecoverSecret(authCode, did, bid, bBase64Format, guessNum, true, nil)
+		resultMap, err := client.RecoverSecret(authCode, uid, did, bid, bBase64Format, guessNum, true, nil)
 
 		// If we get a guess number error, try to parse the expected number and retry
 		if err != nil && strings.Contains(err.Error(), "expecting guess_num =") {
@@ -639,7 +639,7 @@ func RecoverEncryptionKeyWithServerInfo(filename, password, userID string, serve
 				}
 				if expectedGuess, parseErr := strconv.Atoi(expectedStr); parseErr == nil {
 					fmt.Printf("Server %d (%s): Retrying with expected guess_num = %d\n", i+1, serverURL, expectedGuess)
-					resultMap, err = client.RecoverSecret(authCode, did, bid, bBase64Format, expectedGuess, true, nil)
+					resultMap, err = client.RecoverSecret(authCode, uid, did, bid, bBase64Format, expectedGuess, true, nil)
 				}
 			}
 		}

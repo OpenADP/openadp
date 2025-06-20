@@ -216,7 +216,83 @@ func RecoverSecret(db *database.Database, uid, did, bid string, b *crypto.Point2
 	return response, nil
 }
 
-// RecoverSecretByAuthCode recovers a secret share using authentication code
+// RecoverSecretWithAuthCode recovers a secret share using UID+DID+BID as primary key and verifies auth code
+func RecoverSecretWithAuthCode(db *database.Database, authCode, uid, did, bid string, b *crypto.Point2D, guessNum int) (*RecoverSecretResponse, error) {
+	// Look up the stored share using primary key (UID, DID, BID)
+	record, err := db.Lookup(uid, did, bid)
+	if err != nil {
+		return nil, fmt.Errorf("database lookup failed: %v", err)
+	}
+	if record == nil {
+		return nil, fmt.Errorf("share not found")
+	}
+
+	// Verify the auth code matches
+	if record.AuthCode != authCode {
+		return nil, fmt.Errorf("invalid auth code")
+	}
+
+	// Verify expected guess number (for idempotency)
+	if guessNum != record.NumGuesses {
+		return nil, fmt.Errorf("expecting guess_num = %d", record.NumGuesses)
+	}
+
+	// Check if too many guesses have been made
+	if record.NumGuesses >= record.MaxGuesses {
+		return nil, fmt.Errorf("too many guesses")
+	}
+
+	// Check expiration
+	if record.Expiration != 0 && record.Expiration < time.Now().Unix() {
+		return nil, fmt.Errorf("backup has expired")
+	}
+
+	// Increment guess counter
+	newGuessCount := record.NumGuesses + 1
+	err = db.UpdateGuessCount(uid, did, bid, newGuessCount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update guess count: %v", err)
+	}
+
+	// Perform cryptographic recovery calculation
+	yInt := new(big.Int)
+	yBytes := make([]byte, len(record.Y))
+	copy(yBytes, record.Y)
+
+	// Y is now stored in little-endian format (to match Python server)
+	// Convert from little-endian to big integer
+	for i, j := 0, len(yBytes)-1; i < j; i, j = i+1, j-1 {
+		yBytes[i], yBytes[j] = yBytes[j], yBytes[i]
+	}
+	yInt.SetBytes(yBytes)
+
+	// Convert Point2D to Point4D for multiplication
+	b4D := &crypto.Point4D{
+		X: new(big.Int).Set(b.X),
+		Y: new(big.Int).Set(b.Y),
+		Z: big.NewInt(1),
+		T: new(big.Int).Mul(b.X, b.Y),
+	}
+
+	// Calculate si_b = y * b (scalar multiplication)
+	siB4D := crypto.PointMul(yInt, b4D)
+
+	// Convert back to Point2D
+	siB := crypto.Unexpand(siB4D)
+
+	response := &RecoverSecretResponse{
+		Version:    record.Version,
+		X:          record.X,
+		SiB:        siB,
+		NumGuesses: newGuessCount,
+		MaxGuesses: record.MaxGuesses,
+		Expiration: record.Expiration,
+	}
+
+	return response, nil
+}
+
+// RecoverSecretByAuthCode recovers a secret share using authentication code (legacy method)
 func RecoverSecretByAuthCode(db *database.Database, authCode, did, bid string, b *crypto.Point2D, guessNum int) (*RecoverSecretResponse, error) {
 	// Look up the stored share by auth code
 	record, err := db.LookupByAuthCode(authCode, did, bid)

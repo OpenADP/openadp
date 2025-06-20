@@ -152,7 +152,7 @@ func (d *Database) Insert(uid, did, bid, authCode string, version, x int, y []by
 // Lookup retrieves a specific share by UID, DID, and BID
 func (d *Database) Lookup(uid, did, bid string) (*ShareRecord, error) {
 	lookupSQL := `
-		SELECT version, x, y, num_guesses, max_guesses, expiration 
+		SELECT auth_code, version, x, y, num_guesses, max_guesses, expiration 
 		FROM shares
 		WHERE UID = ? AND DID = ? AND BID = ?
 	`
@@ -163,6 +163,7 @@ func (d *Database) Lookup(uid, did, bid string) (*ShareRecord, error) {
 	record.BID = bid
 
 	err := d.db.QueryRow(lookupSQL, uid, did, bid).Scan(
+		&record.AuthCode,
 		&record.Version,
 		&record.X,
 		&record.Y,
