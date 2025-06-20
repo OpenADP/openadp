@@ -258,14 +258,41 @@ func decryptFile(inputFilename, password, userID string, overrideServers []strin
 
 		serverURLs = overrideServers
 	} else {
-		// Convert metadata server URLs to ServerInfo structs (no public keys from metadata)
-		serverInfos = make([]client.ServerInfo, len(serverURLs))
-		for i, url := range serverURLs {
-			serverInfos[i] = client.ServerInfo{
-				URL:       url,
-				PublicKey: "", // No public key available from metadata
-				Country:   "Unknown",
+		// Get public keys directly from each metadata server via GetServerInfo
+		fmt.Println("   🔍 Querying metadata servers for public keys...")
+		serverInfos = make([]client.ServerInfo, 0, len(serverURLs))
+		for _, url := range serverURLs {
+			// Create a basic client to call GetServerInfo
+			basicClient := client.NewOpenADPClient(url)
+			serverInfo, err := basicClient.GetServerInfo()
+			if err != nil {
+				fmt.Printf("   ⚠️  Failed to get server info from %s: %v\n", url, err)
+				// Add server without public key as fallback
+				serverInfos = append(serverInfos, client.ServerInfo{
+					URL:       url,
+					PublicKey: "",
+					Country:   "Unknown",
+				})
+				continue
 			}
+
+			// Extract public key from server info
+			publicKey := ""
+			if noiseKey, ok := serverInfo["noise_nk_public_key"].(string); ok && noiseKey != "" {
+				publicKey = "ed25519:" + noiseKey
+			}
+
+			serverInfos = append(serverInfos, client.ServerInfo{
+				URL:       url,
+				PublicKey: publicKey,
+				Country:   "Unknown",
+			})
+
+			keyStatus := "❌ No public key"
+			if publicKey != "" {
+				keyStatus = "🔐 Public key available"
+			}
+			fmt.Printf("   ✅ %s - %s\n", url, keyStatus)
 		}
 	}
 
