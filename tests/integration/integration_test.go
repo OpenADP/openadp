@@ -122,7 +122,8 @@ func TestOpenADPIntegration(t *testing.T) {
 		t.Fatalf("No auth codes returned from key generation")
 	}
 
-	recoveryResult := keygen.RecoverEncryptionKey(bid, password, uid, keyResult.ServerURLs, keyResult.Threshold, authCodes)
+	// Use the same server info with public keys for recovery
+	recoveryResult := keygen.RecoverEncryptionKeyWithServerInfo(bid, password, uid, serverInfos, keyResult.Threshold, authCodes)
 	if recoveryResult.Error != "" {
 		t.Fatalf("Failed to recover encryption key: %s", recoveryResult.Error)
 	}

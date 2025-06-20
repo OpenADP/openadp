@@ -2,17 +2,17 @@ package client
 
 import "fmt"
 
-// OpenADPClientInterface defines the core interface for OpenADP client operations
+// StandardOpenADPClientInterface defines the standardized interface for OpenADP client operations
 // This interface is designed to be easily implementable across different programming languages
-type OpenADPClientInterface interface {
-	// Core Operations
-	RegisterSecret(request *RegisterSecretRequest) (*RegisterSecretResponse, error)
-	RecoverSecret(request *RecoverSecretRequest) (*RecoverSecretResponse, error)
-	ListBackups(request *ListBackupsRequest) (*ListBackupsResponse, error)
+// Legacy clients can implement this via wrapper methods (e.g., RegisterSecretStandardized)
+type StandardOpenADPClientInterface interface {
+	// Core Operations - Standardized
+	RegisterSecretStandardized(request *RegisterSecretRequest) (*RegisterSecretResponse, error)
+	RecoverSecretStandardized(request *RecoverSecretRequest) (*RecoverSecretResponse, error)
+	ListBackupsStandardized(request *ListBackupsRequest) (*ListBackupsResponse, error)
 
-	// Utility Operations
-	Echo(message string) (string, error)
-	GetServerInfo() (*ServerInfoResponse, error)
+	// Utility Operations - Standardized
+	GetServerInfoStandardized() (*ServerInfoResponse, error)
 
 	// Connection Management
 	TestConnection() error
@@ -20,9 +20,9 @@ type OpenADPClientInterface interface {
 	SupportsEncryption() bool
 }
 
-// MultiServerClientInterface defines interface for managing multiple servers
-type MultiServerClientInterface interface {
-	OpenADPClientInterface
+// StandardMultiServerClientInterface defines interface for managing multiple servers
+type StandardMultiServerClientInterface interface {
+	StandardOpenADPClientInterface
 
 	// Multi-server Operations
 	GetLiveServerCount() int

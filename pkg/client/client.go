@@ -11,12 +11,13 @@ import (
 
 // Client provides high-level multi-server client for OpenADP operations
 type Client struct {
-	serversURL      string
-	fallbackServers []string
-	echoTimeout     time.Duration
-	maxWorkers      int
-	liveServers     []*EncryptedOpenADPClient
-	mu              sync.RWMutex
+	serversURL        string
+	fallbackServers   []string
+	echoTimeout       time.Duration
+	maxWorkers        int
+	liveServers       []*EncryptedOpenADPClient
+	selectionStrategy ServerSelectionStrategy
+	mu                sync.RWMutex
 }
 
 // NewClient creates a new high-level OpenADP client with server discovery
@@ -34,10 +35,11 @@ func NewClient(serversURL string, fallbackServers []string, echoTimeout time.Dur
 	}
 
 	client := &Client{
-		serversURL:      serversURL,
-		fallbackServers: fallbackServers,
-		echoTimeout:     echoTimeout,
-		maxWorkers:      maxWorkers,
+		serversURL:        serversURL,
+		fallbackServers:   fallbackServers,
+		echoTimeout:       echoTimeout,
+		maxWorkers:        maxWorkers,
+		selectionStrategy: FirstAvailable, // Default strategy
 	}
 
 	// Initialize servers
@@ -57,10 +59,11 @@ func NewClientWithServerInfo(serverInfos []ServerInfo, echoTimeout time.Duration
 	}
 
 	client := &Client{
-		serversURL:      "",  // No URL scraping needed
-		fallbackServers: nil, // No fallback needed
-		echoTimeout:     echoTimeout,
-		maxWorkers:      maxWorkers,
+		serversURL:        "",  // No URL scraping needed
+		fallbackServers:   nil, // No fallback needed
+		echoTimeout:       echoTimeout,
+		maxWorkers:        maxWorkers,
+		selectionStrategy: FirstAvailable, // Default strategy
 	}
 
 	// Test servers directly with the provided ServerInfo
@@ -245,11 +248,12 @@ func (c *Client) GetLiveServerURLs() []string {
 }
 
 // RefreshServers re-scrapes and re-tests all servers to refresh the live server list
-func (c *Client) RefreshServers() {
+func (c *Client) RefreshServers() error {
 	log.Println("Refreshing server list...")
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.initializeServers()
+	return nil // Always succeeds for now
 }
 
 // RegisterSecret registers a secret across multiple servers with failover
@@ -353,11 +357,17 @@ func (c *Client) Echo(message string) (string, error) {
 		}
 	}
 
-	// Use the first live server for echo
+	// Try the first server
 	return liveServers[0].Echo(message, false)
 }
 
-// GetServerInfo gets server information from the first available server
+// Ping tests connectivity to servers
+func (c *Client) Ping() error {
+	_, err := c.Echo("ping")
+	return err
+}
+
+// GetServerInfo gets information from the first available server
 func (c *Client) GetServerInfo() (map[string]interface{}, error) {
 	c.mu.RLock()
 	liveServers := make([]*EncryptedOpenADPClient, len(c.liveServers))
@@ -371,6 +381,156 @@ func (c *Client) GetServerInfo() (map[string]interface{}, error) {
 		}
 	}
 
-	// Use the first live server for server info
 	return liveServers[0].GetServerInfo()
+}
+
+// Standardized Interface Implementation (Phase 3)
+// These methods implement the MultiServerClientInterface for cross-language compatibility
+
+// RegisterSecretStandardized implements the standardized interface
+func (c *Client) RegisterSecretStandardized(request *RegisterSecretRequest) (*RegisterSecretResponse, error) {
+	// Convert Y from base64 string to bytes for legacy method
+	yBytes, err := base64.StdEncoding.DecodeString(request.Y)
+	if err != nil {
+		return nil, fmt.Errorf("invalid Y coordinate: %v", err)
+	}
+
+	success, err := c.RegisterSecret(
+		request.UID, request.DID, request.BID,
+		request.Version, request.X, yBytes,
+		request.MaxGuesses, request.Expiration,
+		request.AuthData,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &RegisterSecretResponse{
+		Success: success,
+		Message: "",
+	}, nil
+}
+
+// RecoverSecretStandardized implements the standardized interface
+func (c *Client) RecoverSecretStandardized(request *RecoverSecretRequest) (*RecoverSecretResponse, error) {
+	result, err := c.RecoverSecret(
+		request.AuthCode, "", request.DID, request.BID,
+		request.B, request.GuessNum,
+		request.AuthData,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert map response to standardized struct
+	version, _ := result["version"].(int)
+	x, _ := result["x"].(int)
+	siBStr, _ := result["si_b"].(string)
+	numGuesses, _ := result["num_guesses"].(int)
+	maxGuesses, _ := result["max_guesses"].(int)
+	expiration, _ := result["expiration"].(int)
+
+	return &RecoverSecretResponse{
+		Version:    version,
+		X:          x,
+		SiB:        siBStr,
+		NumGuesses: numGuesses,
+		MaxGuesses: maxGuesses,
+		Expiration: expiration,
+	}, nil
+}
+
+// ListBackupsStandardized implements the standardized interface
+func (c *Client) ListBackupsStandardized(request *ListBackupsRequest) (*ListBackupsResponse, error) {
+	backups, err := c.ListBackups(request.UID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to standardized format
+	standardBackups := make([]BackupInfo, len(backups))
+	for i, backup := range backups {
+		uid, _ := backup["uid"].(string)
+		bid, _ := backup["bid"].(string)
+		version, _ := backup["version"].(int)
+		numGuesses, _ := backup["num_guesses"].(int)
+		maxGuesses, _ := backup["max_guesses"].(int)
+		expiration, _ := backup["expiration"].(int)
+
+		standardBackups[i] = BackupInfo{
+			UID:        uid,
+			BID:        bid,
+			Version:    version,
+			NumGuesses: numGuesses,
+			MaxGuesses: maxGuesses,
+			Expiration: expiration,
+		}
+	}
+
+	return &ListBackupsResponse{
+		Backups: standardBackups,
+	}, nil
+}
+
+// TestConnection implements the standardized interface
+func (c *Client) TestConnection() error {
+	return c.Ping()
+}
+
+// GetServerURL implements the standardized interface (returns first live server)
+func (c *Client) GetServerURL() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if len(c.liveServers) > 0 {
+		return c.liveServers[0].URL
+	}
+	return ""
+}
+
+// SupportsEncryption implements the standardized interface
+func (c *Client) SupportsEncryption() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// Return true if any live server supports encryption
+	for _, server := range c.liveServers {
+		if server.SupportsEncryption() {
+			return true
+		}
+	}
+	return false
+}
+
+// SetServerSelectionStrategy implements the MultiServerClientInterface
+func (c *Client) SetServerSelectionStrategy(strategy ServerSelectionStrategy) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.selectionStrategy = strategy
+}
+
+// GetServerInfoStandardized implements the standardized interface
+func (c *Client) GetServerInfoStandardized() (*ServerInfoResponse, error) {
+	info, err := c.GetServerInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to standardized format
+	serverVersion, _ := info["version"].(string)
+	noiseKey, _ := info["noise_nk_public_key"].(string)
+
+	methods := []string{"RegisterSecret", "RecoverSecret", "ListBackups", "Echo", "GetServerInfo"}
+	if noiseKey != "" {
+		methods = append(methods, "noise_handshake", "encrypted_call")
+	}
+
+	return &ServerInfoResponse{
+		ServerVersion:    serverVersion,
+		NoiseNKPublicKey: noiseKey,
+		SupportedMethods: methods,
+		MaxRequestSize:   1024 * 1024, // 1MB default
+		RateLimits:       make(map[string]interface{}),
+	}, nil
 }

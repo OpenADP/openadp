@@ -246,87 +246,87 @@ func TestGenerateEncryptionKeyInputValidation(t *testing.T) {
 
 func TestRecoverEncryptionKeyInputValidation(t *testing.T) {
 	tests := []struct {
-		name       string
-		filename   string
-		password   string
-		userID     string
-		serverURLs []string
-		threshold  int
-		authCodes  *AuthCodes
-		wantError  bool
+		name        string
+		filename    string
+		password    string
+		userID      string
+		serverInfos []client.ServerInfo
+		threshold   int
+		authCodes   *AuthCodes
+		wantError   bool
 	}{
 		{
-			name:       "empty filename",
-			filename:   "",
-			password:   "test",
-			userID:     "user",
-			serverURLs: []string{"http://server1.com"},
-			threshold:  1,
-			authCodes:  &AuthCodes{},
-			wantError:  true,
+			name:        "empty filename",
+			filename:    "",
+			password:    "test",
+			userID:      "user",
+			serverInfos: []client.ServerInfo{{URL: "http://server1.com"}},
+			threshold:   1,
+			authCodes:   &AuthCodes{},
+			wantError:   true,
 		},
 		{
-			name:       "empty userID",
-			filename:   "test.txt",
-			password:   "test",
-			userID:     "",
-			serverURLs: []string{"http://server1.com"},
-			threshold:  1,
-			authCodes:  &AuthCodes{},
-			wantError:  true,
+			name:        "empty userID",
+			filename:    "test.txt",
+			password:    "test",
+			userID:      "",
+			serverInfos: []client.ServerInfo{{URL: "http://server1.com"}},
+			threshold:   1,
+			authCodes:   &AuthCodes{},
+			wantError:   true,
 		},
 		{
-			name:       "zero threshold",
-			filename:   "test.txt",
-			password:   "test",
-			userID:     "user",
-			serverURLs: []string{"http://server1.com"},
-			threshold:  0,
-			authCodes:  &AuthCodes{},
-			wantError:  true,
+			name:        "zero threshold",
+			filename:    "test.txt",
+			password:    "test",
+			userID:      "user",
+			serverInfos: []client.ServerInfo{{URL: "http://server1.com"}},
+			threshold:   0,
+			authCodes:   &AuthCodes{},
+			wantError:   true,
 		},
 		{
-			name:       "negative threshold",
-			filename:   "test.txt",
-			password:   "test",
-			userID:     "user",
-			serverURLs: []string{"http://server1.com"},
-			threshold:  -1,
-			authCodes:  &AuthCodes{},
-			wantError:  true,
+			name:        "negative threshold",
+			filename:    "test.txt",
+			password:    "test",
+			userID:      "user",
+			serverInfos: []client.ServerInfo{{URL: "http://server1.com"}},
+			threshold:   -1,
+			authCodes:   &AuthCodes{},
+			wantError:   true,
 		},
 		{
-			name:       "no servers",
-			filename:   "test.txt",
-			password:   "test",
-			userID:     "user",
-			serverURLs: []string{},
-			threshold:  1,
-			authCodes:  &AuthCodes{},
-			wantError:  true,
+			name:        "no servers",
+			filename:    "test.txt",
+			password:    "test",
+			userID:      "user",
+			serverInfos: []client.ServerInfo{},
+			threshold:   1,
+			authCodes:   &AuthCodes{},
+			wantError:   true,
 		},
 		{
-			name:       "nil auth codes",
-			filename:   "test.txt",
-			password:   "test",
-			userID:     "user",
-			serverURLs: []string{"http://server1.com"},
-			threshold:  1,
-			authCodes:  nil,
-			wantError:  true,
+			name:        "nil auth codes",
+			filename:    "test.txt",
+			password:    "test",
+			userID:      "user",
+			serverInfos: []client.ServerInfo{{URL: "http://server1.com"}},
+			threshold:   1,
+			authCodes:   nil,
+			wantError:   true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := RecoverEncryptionKey(tt.filename, tt.password, tt.userID,
-				tt.serverURLs, tt.threshold, tt.authCodes)
+			result := RecoverEncryptionKeyWithServerInfo(tt.filename, tt.password, tt.userID,
+				tt.serverInfos, tt.threshold, tt.authCodes)
 
 			if tt.wantError && result.Error == "" {
-				t.Errorf("RecoverEncryptionKey() expected error but got none")
+				t.Errorf("RecoverEncryptionKeyWithServerInfo() expected error but got none")
 			}
 			if !tt.wantError && result.Error != "" {
-				t.Errorf("RecoverEncryptionKey() unexpected error: %s", result.Error)
+				t.Errorf("RecoverEncryptionKeyWithServerInfo() unexpected error: %s", result.Error)
 			}
 		})
 	}
@@ -412,7 +412,8 @@ func TestKeygenRoundTrip(t *testing.T) {
 
 	// Step 2: Recover encryption key
 	t.Log("🔓 Recovering encryption key...")
-	recoveryResult := RecoverEncryptionKey(filename, password, userID, result.ServerURLs, result.Threshold, result.AuthCodes)
+	serverInfos := client.ConvertURLsToServerInfo(result.ServerURLs)
+	recoveryResult := RecoverEncryptionKeyWithServerInfo(filename, password, userID, serverInfos, result.Threshold, result.AuthCodes)
 	if recoveryResult.Error != "" {
 		t.Fatalf("Key recovery failed: %s", recoveryResult.Error)
 	}

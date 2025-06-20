@@ -384,3 +384,127 @@ func (c *EncryptedOpenADPClient) GetServerInfo() (map[string]interface{}, error)
 func ParseServerPublicKey(keyB64 string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(keyB64)
 }
+
+// Standardized Interface Implementation (Phase 3)
+// These methods implement the OpenADPClientInterface for cross-language compatibility
+
+// RegisterSecretStandardized implements the standardized interface
+func (c *EncryptedOpenADPClient) RegisterSecretStandardized(request *RegisterSecretRequest) (*RegisterSecretResponse, error) {
+	// Convert standardized request to legacy method call
+	success, err := c.RegisterSecret(
+		request.AuthCode, request.UID, request.DID, request.BID,
+		request.Version, request.X, request.Y,
+		request.MaxGuesses, request.Expiration,
+		request.Encrypted, request.AuthData,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &RegisterSecretResponse{
+		Success: success,
+		Message: "",
+	}, nil
+}
+
+// RecoverSecretStandardized implements the standardized interface
+func (c *EncryptedOpenADPClient) RecoverSecretStandardized(request *RecoverSecretRequest) (*RecoverSecretResponse, error) {
+	result, err := c.RecoverSecret(
+		request.AuthCode, "", request.DID, request.BID,
+		request.B, request.GuessNum,
+		request.Encrypted, request.AuthData,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert map response to standardized struct
+	version, _ := result["version"].(int)
+	x, _ := result["x"].(int)
+	siBStr, _ := result["si_b"].(string)
+	numGuesses, _ := result["num_guesses"].(int)
+	maxGuesses, _ := result["max_guesses"].(int)
+	expiration, _ := result["expiration"].(int)
+
+	return &RecoverSecretResponse{
+		Version:    version,
+		X:          x,
+		SiB:        siBStr,
+		NumGuesses: numGuesses,
+		MaxGuesses: maxGuesses,
+		Expiration: expiration,
+	}, nil
+}
+
+// ListBackupsStandardized implements the standardized interface
+func (c *EncryptedOpenADPClient) ListBackupsStandardized(request *ListBackupsRequest) (*ListBackupsResponse, error) {
+	backups, err := c.ListBackups(request.UID, request.Encrypted, request.AuthData)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to standardized format
+	standardBackups := make([]BackupInfo, len(backups))
+	for i, backup := range backups {
+		uid, _ := backup["uid"].(string)
+		bid, _ := backup["bid"].(string)
+		version, _ := backup["version"].(int)
+		numGuesses, _ := backup["num_guesses"].(int)
+		maxGuesses, _ := backup["max_guesses"].(int)
+		expiration, _ := backup["expiration"].(int)
+
+		standardBackups[i] = BackupInfo{
+			UID:        uid,
+			BID:        bid,
+			Version:    version,
+			NumGuesses: numGuesses,
+			MaxGuesses: maxGuesses,
+			Expiration: expiration,
+		}
+	}
+
+	return &ListBackupsResponse{
+		Backups: standardBackups,
+	}, nil
+}
+
+// TestConnection implements the standardized interface
+func (c *EncryptedOpenADPClient) TestConnection() error {
+	return c.Ping()
+}
+
+// GetServerURL implements the standardized interface
+func (c *EncryptedOpenADPClient) GetServerURL() string {
+	return c.URL
+}
+
+// SupportsEncryption implements the standardized interface
+func (c *EncryptedOpenADPClient) SupportsEncryption() bool {
+	return c.HasPublicKey()
+}
+
+// GetServerInfoStandardized implements the standardized interface
+func (c *EncryptedOpenADPClient) GetServerInfoStandardized() (*ServerInfoResponse, error) {
+	info, err := c.GetServerInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to standardized format
+	serverVersion, _ := info["version"].(string)
+	noiseKey, _ := info["noise_nk_public_key"].(string)
+
+	methods := []string{"RegisterSecret", "RecoverSecret", "ListBackups", "Echo", "GetServerInfo"}
+	if noiseKey != "" {
+		methods = append(methods, "noise_handshake", "encrypted_call")
+	}
+
+	return &ServerInfoResponse{
+		ServerVersion:    serverVersion,
+		NoiseNKPublicKey: noiseKey,
+		SupportedMethods: methods,
+		MaxRequestSize:   1024 * 1024, // 1MB default
+		RateLimits:       make(map[string]interface{}),
+	}, nil
+}
