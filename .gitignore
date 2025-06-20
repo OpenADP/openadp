@@ -5,6 +5,17 @@ __pycache__
 *.test
 fuzz_test_*.db
 fuzz_test_*.db-journal
+test
+test.enc
+test-file.txt
+test-file.txt.enc
 
 # Build artifacts  
 build/
+openadp-*
+!build/openadp-*
+
+# Temporary files
+*.tmp
+*.temp
+prompt
