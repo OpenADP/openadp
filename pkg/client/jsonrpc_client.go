@@ -20,7 +20,7 @@ type JSONRPCRequest struct {
 	ID      int         `json:"id"`
 }
 
-// JSONRPCResponse represents a JSON-RPC response
+// JSONRPCResponse represents a JSON-RPC 2.0 response
 type JSONRPCResponse struct {
 	JSONRPC string        `json:"jsonrpc"`
 	Result  interface{}   `json:"result,omitempty"`
@@ -28,14 +28,14 @@ type JSONRPCResponse struct {
 	ID      int           `json:"id"`
 }
 
-// JSONRPCError represents a JSON-RPC error
+// JSONRPCError represents a JSON-RPC 2.0 error
 type JSONRPCError struct {
 	Code    int         `json:"code"`
 	Message string      `json:"message"`
 	Data    interface{} `json:"data,omitempty"`
 }
 
-// UnmarshalJSON implements custom JSON unmarshaling for JSONRPCResponse
+// UnmarshalJSON handles custom unmarshaling for JSONRPCResponse to support both string and structured errors
 func (r *JSONRPCResponse) UnmarshalJSON(data []byte) error {
 	// First, unmarshal into a temporary struct with raw error field
 	type TempResponse struct {
@@ -83,14 +83,14 @@ func (r *JSONRPCResponse) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// OpenADPClient represents a client for communicating with OpenADP servers
+// OpenADPClient represents a basic JSON-RPC client for communicating with OpenADP servers
 type OpenADPClient struct {
 	URL        string
 	HTTPClient *http.Client
 	requestID  int
 }
 
-// NewOpenADPClient creates a new OpenADP client
+// NewOpenADPClient creates a new basic OpenADP client
 func NewOpenADPClient(url string) *OpenADPClient {
 	return &OpenADPClient{
 		URL: url,
@@ -101,9 +101,7 @@ func NewOpenADPClient(url string) *OpenADPClient {
 	}
 }
 
-// Legacy param structs removed - replaced by standardized interface types in interfaces.go
-
-// RecoverSecretResult represents the result of recover_secret method
+// RecoverSecretResult represents the result of RecoverSecret method
 type RecoverSecretResult struct {
 	Version    int             `json:"version"`
 	X          int             `json:"x"`
@@ -114,9 +112,10 @@ type RecoverSecretResult struct {
 	Expiration int             `json:"expiration"`
 }
 
-// ListBackupsResult represents a backup entry from list_backups
+// ListBackupsResult represents a backup entry from ListBackups method
 type ListBackupsResult struct {
 	UID        string `json:"uid"`
+	DID        string `json:"did"`
 	BID        string `json:"bid"`
 	Version    int    `json:"version"`
 	NumGuesses int    `json:"num_guesses"`
@@ -167,9 +166,10 @@ func (c *OpenADPClient) makeRequest(method string, params interface{}) (*JSONRPC
 }
 
 // RegisterSecret registers a secret share with the server
+// Note: This basic client passes empty auth_code. Use EncryptedOpenADPClient for authentication.
 func (c *OpenADPClient) RegisterSecret(uid, did, bid string, version, x int, y string, maxGuesses, expiration int) (bool, error) {
 	// Server expects: [auth_code, uid, did, bid, version, x, y, max_guesses, expiration] (9 parameters)
-	// For basic client, we don't have auth_code, so we'll pass empty string
+	// Basic client passes empty auth_code
 	params := []interface{}{"", uid, did, bid, version, x, y, maxGuesses, expiration}
 
 	response, err := c.makeRequest("RegisterSecret", params)
@@ -186,9 +186,10 @@ func (c *OpenADPClient) RegisterSecret(uid, did, bid string, version, x int, y s
 }
 
 // RecoverSecret recovers a secret share from the server
+// Note: This basic client passes empty auth_code. Use EncryptedOpenADPClient for authentication.
 func (c *OpenADPClient) RecoverSecret(uid, did, bid string, b *crypto.Point2D, guessNum int) (*RecoverSecretResult, error) {
 	// Server expects: [auth_code, uid, did, bid, b, guess_num] (6 parameters)
-	// For basic client, we don't have auth_code, so we'll pass empty string
+	// Basic client passes empty auth_code
 	params := []interface{}{"", uid, did, bid, b, guessNum}
 
 	response, err := c.makeRequest("RecoverSecret", params)
@@ -234,19 +235,29 @@ func (c *OpenADPClient) ListBackups(uid string) ([]ListBackupsResult, error) {
 	return result, nil
 }
 
-// Ping tests connectivity to the server
-func (c *OpenADPClient) Ping() error {
-	response, err := c.makeRequest("Echo", []string{"ping"})
+// Echo tests connectivity to the server
+func (c *OpenADPClient) Echo(message string) (string, error) {
+	response, err := c.makeRequest("Echo", []interface{}{message})
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	result, ok := response.Result.(string)
-	if !ok || result != "ping" {
-		return fmt.Errorf("unexpected ping response: %v", response.Result)
+	if !ok {
+		return "", fmt.Errorf("unexpected response type: %T", response.Result)
 	}
 
-	return nil
+	if result != message {
+		return "", fmt.Errorf("unexpected echo response: got %q, want %q", result, message)
+	}
+
+	return result, nil
+}
+
+// Ping tests connectivity to the server (alias for Echo with "ping" message)
+func (c *OpenADPClient) Ping() error {
+	_, err := c.Echo("ping")
+	return err
 }
 
 // GetServerInfo gets server information

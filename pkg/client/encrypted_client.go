@@ -12,72 +12,110 @@ import (
 	"github.com/openadp/openadp/pkg/noise"
 )
 
-// EncryptedOpenADPClient extends the basic client with optional Noise-NK encryption
+// EncryptedOpenADPClient extends the basic client with Noise-NK encryption support
 type EncryptedOpenADPClient struct {
-	*OpenADPClient
-	serverPublicKey  []byte
-	serverInfoCached bool
+	URL             string
+	HTTPClient      *http.Client
+	requestID       int
+	serverPublicKey []byte // Ed25519 public key for Noise-NK
 }
 
 // NewEncryptedOpenADPClient creates a new encrypted OpenADP client
 func NewEncryptedOpenADPClient(url string, serverPublicKey []byte) *EncryptedOpenADPClient {
-	baseClient := NewOpenADPClient(url)
-
-	client := &EncryptedOpenADPClient{
-		OpenADPClient:   baseClient,
+	return &EncryptedOpenADPClient{
+		URL:             url,
 		serverPublicKey: serverPublicKey,
-	}
-
-	// Auto-discover server capabilities if no public key provided
-	if serverPublicKey == nil {
-		client.discoverServerInfo()
-	}
-
-	return client
-}
-
-// discoverServerInfo auto-discovers server public key and capabilities
-func (c *EncryptedOpenADPClient) discoverServerInfo() {
-	result, err := c.GetServerInfo()
-	if err != nil {
-		return // Silently fail, encryption won't be available
-	}
-
-	if publicKeyB64, ok := result["noise_nk_public_key"].(string); ok {
-		if publicKeyBytes, err := base64.StdEncoding.DecodeString(publicKeyB64); err == nil {
-			c.serverPublicKey = publicKeyBytes
-			c.serverInfoCached = true
-		}
+		HTTPClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+		requestID: 1,
 	}
 }
 
 // HasPublicKey returns true if the client has a server public key for encryption
 func (c *EncryptedOpenADPClient) HasPublicKey() bool {
-	return c.serverPublicKey != nil
+	return len(c.serverPublicKey) > 0
 }
 
-// makeEncryptedRequest makes an encrypted JSON-RPC request using 2-round Noise-NK protocol
-func (c *EncryptedOpenADPClient) makeEncryptedRequest(method string, params interface{}, requestID int, authData map[string]interface{}) (interface{}, error) {
-	if c.serverPublicKey == nil {
-		return nil, fmt.Errorf("server public key required for encrypted requests")
+// makeRequest makes a JSON-RPC request with optional Noise-NK encryption
+func (c *EncryptedOpenADPClient) makeRequest(method string, params interface{}, encrypted bool, authData map[string]interface{}) (interface{}, error) {
+	if encrypted && !c.HasPublicKey() {
+		return nil, fmt.Errorf("encryption requested but no server public key available")
 	}
 
-	// Step 1: Generate session ID
-	sessionID := fmt.Sprintf("%d_%d", time.Now().UnixNano(), requestID)
+	if encrypted {
+		return c.makeEncryptedRequest(method, params, authData)
+	}
 
-	// Step 2: Create Noise-NK client (initiator)
+	return c.makeUnencryptedRequest(method, params)
+}
+
+// makeUnencryptedRequest makes a standard JSON-RPC request without encryption
+func (c *EncryptedOpenADPClient) makeUnencryptedRequest(method string, params interface{}) (interface{}, error) {
+	request := JSONRPCRequest{
+		JSONRPC: "2.0",
+		Method:  method,
+		Params:  params,
+		ID:      c.requestID,
+	}
+	c.requestID++
+
+	requestBody, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %v", err)
+	}
+
+	resp, err := c.HTTPClient.Post(c.URL, "application/json", bytes.NewBuffer(requestBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to make HTTP request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP error: %d %s", resp.StatusCode, resp.Status)
+	}
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %v", err)
+	}
+
+	var response JSONRPCResponse
+	if err := json.Unmarshal(responseBody, &response); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %v", err)
+	}
+
+	if response.Error != nil {
+		return nil, fmt.Errorf("JSON-RPC error %d: %s", response.Error.Code, response.Error.Message)
+	}
+
+	return response.Result, nil
+}
+
+// makeEncryptedRequest makes a Noise-NK encrypted JSON-RPC request
+func (c *EncryptedOpenADPClient) makeEncryptedRequest(method string, params interface{}, authData map[string]interface{}) (interface{}, error) {
+	// Step 1: Generate session ID
+	sessionID, err := GenerateSessionID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate session ID: %v", err)
+	}
+
+	// Step 2: Create Noise client
 	noiseClient, err := noise.NewNoiseNK("initiator", nil, c.serverPublicKey, []byte(""))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Noise client: %v", err)
 	}
 
-	// Step 3: Create client handshake message
-	handshakeMsg1, err := noiseClient.WriteHandshakeMessage([]byte("Client handshake"))
+	// Step 3: Start handshake
+	handshakeMsg1, err := noiseClient.WriteHandshakeMessage([]byte("test"))
 	if err != nil {
-		return nil, fmt.Errorf("failed to write handshake message: %v", err)
+		return nil, fmt.Errorf("failed to create handshake message: %v", err)
 	}
 
-	// Step 4: Round 1 - Send handshake to server
+	// Step 4: Send handshake to server
+	requestID := c.requestID
+	c.requestID++
+
 	handshakeRequest := JSONRPCRequest{
 		JSONRPC: "2.0",
 		Method:  "noise_handshake",
@@ -106,13 +144,13 @@ func (c *EncryptedOpenADPClient) makeEncryptedRequest(method string, params inte
 		return nil, fmt.Errorf("handshake HTTP error: %d %s", resp.StatusCode, resp.Status)
 	}
 
-	handshakeRespBytes, err := io.ReadAll(resp.Body)
+	handshakeRespBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read handshake response: %v", err)
 	}
 
 	var handshakeResponse JSONRPCResponse
-	if err := json.Unmarshal(handshakeRespBytes, &handshakeResponse); err != nil {
+	if err := json.Unmarshal(handshakeRespBody, &handshakeResponse); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal handshake response: %v", err)
 	}
 
@@ -167,7 +205,7 @@ func (c *EncryptedOpenADPClient) makeEncryptedRequest(method string, params inte
 		return nil, fmt.Errorf("failed to encrypt method call: %v", err)
 	}
 
-	// Step 8: Round 2 - Send encrypted call to server
+	// Step 8: Send encrypted call to server
 	encryptedRequest := JSONRPCRequest{
 		JSONRPC: "2.0",
 		Method:  "encrypted_call",
@@ -196,13 +234,13 @@ func (c *EncryptedOpenADPClient) makeEncryptedRequest(method string, params inte
 		return nil, fmt.Errorf("encrypted call HTTP error: %d %s", resp2.StatusCode, resp2.Status)
 	}
 
-	encryptedRespBytes, err := io.ReadAll(resp2.Body)
+	encryptedRespBody, err := io.ReadAll(resp2.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read encrypted response: %v", err)
 	}
 
 	var encryptedResponse JSONRPCResponse
-	if err := json.Unmarshal(encryptedRespBytes, &encryptedResponse); err != nil {
+	if err := json.Unmarshal(encryptedRespBody, &encryptedResponse); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal encrypted response: %v", err)
 	}
 
@@ -211,12 +249,13 @@ func (c *EncryptedOpenADPClient) makeEncryptedRequest(method string, params inte
 	}
 
 	// Step 9: Decrypt the response
-	encryptedResult, ok := encryptedResponse.Result.(map[string]interface{})
+	// Server returns {"data": "base64_encrypted_data"}
+	resultObj, ok := encryptedResponse.Result.(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("invalid encrypted response format")
 	}
 
-	encryptedDataB64, ok := encryptedResult["data"].(string)
+	encryptedDataB64, ok := resultObj["data"].(string)
 	if !ok {
 		return nil, fmt.Errorf("encrypted response missing data field")
 	}
@@ -226,44 +265,27 @@ func (c *EncryptedOpenADPClient) makeEncryptedRequest(method string, params inte
 		return nil, fmt.Errorf("failed to decode encrypted data: %v", err)
 	}
 
-	// Decrypt the response
-	decryptedResponse, err := noiseClient.Decrypt(encryptedData, nil)
+	decryptedData, err := noiseClient.Decrypt(encryptedData, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt response: %v", err)
 	}
 
-	// Step 10: Parse the decrypted JSON-RPC response
-	var finalResponse JSONRPCResponse
-	if err := json.Unmarshal(decryptedResponse, &finalResponse); err != nil {
+	// Parse decrypted JSON-RPC response
+	var decryptedResponse JSONRPCResponse
+	if err := json.Unmarshal(decryptedData, &decryptedResponse); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal decrypted response: %v", err)
 	}
 
-	if finalResponse.Error != nil {
-		return nil, fmt.Errorf("method error %d: %s", finalResponse.Error.Code, finalResponse.Error.Message)
+	if decryptedResponse.Error != nil {
+		return nil, fmt.Errorf("decrypted JSON-RPC error %d: %s", decryptedResponse.Error.Code, decryptedResponse.Error.Message)
 	}
 
-	return finalResponse.Result, nil
+	return decryptedResponse.Result, nil
 }
 
-// makeRequest makes either encrypted or unencrypted request based on parameters
-func (c *EncryptedOpenADPClient) makeRequest(method string, params interface{}, encrypted bool, authData map[string]interface{}) (interface{}, error) {
-	c.requestID++
-
-	if encrypted && c.serverPublicKey != nil {
-		return c.makeEncryptedRequest(method, params, c.requestID, authData)
-	}
-
-	// Fall back to unencrypted request
-	response, err := c.OpenADPClient.makeRequest(method, params)
-	if err != nil {
-		return nil, err
-	}
-
-	return response.Result, nil
-}
-
-// RegisterSecret registers a secret with optional encryption
+// RegisterSecret registers a secret share with the server
 func (c *EncryptedOpenADPClient) RegisterSecret(authCode, uid, did, bid string, version, x int, y string, maxGuesses, expiration int, encrypted bool, authData map[string]interface{}) (bool, error) {
+	// Server expects: [auth_code, uid, did, bid, version, x, y, max_guesses, expiration] (9 parameters)
 	params := []interface{}{authCode, uid, did, bid, version, x, y, maxGuesses, expiration}
 
 	result, err := c.makeRequest("RegisterSecret", params, encrypted, authData)
@@ -279,7 +301,7 @@ func (c *EncryptedOpenADPClient) RegisterSecret(authCode, uid, did, bid string, 
 	return success, nil
 }
 
-// RecoverSecret recovers a secret with optional encryption
+// RecoverSecret recovers a secret share from the server
 func (c *EncryptedOpenADPClient) RecoverSecret(authCode, uid, did, bid, b string, guessNum int, encrypted bool, authData map[string]interface{}) (map[string]interface{}, error) {
 	// Server expects: [auth_code, uid, did, bid, b, guess_num] (6 parameters)
 	params := []interface{}{authCode, uid, did, bid, b, guessNum}
@@ -289,15 +311,15 @@ func (c *EncryptedOpenADPClient) RecoverSecret(authCode, uid, did, bid, b string
 		return nil, err
 	}
 
-	response, ok := result.(map[string]interface{})
+	resultMap, ok := result.(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("unexpected response type: %T", result)
 	}
 
-	return response, nil
+	return resultMap, nil
 }
 
-// ListBackups lists backups for a user
+// ListBackups lists all backups for a user
 func (c *EncryptedOpenADPClient) ListBackups(uid string, encrypted bool, authData map[string]interface{}) ([]map[string]interface{}, error) {
 	// Server expects: [uid] (1 parameter)
 	params := []interface{}{uid}
@@ -340,6 +362,27 @@ func (c *EncryptedOpenADPClient) Echo(message string, encrypted bool) (string, e
 	return response, nil
 }
 
+// Ping tests connectivity to the server (alias for Echo with "ping" message)
+func (c *EncryptedOpenADPClient) Ping() error {
+	_, err := c.Echo("ping", false)
+	return err
+}
+
+// GetServerInfo gets server information
+func (c *EncryptedOpenADPClient) GetServerInfo() (map[string]interface{}, error) {
+	result, err := c.makeRequest("GetServerInfo", nil, false, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	serverInfo, ok := result.(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("unexpected response type: %T", result)
+	}
+
+	return serverInfo, nil
+}
+
 // CreateAuthPayload creates authentication payload for OAuth/DPoP (if needed)
 func (c *EncryptedOpenADPClient) CreateAuthPayload(accessToken string, privateKey interface{}, publicKeyJWK map[string]interface{}, handshakeHash []byte) map[string]interface{} {
 	// This would implement DPoP token creation if needed
@@ -374,14 +417,16 @@ func (c *EncryptedOpenADPClient) MakeAuthenticatedRequest(method string, params 
 	return c.makeRequest(method, params, true, authData)
 }
 
-// Convenience functions for creating clients
-
-// CreateEncryptedClient creates an encrypted client with auto-discovery
-func CreateEncryptedClient(serverURL string, serverPublicKey []byte) *EncryptedOpenADPClient {
-	return NewEncryptedOpenADPClient(serverURL, serverPublicKey)
-}
+// Utility functions
 
 // ParseServerPublicKey parses a base64-encoded server public key
 func ParseServerPublicKey(keyB64 string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(keyB64)
+}
+
+// GenerateSessionID generates a unique session identifier
+func GenerateSessionID() (string, error) {
+	// This would generate a cryptographically secure random session ID
+	// For now, use a simple implementation
+	return fmt.Sprintf("session_%d", time.Now().UnixNano()), nil
 }

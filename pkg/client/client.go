@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Client provides high-level client for OpenADP operations with multi-server support
+// Client provides high-level multi-server client for OpenADP operations
 type Client struct {
 	serversURL      string
 	fallbackServers []string
@@ -19,7 +19,7 @@ type Client struct {
 	mu              sync.RWMutex
 }
 
-// NewClient creates a new high-level OpenADP client
+// NewClient creates a new high-level OpenADP client with server discovery
 func NewClient(serversURL string, fallbackServers []string, echoTimeout time.Duration, maxWorkers int) *Client {
 	if fallbackServers == nil {
 		fallbackServers = GetFallbackServers()
@@ -67,18 +67,7 @@ func NewClientWithServerInfo(serverInfos []ServerInfo, echoTimeout time.Duration
 	client.liveServers = client.testServersConcurrently(serverInfos)
 
 	log.Printf("Initialization complete: %d live servers available", len(client.liveServers))
-	if len(client.liveServers) > 0 {
-		log.Println("Live servers:")
-		for i, liveClient := range client.liveServers {
-			encStatus := "no encryption"
-			if liveClient.HasPublicKey() {
-				encStatus = "Noise-NK encryption"
-			}
-			log.Printf("  %d. %s [%s]", i+1, liveClient.URL, encStatus)
-		}
-	} else {
-		log.Println("WARNING: No live servers found! All operations will fail.")
-	}
+	client.logServerStatus()
 
 	return client
 }
@@ -117,6 +106,11 @@ func (c *Client) initializeServers() {
 	c.liveServers = c.testServersConcurrently(serverInfos)
 
 	log.Printf("Initialization complete: %d live servers available", len(c.liveServers))
+	c.logServerStatus()
+}
+
+// logServerStatus logs the current status of live servers
+func (c *Client) logServerStatus() {
 	if len(c.liveServers) > 0 {
 		log.Println("Live servers:")
 		for i, client := range c.liveServers {
@@ -184,22 +178,10 @@ func (c *Client) testSingleServerWithInfo(serverInfo ServerInfo) *EncryptedOpenA
 
 	// Parse public key if available
 	if serverInfo.PublicKey != "" {
-		// Handle different key formats
-		if strings.HasPrefix(serverInfo.PublicKey, "ed25519:") {
-			// Remove ed25519: prefix and decode
-			keyB64 := strings.TrimPrefix(serverInfo.PublicKey, "ed25519:")
-			publicKey, err = base64.StdEncoding.DecodeString(keyB64)
-			if err != nil {
-				log.Printf("  ⚠️  %s: Invalid public key: %v", serverInfo.URL, err)
-				publicKey = nil
-			}
-		} else {
-			// Assume it's already base64
-			publicKey, err = base64.StdEncoding.DecodeString(serverInfo.PublicKey)
-			if err != nil {
-				log.Printf("  ⚠️  %s: Invalid public key: %v", serverInfo.URL, err)
-				publicKey = nil
-			}
+		publicKey, err = c.parsePublicKey(serverInfo.PublicKey)
+		if err != nil {
+			log.Printf("  ⚠️  %s: Invalid public key: %v", serverInfo.URL, err)
+			publicKey = nil
 		}
 	}
 
@@ -228,6 +210,19 @@ func (c *Client) testSingleServerWithInfo(serverInfo ServerInfo) *EncryptedOpenA
 	}
 
 	return client
+}
+
+// parsePublicKey parses a public key in various formats
+func (c *Client) parsePublicKey(publicKey string) ([]byte, error) {
+	// Handle different key formats
+	if strings.HasPrefix(publicKey, "ed25519:") {
+		// Remove ed25519: prefix and decode
+		keyB64 := strings.TrimPrefix(publicKey, "ed25519:")
+		return base64.StdEncoding.DecodeString(keyB64)
+	}
+
+	// Assume it's already base64
+	return base64.StdEncoding.DecodeString(publicKey)
 }
 
 // GetLiveServerCount returns the number of currently live servers
@@ -265,7 +260,10 @@ func (c *Client) RegisterSecret(uid, did, bid string, version, x int, y []byte, 
 	c.mu.RUnlock()
 
 	if len(liveServers) == 0 {
-		return false, fmt.Errorf("no live servers available")
+		return false, &OpenADPError{
+			Code:    ErrorCodeNoLiveServers,
+			Message: "No live servers available",
+		}
 	}
 
 	// Convert y bytes to base64 string for JSON-RPC (server expects decimal or base64)
@@ -293,7 +291,10 @@ func (c *Client) RecoverSecret(authCode, uid, did, bid, b string, guessNum int, 
 	c.mu.RUnlock()
 
 	if len(liveServers) == 0 {
-		return nil, fmt.Errorf("no live servers available")
+		return nil, &OpenADPError{
+			Code:    ErrorCodeNoLiveServers,
+			Message: "No live servers available",
+		}
 	}
 
 	// Try each server until one succeeds
@@ -318,7 +319,10 @@ func (c *Client) ListBackups(uid string) ([]map[string]interface{}, error) {
 	c.mu.RUnlock()
 
 	if len(liveServers) == 0 {
-		return nil, fmt.Errorf("no live servers available")
+		return nil, &OpenADPError{
+			Code:    ErrorCodeNoLiveServers,
+			Message: "No live servers available",
+		}
 	}
 
 	// Try each server until one succeeds
@@ -343,7 +347,10 @@ func (c *Client) Echo(message string) (string, error) {
 	c.mu.RUnlock()
 
 	if len(liveServers) == 0 {
-		return "", fmt.Errorf("no live servers available")
+		return "", &OpenADPError{
+			Code:    ErrorCodeNoLiveServers,
+			Message: "No live servers available",
+		}
 	}
 
 	// Use the first live server for echo
@@ -358,7 +365,10 @@ func (c *Client) GetServerInfo() (map[string]interface{}, error) {
 	c.mu.RUnlock()
 
 	if len(liveServers) == 0 {
-		return nil, fmt.Errorf("no live servers available")
+		return nil, &OpenADPError{
+			Code:    ErrorCodeNoLiveServers,
+			Message: "No live servers available",
+		}
 	}
 
 	// Use the first live server for server info

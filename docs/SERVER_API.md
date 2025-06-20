@@ -14,7 +14,7 @@ Content-Type: application/json
 
 ### Authentication
 - All methods except `Echo` and `GetServerInfo` require **Noise-NK encryption**
-- Authentication uses **128-bit authentication codes** derived per-server
+- Authentication uses **256-bit authentication codes** derived per-server
 - Auth codes are passed as the first parameter in most methods
 
 ---
