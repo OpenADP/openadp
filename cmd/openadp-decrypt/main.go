@@ -12,6 +12,7 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/term"
 
+	"github.com/openadp/openadp/pkg/client"
 	"github.com/openadp/openadp/pkg/keygen"
 )
 
@@ -39,6 +40,7 @@ func main() {
 	var (
 		filename        = flag.String("file", "", "File to decrypt (required)")
 		password        = flag.String("password", "", "Password for key derivation (will prompt if not provided)")
+		userID          = flag.String("user-id", "", "User ID override (will use metadata or prompt if not provided)")
 		overrideServers = flag.String("servers", "", "Comma-separated list of server URLs to override metadata servers")
 		help            = flag.Bool("help", false, "Show help information")
 		showVersion     = flag.Bool("version", false, "Show version information")
@@ -97,7 +99,7 @@ func main() {
 	}
 
 	// Decrypt the file
-	if err := decryptFile(*filename, passwordStr, overrideServerURLs); err != nil {
+	if err := decryptFile(*filename, passwordStr, *userID, overrideServerURLs); err != nil {
 		fmt.Printf("❌ Decryption failed: %v\n", err)
 		os.Exit(1)
 	}
@@ -114,9 +116,20 @@ USAGE:
 OPTIONS:
     -file <path>          File to decrypt (required)
     -password <password>  Password for key derivation (will prompt if not provided)
+    -user-id <id>         User ID override (will use metadata or prompt if not provided)
     -servers <urls>       Comma-separated list of server URLs to override metadata servers
     -version              Show version information
     -help                 Show this help message
+
+USER ID HANDLING:
+    The tool will use the User ID in this priority order:
+    1. Command line flag (-user-id)
+    2. User ID stored in the encrypted file metadata
+    3. OPENADP_USER_ID environment variable
+    4. Interactive prompt
+
+    You only need to specify a User ID if it's missing from the file metadata
+    or if you want to override it for some reason.
 
 EXAMPLES:
     # Decrypt a file using servers from metadata
@@ -125,14 +138,19 @@ EXAMPLES:
     # Decrypt using override servers
     openadp-decrypt -file document.txt.enc -servers "https://server1.com,https://server2.com"
 
-    # Decrypt with password flag (not recommended for security)
-    openadp-decrypt -file document.txt.enc -password "mypassword"
+    # Override user ID (useful for corrupted metadata)
+    openadp-decrypt -file document.txt.enc -user-id "myuserid"
+
+    # Use environment variables
+    export OPENADP_PASSWORD="mypassword"
+    export OPENADP_USER_ID="myuserid"
+    openadp-decrypt -file document.txt.enc
 
 The decrypted file will be saved without the .enc extension
 `)
 }
 
-func decryptFile(inputFilename, password string, overrideServers []string) error {
+func decryptFile(inputFilename, password, userID string, overrideServers []string) error {
 	// Determine output filename
 	var outputFilename string
 	if strings.HasSuffix(inputFilename, ".enc") {
@@ -193,12 +211,61 @@ func decryptFile(inputFilename, password string, overrideServers []string) error
 	}
 
 	// Use override servers if provided
+	var serverInfos []client.ServerInfo
 	if len(overrideServers) > 0 {
 		fmt.Printf("🔄 Overriding metadata servers with %d custom servers\n", len(overrideServers))
-		serverURLs = overrideServers
 		fmt.Printf("📋 Override servers:\n")
-		for i, url := range serverURLs {
+		for i, url := range overrideServers {
 			fmt.Printf("   %d. %s\n", i+1, url)
+		}
+
+		// Get public keys directly from each override server via GetServerInfo
+		fmt.Println("   🔍 Querying override servers for public keys...")
+		serverInfos = make([]client.ServerInfo, 0, len(overrideServers))
+		for _, url := range overrideServers {
+			// Create a basic client to call GetServerInfo
+			basicClient := client.NewOpenADPClient(url)
+			serverInfo, err := basicClient.GetServerInfo()
+			if err != nil {
+				fmt.Printf("   ⚠️  Failed to get server info from %s: %v\n", url, err)
+				// Add server without public key as fallback
+				serverInfos = append(serverInfos, client.ServerInfo{
+					URL:       url,
+					PublicKey: "",
+					Country:   "Unknown",
+				})
+				continue
+			}
+
+			// Extract public key from server info
+			publicKey := ""
+			if noiseKey, ok := serverInfo["noise_nk_public_key"].(string); ok && noiseKey != "" {
+				publicKey = "ed25519:" + noiseKey
+			}
+
+			serverInfos = append(serverInfos, client.ServerInfo{
+				URL:       url,
+				PublicKey: publicKey,
+				Country:   "Unknown",
+			})
+
+			keyStatus := "❌ No public key"
+			if publicKey != "" {
+				keyStatus = "🔐 Public key available"
+			}
+			fmt.Printf("   ✅ %s - %s\n", url, keyStatus)
+		}
+
+		serverURLs = overrideServers
+	} else {
+		// Convert metadata server URLs to ServerInfo structs (no public keys from metadata)
+		serverInfos = make([]client.ServerInfo, len(serverURLs))
+		for i, url := range serverURLs {
+			serverInfos[i] = client.ServerInfo{
+				URL:       url,
+				PublicKey: "", // No public key available from metadata
+				Country:   "Unknown",
+			}
 		}
 	}
 
@@ -210,14 +277,34 @@ func decryptFile(inputFilename, password string, overrideServers []string) error
 	}
 
 	// Extract authentication codes and user ID from metadata
-	baseAuthCode, userID, err := getAuthCodesFromMetadata(metadata)
+	baseAuthCode, userIDFromMetadata, err := getAuthCodesFromMetadata(metadata)
 	if err != nil {
 		return fmt.Errorf("failed to extract auth codes: %v", err)
 	}
 
+	// Determine final user ID (priority: flag > metadata > environment > prompt)
+	var finalUserID string
+	if userID != "" {
+		finalUserID = userID
+		fmt.Printf("🔐 Using user ID from command line: %s\n", finalUserID)
+	} else if userIDFromMetadata != "" {
+		finalUserID = userIDFromMetadata
+		fmt.Printf("🔐 Using user ID from file metadata: %s\n", finalUserID)
+	} else if envUserID := os.Getenv("OPENADP_USER_ID"); envUserID != "" {
+		finalUserID = envUserID
+		fmt.Println("🔐 Using user ID from environment variable")
+	} else {
+		fmt.Print("Enter your user ID (same as used during encryption): ")
+		fmt.Scanln(&finalUserID)
+		if strings.TrimSpace(finalUserID) == "" {
+			return fmt.Errorf("user ID cannot be empty")
+		}
+		finalUserID = strings.TrimSpace(finalUserID)
+	}
+
 	// Recover encryption key using OpenADP
 	fmt.Println("🔄 Recovering encryption key from OpenADP servers...")
-	encKey, err := recoverEncryptionKey(outputFilename, password, userID, baseAuthCode, serverURLs, metadata.Threshold)
+	encKey, err := recoverEncryptionKeyWithServerInfo(outputFilename, password, finalUserID, baseAuthCode, serverInfos, metadata.Threshold)
 	if err != nil {
 		return fmt.Errorf("failed to recover encryption key: %v", err)
 	}
@@ -254,18 +341,18 @@ func decryptFile(inputFilename, password string, overrideServers []string) error
 	return nil
 }
 
-func recoverEncryptionKey(filename, password, userID string, baseAuthCode string, serverURLs []string, threshold int) ([]byte, error) {
+func recoverEncryptionKeyWithServerInfo(filename, password, userID string, baseAuthCode string, serverInfos []client.ServerInfo, threshold int) ([]byte, error) {
 	// Derive identifiers (same as during encryption)
 	uid, did, bid := keygen.DeriveIdentifiers(filename, userID, "")
 	fmt.Printf("🔑 Recovering with UID=%s, DID=%s, BID=%s\n", uid, did, bid)
 
 	// Regenerate server auth codes from base auth code
 	serverAuthCodes := make(map[string]string)
-	for _, serverURL := range serverURLs {
+	for _, serverInfo := range serverInfos {
 		// Derive server-specific code using SHA256 (same as GenerateAuthCodes)
-		combined := fmt.Sprintf("%s:%s", baseAuthCode, serverURL)
+		combined := fmt.Sprintf("%s:%s", baseAuthCode, serverInfo.URL)
 		hash := sha256.Sum256([]byte(combined))
-		serverAuthCodes[serverURL] = fmt.Sprintf("%x", hash[:])
+		serverAuthCodes[serverInfo.URL] = fmt.Sprintf("%x", hash[:])
 	}
 
 	// Create AuthCodes structure from metadata
@@ -276,7 +363,7 @@ func recoverEncryptionKey(filename, password, userID string, baseAuthCode string
 	}
 
 	// Recover encryption key using the full distributed protocol
-	result := keygen.RecoverEncryptionKey(filename, password, userID, serverURLs, threshold, authCodes)
+	result := keygen.RecoverEncryptionKeyWithServerInfo(filename, password, userID, serverInfos, threshold, authCodes)
 	if result.Error != "" {
 		return nil, fmt.Errorf("key recovery failed: %s", result.Error)
 	}

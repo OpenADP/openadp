@@ -52,8 +52,12 @@ func TestLargeYValues(t *testing.T) {
 		{new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil), "2^256"},
 	}
 
-	// Initialize client with our test servers
-	c := client.NewClient("", serverManager.GetServerURLs(), 5*time.Second, 3)
+	// Initialize client with our test servers using ServerInfo with public keys
+	serverInfos, err := serverManager.GetServerInfos()
+	if err != nil {
+		t.Fatalf("Failed to get server info from test servers: %v", err)
+	}
+	c := client.NewClientWithServerInfo(serverInfos, 5*time.Second, 3)
 
 	liveCount := c.GetLiveServerCount()
 	if liveCount == 0 {
@@ -146,8 +150,12 @@ func TestBasicRegistration(t *testing.T) {
 	fmt.Printf("y as integer: %s\n", yInt.String())
 	fmt.Printf("y as bytes length: %d\n", len(yBytes))
 
-	// Initialize client with our test servers
-	c := client.NewClient("", serverManager.GetServerURLs(), 5*time.Second, 3)
+	// Initialize client with our test servers using ServerInfo with public keys
+	serverInfos, err := serverManager.GetServerInfos()
+	if err != nil {
+		t.Fatalf("Failed to get server info from test servers: %v", err)
+	}
+	c := client.NewClientWithServerInfo(serverInfos, 5*time.Second, 3)
 
 	liveCount := c.GetLiveServerCount()
 	if liveCount == 0 {
@@ -187,8 +195,12 @@ func TestEdgeCaseValues(t *testing.T) {
 	}
 	defer serverManager.StopAllServers()
 
-	// Initialize client with our test servers
-	c := client.NewClient("", serverManager.GetServerURLs(), 5*time.Second, 3)
+	// Initialize client with our test servers using ServerInfo with public keys
+	serverInfos, err := serverManager.GetServerInfos()
+	if err != nil {
+		t.Fatalf("Failed to get server info from test servers: %v", err)
+	}
+	c := client.NewClientWithServerInfo(serverInfos, 5*time.Second, 3)
 
 	liveCount := c.GetLiveServerCount()
 	if liveCount == 0 {
@@ -271,8 +283,12 @@ func TestConcurrentRegistrations(t *testing.T) {
 	}
 	defer serverManager.StopAllServers()
 
-	// Initialize client with our test servers
-	c := client.NewClient("", serverManager.GetServerURLs(), 5*time.Second, 3)
+	// Initialize client with our test servers using ServerInfo with public keys
+	serverInfos, err := serverManager.GetServerInfos()
+	if err != nil {
+		t.Fatalf("Failed to get server info from test servers: %v", err)
+	}
+	c := client.NewClientWithServerInfo(serverInfos, 5*time.Second, 3)
 
 	liveCount := c.GetLiveServerCount()
 	if liveCount == 0 {

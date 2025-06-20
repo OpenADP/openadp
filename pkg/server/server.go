@@ -58,6 +58,7 @@ type RecoverSecretResponse struct {
 // ListBackupsResponse represents a backup entry in the list response
 type ListBackupsResponse struct {
 	UID        string `json:"uid"`
+	DID        string `json:"did"`
 	BID        string `json:"bid"`
 	Version    int    `json:"version"`
 	NumGuesses int    `json:"num_guesses"`
@@ -295,28 +296,7 @@ func ListBackups(db *database.Database, uid string) ([]ListBackupsResponse, erro
 	for i, backup := range backups {
 		response[i] = ListBackupsResponse{
 			UID:        uid,
-			BID:        backup.BID,
-			Version:    backup.Version,
-			NumGuesses: backup.NumGuesses,
-			MaxGuesses: backup.MaxGuesses,
-			Expiration: backup.Expiration,
-		}
-	}
-
-	return response, nil
-}
-
-// ListBackupsByAuthCode lists all backups for a user identified by auth code
-func ListBackupsByAuthCode(db *database.Database, authCode string) ([]ListBackupsResponse, error) {
-	backups, err := db.ListBackupsByAuthCode(authCode)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list backups by auth code: %v", err)
-	}
-
-	response := make([]ListBackupsResponse, len(backups))
-	for i, backup := range backups {
-		response[i] = ListBackupsResponse{
-			UID:        "", // UID not exposed when using auth code
+			DID:        backup.DID,
 			BID:        backup.BID,
 			Version:    backup.Version,
 			NumGuesses: backup.NumGuesses,

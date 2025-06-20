@@ -6,8 +6,10 @@
 package integration
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -66,25 +68,50 @@ func TestSimpleE2E(t *testing.T) {
 
 	// Test 2: Test encryption with local servers
 	t.Run("encryption", func(t *testing.T) {
-		// Start a single server for testing
-		serverCmd := exec.Command("../../build/openadp-server", "-port", "9300", "-db", "simple_e2e.db")
-		if err := serverCmd.Start(); err != nil {
-			t.Fatalf("Failed to start server: %v", err)
+		// Create test server manager
+		serverManager, err := NewTestServerManager()
+		if err != nil {
+			t.Fatalf("Failed to create test server manager: %v", err)
 		}
-		defer func() {
-			serverCmd.Process.Kill()
-			serverCmd.Wait()
-			os.Remove("simple_e2e.db")
-		}()
+		defer serverManager.Cleanup()
+
+		// Start a single server for testing
+		_, err = serverManager.StartServers(9300, 1)
+		if err != nil {
+			t.Fatalf("Failed to start test server: %v", err)
+		}
+
+		// Get server info with public keys
+		serverInfos, err := serverManager.GetServerInfos()
+		if err != nil {
+			t.Fatalf("Failed to get server info with public keys: %v", err)
+		}
+
+		// Create a temporary servers.json file with our test server info
+		tempServersFile := filepath.Join(os.TempDir(), "simple_test_servers.json")
+		defer os.Remove(tempServersFile)
+
+		serversData := map[string]interface{}{
+			"servers": serverInfos,
+		}
+		serversJSON, err := json.Marshal(serversData)
+		if err != nil {
+			t.Fatalf("Failed to marshal server info: %v", err)
+		}
+
+		if err := os.WriteFile(tempServersFile, serversJSON, 0644); err != nil {
+			t.Fatalf("Failed to write temporary servers file: %v", err)
+		}
 
 		// Give server time to start
 		time.Sleep(2 * time.Second)
 
-		// Test encryption
+		// Test encryption using the servers file URL
 		cmd := exec.Command("../../build/openadp-encrypt",
 			"-file", testFilePath,
-			"-servers", "http://localhost:9300",
-			"-password", "test123")
+			"-servers-url", "file://"+tempServersFile,
+			"-password", "test123",
+			"-user-id", "simple-test-user")
 
 		output, err := cmd.CombinedOutput()
 		if err != nil {

@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/flynn/noise"
 	"github.com/gorilla/mux"
 
 	"github.com/openadp/openadp/pkg/crypto"
@@ -88,6 +89,23 @@ func NewServer(dbPath string, port int, authEnabled bool) (*Server, error) {
 		return nil, fmt.Errorf("failed to initialize server key: %v", err)
 	}
 
+	// Load private key for session manager
+	privateKeyData, err := db.GetServerConfig("server_private_key")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get server private key: %v", err)
+	}
+
+	// Construct DHKey from database keys
+	var dhKey *noise.DHKey
+	if privateKeyData != nil && len(privateKeyData) == 32 && len(serverKey) == 32 {
+		dhKey = &noise.DHKey{
+			Private: make([]byte, 32),
+			Public:  make([]byte, 32),
+		}
+		copy(dhKey.Private, privateKeyData)
+		copy(dhKey.Public, serverKey)
+	}
+
 	return &Server{
 		db:             db,
 		serverKey:      serverKey,
@@ -95,7 +113,7 @@ func NewServer(dbPath string, port int, authEnabled bool) (*Server, error) {
 		port:           port,
 		dbPath:         dbPath,
 		monitoring:     server.NewMonitoringTracker(),
-		sessionManager: server.NewNoiseSessionManager(nil), // Will generate server key
+		sessionManager: server.NewNoiseSessionManager(dhKey),
 	}, nil
 }
 
@@ -221,8 +239,6 @@ func (s *Server) routeMethodWithContext(method string, params []interface{}, ctx
 		return s.handleEcho(params)
 	case "GetServerInfo":
 		return s.handleGetServerInfo(params)
-	case "NoiseHandshake":
-		return s.handleNoiseHandshake(params)
 	case "RegisterSecret":
 		// Enforce encryption for RegisterSecret
 		if !ctx.IsEncrypted {
@@ -258,7 +274,9 @@ func (s *Server) handleEcho(params []interface{}) (interface{}, error) {
 
 // handleGetServerInfo handles the GetServerInfo method
 func (s *Server) handleGetServerInfo(params []interface{}) (interface{}, error) {
-	return server.GetServerInfo(version, s.serverKey, s.monitoring), nil
+	// Use the session manager's public key for consistency with handshakes
+	sessionManagerKey := s.sessionManager.GetServerPublicKey()
+	return server.GetServerInfo(version, sessionManagerKey, s.monitoring), nil
 }
 
 // handleRegisterSecret handles the RegisterSecret method
@@ -469,32 +487,46 @@ func (s *Server) handleRecoverSecret(params []interface{}) (interface{}, error) 
 
 // handleListBackups handles the ListBackups method
 func (s *Server) handleListBackups(params []interface{}) (interface{}, error) {
-	if len(params) != 1 {
-		return nil, fmt.Errorf("ListBackups requires exactly 1 parameter")
+	if len(params) != 2 {
+		return nil, fmt.Errorf("ListBackups requires exactly 2 parameters: uid and auth_code")
 	}
 
-	authCode, ok := params[0].(string)
+	uid, ok := params[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("uid must be a string")
+	}
+
+	authCode, ok := params[1].(string)
 	if !ok {
 		return nil, fmt.Errorf("auth_code must be a string")
 	}
 
-	// Convert to Python-compatible format: array of arrays [uid, did, bid, version, num_guesses, max_guesses, expiration]
-	// Get the database info to include DID
-	dbBackups, err := s.db.ListBackupsByAuthCode(authCode)
+	// Verify the auth code is valid for this user
+	valid, err := s.db.VerifyAuthCodeForUser(uid, authCode)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify auth code: %v", err)
+	}
+	if !valid {
+		return nil, fmt.Errorf("invalid auth code for user")
+	}
+
+	// Get all backups for this user using the proper ListBackups function
+	backups, err := server.ListBackups(s.db, uid)
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([][]interface{}, len(dbBackups))
-	for i, dbBackup := range dbBackups {
+	// Convert to Python-compatible format: array of arrays [uid, did, bid, version, num_guesses, max_guesses, expiration]
+	result := make([][]interface{}, len(backups))
+	for i, backup := range backups {
 		result[i] = []interface{}{
-			"",                  // uid not exposed when using auth code (index 0)
-			dbBackup.DID,        // did (index 1)
-			dbBackup.BID,        // bid (index 2)
-			dbBackup.Version,    // version (index 3)
-			dbBackup.NumGuesses, // num_guesses (index 4)
-			dbBackup.MaxGuesses, // max_guesses (index 5)
-			dbBackup.Expiration, // expiration (index 6)
+			backup.UID,        // uid (index 0)
+			backup.DID,        // did (index 1)
+			backup.BID,        // bid (index 2)
+			backup.Version,    // version (index 3)
+			backup.NumGuesses, // num_guesses (index 4)
+			backup.MaxGuesses, // max_guesses (index 5)
+			backup.Expiration, // expiration (index 6)
 		}
 	}
 

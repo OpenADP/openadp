@@ -2,6 +2,8 @@ package keygen
 
 import (
 	"testing"
+
+	"github.com/openadp/openadp/pkg/client"
 )
 
 // Test individual keygen functions without server dependencies
@@ -230,7 +232,7 @@ func TestGenerateEncryptionKeyInputValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := GenerateEncryptionKey(tt.filename, tt.password, tt.userID,
-				tt.maxGuesses, tt.expiration, tt.serverURLs)
+				tt.maxGuesses, tt.expiration, client.ConvertURLsToServerInfo(tt.serverURLs))
 
 			if tt.wantError && result.Error == "" {
 				t.Errorf("GenerateEncryptionKey() expected error but got none")
@@ -400,7 +402,7 @@ func TestKeygenRoundTrip(t *testing.T) {
 
 	// Step 1: Generate encryption key
 	t.Log("🔐 Generating encryption key...")
-	result := GenerateEncryptionKey(filename, password, userID, maxGuesses, expiration, serverURLs)
+	result := GenerateEncryptionKey(filename, password, userID, maxGuesses, expiration, client.ConvertURLsToServerInfo(serverURLs))
 	if result.Error != "" {
 		t.Skipf("Key generation failed (servers not available): %s", result.Error)
 	}

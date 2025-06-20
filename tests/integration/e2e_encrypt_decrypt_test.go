@@ -13,12 +13,15 @@
 package integration
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
-	"time"
+
+	"github.com/openadp/openadp/pkg/client"
 )
 
 type E2ETestSuite struct {
@@ -28,6 +31,8 @@ type E2ETestSuite struct {
 	encryptedFilePath string
 	serverURLs        []string
 	serverPorts       []int
+	serverManager     *TestServerManager
+	serverInfos       []client.ServerInfo
 }
 
 func TestEncryptDecryptE2E(t *testing.T) {
@@ -92,6 +97,13 @@ func (suite *E2ETestSuite) setupE2ETest(t *testing.T) {
 	t.Logf("✅ Found openadp-decrypt: %s", decryptTool)
 	t.Logf("✅ Found openadp-server: %s", serverTool)
 
+	// Create test server manager
+	var err error
+	suite.serverManager, err = NewTestServerManager()
+	if err != nil {
+		t.Fatalf("Failed to create test server manager: %v", err)
+	}
+
 	// Start real OpenADP servers
 	suite.startOpenADPServers(t)
 
@@ -115,53 +127,35 @@ func (suite *E2ETestSuite) setupE2ETest(t *testing.T) {
 func (suite *E2ETestSuite) startOpenADPServers(t *testing.T) {
 	t.Log("🖥️  Starting local OpenADP servers...")
 
-	serverTool := "../../build/openadp-server"
-
-	// Start servers on ports 9300, 9301, 9302
-	for _, port := range suite.serverPorts {
-		t.Logf("  Starting server on port %d...", port)
-
-		dbPath := fmt.Sprintf("openadp_e2e_%d.db", port)
-
-		// Remove existing database
-		os.Remove(dbPath)
-
-		cmd := exec.Command(serverTool, "-port", fmt.Sprintf("%d", port), "-db", dbPath)
-
-		if err := cmd.Start(); err != nil {
-			t.Fatalf("Failed to start server on port %d: %v", port, err)
-		}
-
-		suite.serverProcesses = append(suite.serverProcesses, cmd)
-
-		// Give server time to start
-		time.Sleep(1 * time.Second)
-
-		// Check if process is still running by checking if it's still alive
-		if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
-			t.Fatalf("Server on port %d exited unexpectedly", port)
-		} else {
-			t.Logf("    ✅ Server on port %d started (PID: %d)", port, cmd.Process.Pid)
-		}
+	// Start servers using the test server manager
+	servers, err := suite.serverManager.StartServers(9300, 3)
+	if err != nil {
+		t.Fatalf("Failed to start test servers: %v", err)
 	}
 
-	t.Logf("✅ Started %d OpenADP servers", len(suite.serverProcesses))
+	// Extract URLs and ports for backward compatibility
+	suite.serverURLs = make([]string, len(servers))
+	suite.serverPorts = make([]int, len(servers))
+	for i, server := range servers {
+		suite.serverURLs[i] = server.URL
+		suite.serverPorts[i] = server.Port
+	}
 
-	// Wait for servers to be fully ready
-	t.Log("⏳ Waiting for servers to be ready...")
-	time.Sleep(3 * time.Second)
+	// Get server info with public keys
+	suite.serverInfos, err = suite.serverManager.GetServerInfos()
+	if err != nil {
+		t.Fatalf("Failed to get server info with public keys: %v", err)
+	}
+
+	t.Logf("✅ Started %d OpenADP servers", len(servers))
 }
 
 func (suite *E2ETestSuite) teardownE2ETest(t *testing.T) {
 	t.Log("🧹 Cleaning up test environment...")
 
-	// Stop server processes
-	for i, process := range suite.serverProcesses {
-		if process != nil && process.Process != nil {
-			t.Logf("  Stopping server %d (PID: %d)...", i, process.Process.Pid)
-			process.Process.Kill()
-			process.Wait()
-		}
+	// Stop servers using the test server manager
+	if suite.serverManager != nil {
+		suite.serverManager.Cleanup()
 	}
 
 	// Clean up test database files
@@ -242,11 +236,24 @@ func (suite *E2ETestSuite) testFileEncryption(t *testing.T) {
 	encryptTool := "../../build/openadp-encrypt"
 	suite.encryptedFilePath = suite.testFilePath + ".enc"
 
-	// Build server URLs string
-	serverURLsStr := strings.Join(suite.serverURLs, ",")
+	// Create a temporary servers.json file with our test server info
+	tempServersFile := filepath.Join(os.TempDir(), "test_servers.json")
+	defer os.Remove(tempServersFile)
 
-	// Run encryption with password flag
-	cmd := exec.Command(encryptTool, "-file", suite.testFilePath, "-servers", serverURLsStr, "-password", "test-password-123")
+	serversData := map[string]interface{}{
+		"servers": suite.serverInfos,
+	}
+	serversJSON, err := json.Marshal(serversData)
+	if err != nil {
+		t.Fatalf("Failed to marshal server info: %v", err)
+	}
+
+	if err := os.WriteFile(tempServersFile, serversJSON, 0644); err != nil {
+		t.Fatalf("Failed to write temporary servers file: %v", err)
+	}
+
+	// Run encryption using the servers file URL
+	cmd := exec.Command(encryptTool, "-file", suite.testFilePath, "-servers-url", "file://"+tempServersFile, "-password", "test-password-123", "-user-id", "test-user-e2e")
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -380,9 +387,24 @@ to verify that guess numbers are properly tracked via listBackups calls.`
 	// Step 1: Encrypt file with correct password
 	t.Log("\n🔐 Step 1: Encrypting file with correct password...")
 	encryptTool := "../../build/openadp-encrypt"
-	serverURLsStr := strings.Join(suite.serverURLs, ",")
 
-	encryptCmd := exec.Command(encryptTool, "-file", wrongPasswordTestFilePath, "-servers", serverURLsStr, "-password", correctPassword)
+	// Create a temporary servers.json file with our test server info
+	tempServersFile := filepath.Join(os.TempDir(), "test_servers_wrong_pass.json")
+	defer os.Remove(tempServersFile)
+
+	serversData := map[string]interface{}{
+		"servers": suite.serverInfos,
+	}
+	serversJSON, err := json.Marshal(serversData)
+	if err != nil {
+		t.Fatalf("Failed to marshal server info: %v", err)
+	}
+
+	if err := os.WriteFile(tempServersFile, serversJSON, 0644); err != nil {
+		t.Fatalf("Failed to write temporary servers file: %v", err)
+	}
+
+	encryptCmd := exec.Command(encryptTool, "-file", wrongPasswordTestFilePath, "-servers-url", "file://"+tempServersFile, "-password", correctPassword, "-user-id", "test-user-wrong-pass")
 	encryptOutput, err := encryptCmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("Encryption failed: %v\nOutput: %s", err, encryptOutput)

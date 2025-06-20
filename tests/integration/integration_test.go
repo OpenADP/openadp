@@ -87,7 +87,23 @@ func TestOpenADPIntegration(t *testing.T) {
 	password := "test-password-123"
 	// Use absolute timestamp for expiration (current time + 1 hour)
 	expiration := int(time.Now().Unix()) + 3600
-	keyResult := keygen.GenerateEncryptionKey(bid, password, uid, 10, expiration, serverURLs)
+
+	// Get ServerInfo with public keys from each test server
+	fmt.Println("   Getting server info and public keys from test servers...")
+	serverInfos, err := serverManager.GetServerInfos()
+	if err != nil {
+		t.Fatalf("Failed to get server info from test servers: %v", err)
+	}
+
+	for _, serverInfo := range serverInfos {
+		if serverInfo.PublicKey != "" {
+			fmt.Printf("   ✅ Server %s: Got public key (Noise-NK enabled)\n", serverInfo.URL)
+		} else {
+			fmt.Printf("   ⚠️  Server %s: No public key (encryption disabled)\n", serverInfo.URL)
+		}
+	}
+
+	keyResult := keygen.GenerateEncryptionKey(bid, password, uid, 10, expiration, serverInfos)
 	if keyResult.Error != "" {
 		t.Fatalf("Failed to generate encryption key: %s", keyResult.Error)
 	}

@@ -12,6 +12,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/openadp/openadp/pkg/auth"
+	"github.com/openadp/openadp/pkg/client"
 	"github.com/openadp/openadp/pkg/keygen"
 )
 
@@ -181,7 +182,7 @@ func deriveKey(filename, userID, serversStr string) {
 
 	// Generate key
 	fmt.Printf("🔄 Generating encryption key using %d servers...\n", len(serverURLs))
-	result := keygen.GenerateEncryptionKey(filename, password, userID, 10, 0, serverURLs)
+	result := keygen.GenerateEncryptionKey(filename, password, userID, 10, 0, client.ConvertURLsToServerInfo(serverURLs))
 
 	if result.Error != "" {
 		fmt.Printf("❌ Key generation failed: %s\n", result.Error)

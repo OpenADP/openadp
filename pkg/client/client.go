@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 )
@@ -45,36 +46,85 @@ func NewClient(serversURL string, fallbackServers []string, echoTimeout time.Dur
 	return client
 }
 
+// NewClientWithServerInfo creates a new OpenADP client with predefined server information
+func NewClientWithServerInfo(serverInfos []ServerInfo, echoTimeout time.Duration, maxWorkers int) *Client {
+	if echoTimeout == 0 {
+		echoTimeout = 10 * time.Second
+	}
+
+	if maxWorkers == 0 {
+		maxWorkers = 10
+	}
+
+	client := &Client{
+		serversURL:      "",  // No URL scraping needed
+		fallbackServers: nil, // No fallback needed
+		echoTimeout:     echoTimeout,
+		maxWorkers:      maxWorkers,
+	}
+
+	// Test servers directly with the provided ServerInfo
+	client.liveServers = client.testServersConcurrently(serverInfos)
+
+	log.Printf("Initialization complete: %d live servers available", len(client.liveServers))
+	if len(client.liveServers) > 0 {
+		log.Println("Live servers:")
+		for i, liveClient := range client.liveServers {
+			encStatus := "no encryption"
+			if liveClient.HasPublicKey() {
+				encStatus = "Noise-NK encryption"
+			}
+			log.Printf("  %d. %s [%s]", i+1, liveClient.URL, encStatus)
+		}
+	} else {
+		log.Println("WARNING: No live servers found! All operations will fail.")
+	}
+
+	return client
+}
+
 // initializeServers scrapes server list and tests each server for liveness
 func (c *Client) initializeServers() {
-	var serverURLs []string
+	var serverInfos []ServerInfo
 
 	// If serversURL is empty, skip scraping and use fallback servers directly
 	if c.serversURL == "" {
 		log.Println("Skipping server scraping, using provided servers...")
-		serverURLs = c.fallbackServers
+		// Convert fallback URLs to ServerInfo structs
+		serverInfos = make([]ServerInfo, len(c.fallbackServers))
+		for i, url := range c.fallbackServers {
+			serverInfos[i] = ServerInfo{
+				URL:       url,
+				PublicKey: "", // No public key for fallback servers
+				Country:   "Unknown",
+			}
+		}
 	} else {
 		log.Println("Scraping server list...")
 
-		// Scrape server URLs
-		scraped, err := ScrapeServerURLs(c.serversURL)
+		// Get full server information including public keys
+		scraped, err := GetServers(c.serversURL)
 		if err != nil || len(scraped) == 0 {
 			log.Printf("Failed to scrape servers from %s, using fallback servers: %v", c.serversURL, err)
-			serverURLs = c.fallbackServers
+			serverInfos = GetFallbackServerInfo()
 		} else {
 			log.Printf("Found %d servers to test", len(scraped))
-			serverURLs = scraped
+			serverInfos = scraped
 		}
 	}
 
 	// Test servers concurrently for better performance
-	c.liveServers = c.testServersConcurrently(serverURLs)
+	c.liveServers = c.testServersConcurrently(serverInfos)
 
 	log.Printf("Initialization complete: %d live servers available", len(c.liveServers))
 	if len(c.liveServers) > 0 {
 		log.Println("Live servers:")
 		for i, client := range c.liveServers {
-			log.Printf("  %d. %s", i+1, client.URL)
+			encStatus := "no encryption"
+			if client.HasPublicKey() {
+				encStatus = "Noise-NK encryption"
+			}
+			log.Printf("  %d. %s [%s]", i+1, client.URL, encStatus)
 		}
 	} else {
 		log.Println("WARNING: No live servers found! All operations will fail.")
@@ -82,30 +132,30 @@ func (c *Client) initializeServers() {
 }
 
 // testServersConcurrently tests multiple servers concurrently for liveness using echo
-func (c *Client) testServersConcurrently(serverURLs []string) []*EncryptedOpenADPClient {
+func (c *Client) testServersConcurrently(serverInfos []ServerInfo) []*EncryptedOpenADPClient {
 	type result struct {
 		client *EncryptedOpenADPClient
 		url    string
 	}
 
-	results := make(chan result, len(serverURLs))
+	results := make(chan result, len(serverInfos))
 	var wg sync.WaitGroup
 
 	// Limit concurrent workers
 	semaphore := make(chan struct{}, c.maxWorkers)
 
-	for _, url := range serverURLs {
+	for _, serverInfo := range serverInfos {
 		wg.Add(1)
-		go func(serverURL string) {
+		go func(serverInfo ServerInfo) {
 			defer wg.Done()
 
 			// Acquire semaphore
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			client := c.testSingleServer(serverURL)
-			results <- result{client: client, url: serverURL}
-		}(url)
+			client := c.testSingleServerWithInfo(serverInfo)
+			results <- result{client: client, url: serverInfo.URL}
+		}(serverInfo)
 	}
 
 	// Close results channel when all goroutines complete
@@ -125,32 +175,56 @@ func (c *Client) testServersConcurrently(serverURLs []string) []*EncryptedOpenAD
 	return liveServers
 }
 
-// testSingleServer tests a single server for liveness
-func (c *Client) testSingleServer(url string) *EncryptedOpenADPClient {
-	log.Printf("Testing server: %s", url)
+// testSingleServerWithInfo tests a single server for liveness using ServerInfo with public key
+func (c *Client) testSingleServerWithInfo(serverInfo ServerInfo) *EncryptedOpenADPClient {
+	log.Printf("Testing server: %s", serverInfo.URL)
 
-	// Create encrypted client directly - it will auto-discover server info
-	client := CreateClient(url)
+	var publicKey []byte
+	var err error
+
+	// Parse public key if available
+	if serverInfo.PublicKey != "" {
+		// Handle different key formats
+		if strings.HasPrefix(serverInfo.PublicKey, "ed25519:") {
+			// Remove ed25519: prefix and decode
+			keyB64 := strings.TrimPrefix(serverInfo.PublicKey, "ed25519:")
+			publicKey, err = base64.StdEncoding.DecodeString(keyB64)
+			if err != nil {
+				log.Printf("  ⚠️  %s: Invalid public key: %v", serverInfo.URL, err)
+				publicKey = nil
+			}
+		} else {
+			// Assume it's already base64
+			publicKey, err = base64.StdEncoding.DecodeString(serverInfo.PublicKey)
+			if err != nil {
+				log.Printf("  ⚠️  %s: Invalid public key: %v", serverInfo.URL, err)
+				publicKey = nil
+			}
+		}
+	}
+
+	// Create encrypted client with public key from servers.json (secure)
+	client := NewEncryptedOpenADPClient(serverInfo.URL, publicKey)
 
 	// Test with echo - use a simple test message
 	testMessage := fmt.Sprintf("liveness_test_%d", time.Now().Unix())
 	result, err := client.Echo(testMessage, false)
 
 	if err != nil {
-		log.Printf("  ❌ %s: %v", url, err)
+		log.Printf("  ❌ %s: %v", serverInfo.URL, err)
 		return nil
 	}
 
 	if result != testMessage {
-		log.Printf("  ❌ %s: Echo returned unexpected result: %s", url, result)
+		log.Printf("  ❌ %s: Echo returned unexpected result: %s", serverInfo.URL, result)
 		return nil
 	}
 
-	// Check if server has public key for encryption
-	if client.serverPublicKey != nil {
-		log.Printf("  ✅ %s: Live (encrypted)", url)
+	// Check encryption status
+	if client.HasPublicKey() {
+		log.Printf("  ✅ %s: Live (Noise-NK encryption from servers.json)", serverInfo.URL)
 	} else {
-		log.Printf("  ✅ %s: Live (no encryption)", url)
+		log.Printf("  ✅ %s: Live (no encryption - no public key)", serverInfo.URL)
 	}
 
 	return client
@@ -200,7 +274,7 @@ func (c *Client) RegisterSecret(uid, did, bid string, version, x int, y []byte, 
 	// Try each server until one succeeds
 	var lastErr error
 	for _, client := range liveServers {
-		success, err := client.RegisterSecret("", did, bid, version, x, yStr, maxGuesses, expiration, false, authData)
+		success, err := client.RegisterSecret("", uid, did, bid, version, x, yStr, maxGuesses, expiration, true, authData)
 		if err == nil && success {
 			return true, nil
 		}
@@ -225,7 +299,7 @@ func (c *Client) RecoverSecret(uid, did, bid, b string, guessNum int, authData m
 	// Try each server until one succeeds
 	var lastErr error
 	for _, client := range liveServers {
-		result, err := client.RecoverSecret("", did, bid, b, guessNum, false, authData)
+		result, err := client.RecoverSecret("", did, bid, b, guessNum, true, authData)
 		if err == nil {
 			return result, nil
 		}
@@ -236,8 +310,8 @@ func (c *Client) RecoverSecret(uid, did, bid, b string, guessNum int, authData m
 	return nil, fmt.Errorf("all servers failed, last error: %v", lastErr)
 }
 
-// ListBackups lists backups from the first available server
-func (c *Client) ListBackups(uid string) ([]map[string]interface{}, error) {
+// ListBackups lists backups for a user from the first available server
+func (c *Client) ListBackups(uid, authCode string) ([]map[string]interface{}, error) {
 	c.mu.RLock()
 	liveServers := make([]*EncryptedOpenADPClient, len(c.liveServers))
 	copy(liveServers, c.liveServers)
@@ -250,7 +324,7 @@ func (c *Client) ListBackups(uid string) ([]map[string]interface{}, error) {
 	// Try each server until one succeeds
 	var lastErr error
 	for _, client := range liveServers {
-		result, err := client.ListBackups("", false, nil)
+		result, err := client.ListBackups(uid, authCode, false, nil)
 		if err == nil {
 			return result, nil
 		}

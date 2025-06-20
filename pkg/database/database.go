@@ -277,42 +277,20 @@ func (d *Database) ListBackups(uid string) ([]BackupInfo, error) {
 	return backups, nil
 }
 
-// ListBackupsByAuthCode lists all backups for a user identified by auth code
-func (d *Database) ListBackupsByAuthCode(authCode string) ([]BackupInfo, error) {
-	listSQL := `
-		SELECT DID, BID, version, num_guesses, max_guesses, expiration 
-		FROM shares 
-		WHERE auth_code = ?
-	`
+// VerifyAuthCodeForUser verifies that an auth code is valid for a specific user
+// by checking if any backup exists for that user with that auth code
+func (d *Database) VerifyAuthCodeForUser(uid, authCode string) (bool, error) {
+	var count int
+	err := d.db.QueryRow(
+		"SELECT COUNT(*) FROM shares WHERE UID = ? AND auth_code = ?",
+		uid, authCode,
+	).Scan(&count)
 
-	rows, err := d.db.Query(listSQL, authCode)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query backups by auth code: %v", err)
-	}
-	defer rows.Close()
-
-	var backups []BackupInfo
-	for rows.Next() {
-		var backup BackupInfo
-		err := rows.Scan(
-			&backup.DID,
-			&backup.BID,
-			&backup.Version,
-			&backup.NumGuesses,
-			&backup.MaxGuesses,
-			&backup.Expiration,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan backup row: %v", err)
-		}
-		backups = append(backups, backup)
+		return false, fmt.Errorf("failed to verify auth code: %v", err)
 	}
 
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating backup rows: %v", err)
-	}
-
-	return backups, nil
+	return count > 0, nil
 }
 
 // GetServerConfig retrieves a configuration value from the server_config table
@@ -380,4 +358,23 @@ func ValidateExpiration(expiration int64) error {
 	}
 
 	return nil
+}
+
+// GetUIDFromAuthCode retrieves the UID associated with an auth code
+// by finding any backup that uses that auth code
+func (d *Database) GetUIDFromAuthCode(authCode string) (string, error) {
+	var uid string
+	err := d.db.QueryRow(
+		"SELECT UID FROM shares WHERE auth_code = ? LIMIT 1",
+		authCode,
+	).Scan(&uid)
+
+	if err == sql.ErrNoRows {
+		return "", fmt.Errorf("auth code not found")
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to get UID from auth code: %v", err)
+	}
+
+	return uid, nil
 }

@@ -7,6 +7,7 @@ import (
 	"math/big"
 
 	"github.com/openadp/openadp/pkg/auth"
+	"github.com/openadp/openadp/pkg/client"
 	"github.com/openadp/openadp/pkg/crypto"
 	"github.com/openadp/openadp/pkg/keygen"
 	"github.com/openadp/openadp/pkg/sharing"
@@ -171,7 +172,7 @@ func testKeyGeneration() {
 	fmt.Printf("   PIN from password: %02x%02x\n", pin[0], pin[1])
 
 	// Test key generation (simplified)
-	result := keygen.GenerateEncryptionKey(filename, password, userID, 10, 0, serverURLs)
+	result := keygen.GenerateEncryptionKey(filename, password, userID, 10, 0, client.ConvertURLsToServerInfo(serverURLs))
 	if result.Error != "" {
 		// This is expected since we don't have real servers
 		fmt.Printf("   Key generation (simulated): %s\n", result.Error)

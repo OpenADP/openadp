@@ -62,7 +62,12 @@ func TestSecretSharingWithServer(t *testing.T) {
 	fallbackServers := serverManager.GetServerURLs()
 	fmt.Printf("Started %d test servers: %v\n", len(testServers), fallbackServers)
 
-	c := client.NewClient("", fallbackServers, 5*time.Second, 3)
+	// Initialize client with our test servers using ServerInfo with public keys
+	serverInfos, err := serverManager.GetServerInfos()
+	if err != nil {
+		t.Fatalf("Failed to get server info from test servers: %v", err)
+	}
+	c := client.NewClientWithServerInfo(serverInfos, 5*time.Second, 3)
 
 	liveCount := c.GetLiveServerCount()
 	if liveCount == 0 {
@@ -131,7 +136,12 @@ func TestSecretSharingRecovery(t *testing.T) {
 	fallbackServers := serverManager.GetServerURLs()
 	fmt.Printf("Started %d test servers: %v\n", len(testServers), fallbackServers)
 
-	c := client.NewClient("", fallbackServers, 5*time.Second, 3)
+	// Initialize client with our test servers using ServerInfo with public keys
+	serverInfos, err := serverManager.GetServerInfos()
+	if err != nil {
+		t.Fatalf("Failed to get server info from test servers: %v", err)
+	}
+	c := client.NewClientWithServerInfo(serverInfos, 5*time.Second, 3)
 
 	liveCount := c.GetLiveServerCount()
 	if liveCount == 0 {

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 )
 
@@ -26,37 +28,52 @@ func GetServers(registryURL string) ([]ServerInfo, error) {
 		registryURL = "https://servers.openadp.org"
 	}
 
-	apiURL := registryURL + "/api/servers.json"
+	var apiURL string
+	var body []byte
+	var err error
 
-	// Create HTTP client with timeout
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
+	// Handle file:// URLs differently
+	if strings.HasPrefix(registryURL, "file://") {
+		// For file URLs, read the file directly
+		filePath := strings.TrimPrefix(registryURL, "file://")
+		body, err = os.ReadFile(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read file %s: %v", filePath, err)
+		}
+	} else {
+		// For HTTP URLs, append /api/servers.json
+		apiURL = registryURL + "/api/servers.json"
 
-	// Create request with realistic User-Agent
-	req, err := http.NewRequest("GET", apiURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %v", err)
-	}
+		// Create HTTP client with timeout
+		client := &http.Client{
+			Timeout: 30 * time.Second,
+		}
 
-	req.Header.Set("User-Agent", "OpenADP-Client/1.0")
-	req.Header.Set("Accept", "application/json")
+		// Create request with realistic User-Agent
+		req, err := http.NewRequest("GET", apiURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request: %v", err)
+		}
 
-	// Make the request
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch servers from %s: %v", apiURL, err)
-	}
-	defer resp.Body.Close()
+		req.Header.Set("User-Agent", "OpenADP-Client/1.0")
+		req.Header.Set("Accept", "application/json")
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP error %d: %s", resp.StatusCode, resp.Status)
-	}
+		// Make the request
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch servers from %s: %v", apiURL, err)
+		}
+		defer resp.Body.Close()
 
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %v", err)
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("HTTP error %d: %s", resp.StatusCode, resp.Status)
+		}
+
+		// Read response body
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response body: %v", err)
+		}
 	}
 
 	// Parse JSON response
@@ -139,6 +156,19 @@ func GetFallbackServerInfo() []ServerInfo {
 			Country:   "CA",
 		},
 	}
+}
+
+// ConvertURLsToServerInfo converts a list of URLs to ServerInfo structs (for backward compatibility)
+func ConvertURLsToServerInfo(urls []string) []ServerInfo {
+	serverInfos := make([]ServerInfo, len(urls))
+	for i, url := range urls {
+		serverInfos[i] = ServerInfo{
+			URL:       url,
+			PublicKey: "", // No public key available for URLs
+			Country:   "Unknown",
+		}
+	}
+	return serverInfos
 }
 
 // DiscoverServers attempts to discover servers from registry with fallback

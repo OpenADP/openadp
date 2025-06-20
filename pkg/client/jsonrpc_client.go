@@ -280,19 +280,19 @@ func (c *OpenADPClient) Ping() error {
 	return nil
 }
 
-// GetServerInfo gets information about the server
+// GetServerInfo gets server information
 func (c *OpenADPClient) GetServerInfo() (map[string]interface{}, error) {
-	response, err := c.makeRequest("get_server_info", nil)
+	response, err := c.makeRequest("GetServerInfo", nil)
 	if err != nil {
 		return nil, err
 	}
 
-	result, ok := response.Result.(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("unexpected response type: %T", response.Result)
+	// Response should be a map
+	if result, ok := response.Result.(map[string]interface{}); ok {
+		return result, nil
 	}
 
-	return result, nil
+	return nil, fmt.Errorf("unexpected response type: %T", response.Result)
 }
 
 // ClientManager manages multiple OpenADP clients

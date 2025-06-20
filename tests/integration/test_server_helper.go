@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/openadp/openadp/pkg/client"
 )
 
 // TestServer represents a running test server instance
@@ -215,4 +217,32 @@ func (m *TestServerManager) GetServerURLs() []string {
 		urls[i] = server.URL
 	}
 	return urls
+}
+
+// GetServerInfos returns ServerInfo structs with public keys for all managed servers
+func (m *TestServerManager) GetServerInfos() ([]client.ServerInfo, error) {
+	serverInfos := make([]client.ServerInfo, len(m.Servers))
+
+	for i, server := range m.Servers {
+		// Create a basic client to call GetServerInfo
+		basicClient := client.NewOpenADPClient(server.URL)
+		serverInfo, err := basicClient.GetServerInfo()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get server info from %s: %v", server.URL, err)
+		}
+
+		// Extract public key from server info
+		publicKey := ""
+		if noiseKey, ok := serverInfo["noise_nk_public_key"].(string); ok && noiseKey != "" {
+			publicKey = "ed25519:" + noiseKey
+		}
+
+		serverInfos[i] = client.ServerInfo{
+			URL:       server.URL,
+			PublicKey: publicKey,
+			Country:   "Test",
+		}
+	}
+
+	return serverInfos, nil
 }
