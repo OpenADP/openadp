@@ -41,11 +41,15 @@ func TestOpenADPClientInterface(t *testing.T) {
 		}
 
 		response, err := client.RegisterSecretStandardized(request)
-		if err != nil {
-			t.Errorf("RegisterSecretStandardized() error = %v", err)
+		if err == nil {
+			t.Error("RegisterSecretStandardized() expected error for basic client but got none")
 		}
-		if !response.Success {
-			t.Errorf("RegisterSecretStandardized() success = %v, want true", response.Success)
+		if response != nil {
+			t.Errorf("RegisterSecretStandardized() response = %v, want nil for basic client", response)
+		}
+		expectedError := "RegisterSecret not supported by basic client - use EncryptedOpenADPClient for secure operations"
+		if err.Error() != expectedError {
+			t.Errorf("RegisterSecretStandardized() error = %v, want %v", err.Error(), expectedError)
 		}
 	})
 

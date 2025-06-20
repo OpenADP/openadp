@@ -6,13 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/big"
 	"net/http"
 	"time"
-
-	"encoding/base64"
-
-	"github.com/openadp/openadp/pkg/crypto"
 )
 
 // JSONRPCRequest represents a JSON-RPC 2.0 request
@@ -104,17 +99,6 @@ func NewOpenADPClient(url string) *OpenADPClient {
 	}
 }
 
-// RecoverSecretResult represents the result of RecoverSecret method
-type RecoverSecretResult struct {
-	Version    int             `json:"version"`
-	X          int             `json:"x"`
-	SiB        *crypto.Point2D `json:"si_b"`
-	SiBBytes   []byte          `json:"-"` // Raw bytes from server response
-	NumGuesses int             `json:"num_guesses"`
-	MaxGuesses int             `json:"max_guesses"`
-	Expiration int             `json:"expiration"`
-}
-
 // ListBackupsResult represents a backup entry from ListBackups method
 type ListBackupsResult struct {
 	UID        string `json:"uid"`
@@ -166,52 +150,6 @@ func (c *OpenADPClient) makeRequest(method string, params interface{}) (*JSONRPC
 	}
 
 	return &response, nil
-}
-
-// RegisterSecret registers a secret share with the server
-// Note: This basic client passes empty auth_code. Use EncryptedOpenADPClient for authentication.
-func (c *OpenADPClient) RegisterSecret(uid, did, bid string, version, x int, y string, maxGuesses, expiration int) (bool, error) {
-	// Server expects: [auth_code, uid, did, bid, version, x, y, max_guesses, expiration] (9 parameters)
-	// Basic client passes empty auth_code
-	params := []interface{}{"", uid, did, bid, version, x, y, maxGuesses, expiration}
-
-	response, err := c.makeRequest("RegisterSecret", params)
-	if err != nil {
-		return false, err
-	}
-
-	result, ok := response.Result.(bool)
-	if !ok {
-		return false, fmt.Errorf("unexpected response type: %T", response.Result)
-	}
-
-	return result, nil
-}
-
-// RecoverSecret recovers a secret share from the server
-// Note: This basic client passes empty auth_code. Use EncryptedOpenADPClient for authentication.
-func (c *OpenADPClient) RecoverSecret(uid, did, bid string, b *crypto.Point2D, guessNum int) (*RecoverSecretResult, error) {
-	// Server expects: [auth_code, uid, did, bid, b, guess_num] (6 parameters)
-	// Basic client passes empty auth_code
-	params := []interface{}{"", uid, did, bid, b, guessNum}
-
-	response, err := c.makeRequest("RecoverSecret", params)
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse the result
-	resultData, err := json.Marshal(response.Result)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal result: %v", err)
-	}
-
-	var result RecoverSecretResult
-	if err := json.Unmarshal(resultData, &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal result: %v", err)
-	}
-
-	return &result, nil
 }
 
 // ListBackups lists all backups for a user
@@ -283,53 +221,12 @@ func (c *OpenADPClient) GetServerInfo() (map[string]interface{}, error) {
 
 // RegisterSecretStandardized implements the standardized interface
 func (c *OpenADPClient) RegisterSecretStandardized(request *RegisterSecretRequest) (*RegisterSecretResponse, error) {
-	// Convert standardized request to legacy method call
-	success, err := c.RegisterSecret(
-		request.UID, request.DID, request.BID,
-		request.Version, request.X, request.Y,
-		request.MaxGuesses, request.Expiration,
-	)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &RegisterSecretResponse{
-		Success: success,
-		Message: "",
-	}, nil
+	return nil, fmt.Errorf("RegisterSecret not supported by basic client - use EncryptedOpenADPClient for secure operations")
 }
 
 // RecoverSecretStandardized implements the standardized interface
 func (c *OpenADPClient) RecoverSecretStandardized(request *RecoverSecretRequest) (*RecoverSecretResponse, error) {
-	// Convert base64 point to crypto.Point2D for legacy method
-	bBytes, err := base64.StdEncoding.DecodeString(request.B)
-	if err != nil {
-		return nil, fmt.Errorf("invalid point data: %v", err)
-	}
-
-	// Create a Point2D from bytes (simplified - in real implementation would need proper point reconstruction)
-	b := &crypto.Point2D{
-		X: new(big.Int).SetBytes(bBytes[:16]), // Simplified
-		Y: new(big.Int).SetBytes(bBytes[16:]), // Simplified
-	}
-
-	result, err := c.RecoverSecret(request.DID, request.BID, "", b, request.GuessNum)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert Point2D back to base64 string
-	siBBytes := append(result.SiB.X.Bytes(), result.SiB.Y.Bytes()...)
-
-	return &RecoverSecretResponse{
-		Version:    result.Version,
-		X:          result.X,
-		SiB:        base64.StdEncoding.EncodeToString(siBBytes),
-		NumGuesses: result.NumGuesses,
-		MaxGuesses: result.MaxGuesses,
-		Expiration: result.Expiration,
-	}, nil
+	return nil, fmt.Errorf("RecoverSecret not supported by basic client - use EncryptedOpenADPClient for secure operations")
 }
 
 // ListBackupsStandardized implements the standardized interface
@@ -385,7 +282,7 @@ func (c *OpenADPClient) GetServerInfoStandardized() (*ServerInfoResponse, error)
 	return &ServerInfoResponse{
 		ServerVersion:    serverVersion,
 		NoiseNKPublicKey: "",
-		SupportedMethods: []string{"RegisterSecret", "RecoverSecret", "ListBackups", "Echo", "GetServerInfo"},
+		SupportedMethods: []string{"ListBackups", "Echo", "GetServerInfo"},
 		MaxRequestSize:   1024 * 1024, // 1MB default
 		RateLimits:       make(map[string]interface{}),
 	}, nil
