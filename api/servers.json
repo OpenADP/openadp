@@ -1,21 +1,21 @@
 {
   "version": "1.0",
-  "updated": "2024-01-15T10:30:00Z",
+  "updated": "2024-12-19T17:25:00Z",
   "servers": [
     {
-              "url": "https://xyzzy.openadp.org",
-      "public_key": "ed25519:ZCcXAp6wjREVQ9c+31V59aWWOu9u7HdsCIchCiocNyY=",
+      "url": "https://xyzzy.openadp.org",
+      "public_key": "FEOkIV7ZhONfuhSOkEuTNo36pVzS2KAhqDXYwC8MySA=",
       "country": "US"
     },
     {
-      "url": "https://sky.openadp.org",
-      "public_key": "ed25519:YeqSp+tLclkZpcDOYYDDbQl233JKjgLfbxx3Xt+Y2QU=",
+      "url": "https://sky.openadp.org", 
+      "public_key": "uCvcLGSdROipW6AlX1vmzezkpzHNu6M0C4O/5dc8flg=",
       "country": "US"
     },
     {
       "url": "https://minime.openadp.org",
-      "public_key": "ed25519:x3l6IfRCaU8/lTOg7PF6337xhKh3l68CVDjmMY4ZCWI=",
-      "country": "US"
+      "public_key": "gnV5Obw3maZGgL1HHK4YW0DkyKcp7Tp+xD9f4+gus3s=",
+      "country": "US"  
     },
     {
       "url": "https://akash.network",

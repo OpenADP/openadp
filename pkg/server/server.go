@@ -66,13 +66,15 @@ type ListBackupsResponse struct {
 	Expiration int64  `json:"expiration"`
 }
 
-// pointValid checks if a point is valid (basic validation)
+// pointValid checks if a point is valid using proper Ed25519 validation
 func pointValid(p *crypto.Point2D) bool {
 	if p == nil || p.X == nil || p.Y == nil {
 		return false
 	}
-	// Additional validation could be added here
-	return true
+
+	// Convert to Point4D and use the crypto package's validation
+	point4D := crypto.Expand(p)
+	return crypto.IsValidPoint(point4D)
 }
 
 // ValidateRegisterInputs validates inputs for secret registration

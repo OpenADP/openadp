@@ -83,27 +83,23 @@ func NewServer(dbPath string, port int, authEnabled bool) (*Server, error) {
 		return nil, fmt.Errorf("failed to initialize database: %v", err)
 	}
 
-	// Load or generate server key
-	serverKey, err := loadOrGenerateServerKey(db)
+	// Load or generate server key pair
+	serverKey, privateKey, err := loadOrGenerateServerKeyPair(db)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize server key: %v", err)
 	}
 
-	// Load private key for session manager
-	privateKeyData, err := db.GetServerConfig("server_private_key")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get server private key: %v", err)
-	}
-
-	// Construct DHKey from database keys
+	// Construct DHKey from the keys we just loaded/generated
 	var dhKey *noise.DHKey
-	if privateKeyData != nil && len(privateKeyData) == 32 && len(serverKey) == 32 {
+	if len(privateKey) == 32 && len(serverKey) == 32 {
 		dhKey = &noise.DHKey{
 			Private: make([]byte, 32),
 			Public:  make([]byte, 32),
 		}
-		copy(dhKey.Private, privateKeyData)
+		copy(dhKey.Private, privateKey)
 		copy(dhKey.Public, serverKey)
+	} else {
+		return nil, fmt.Errorf("invalid key lengths: private=%d, public=%d", len(privateKey), len(serverKey))
 	}
 
 	return &Server{
@@ -117,40 +113,47 @@ func NewServer(dbPath string, port int, authEnabled bool) (*Server, error) {
 	}, nil
 }
 
-// loadOrGenerateServerKey loads existing server key or generates a new one
-func loadOrGenerateServerKey(db *database.Database) ([]byte, error) {
-	// Try to load existing key
-	keyData, err := db.GetServerConfig("server_public_key")
+// loadOrGenerateServerKeyPair loads existing server key pair or generates a new one
+// Returns both public and private keys to avoid database reload issues
+func loadOrGenerateServerKeyPair(db *database.Database) ([]byte, []byte, error) {
+	// Try to load existing keys
+	publicKeyData, err := db.GetServerConfig("server_public_key")
 	if err != nil {
-		return nil, fmt.Errorf("failed to get server config: %v", err)
+		return nil, nil, fmt.Errorf("failed to get server public key: %v", err)
 	}
 
-	if keyData != nil {
-		log.Println("Loaded existing server key from database")
-		return keyData, nil
+	privateKeyData, err := db.GetServerConfig("server_private_key")
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get server private key: %v", err)
+	}
+
+	// If both keys exist and are valid, use them
+	if publicKeyData != nil && privateKeyData != nil && len(publicKeyData) == 32 && len(privateKeyData) == 32 {
+		log.Println("Loaded existing server key pair from database")
+		return publicKeyData, privateKeyData, nil
 	}
 
 	// Generate new key pair
 	log.Println("Generating new server key pair...")
 	privateKey, publicKey, err := crypto.X25519GenerateKeypair()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate keypair: %v", err)
+		return nil, nil, fmt.Errorf("failed to generate keypair: %v", err)
 	}
 
 	// Store the public key in database
 	err = db.SetServerConfig("server_public_key", publicKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to store server key: %v", err)
+		return nil, nil, fmt.Errorf("failed to store server public key: %v", err)
 	}
 
-	// Also store private key for future use
+	// Store private key for future use
 	err = db.SetServerConfig("server_private_key", privateKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to store private key: %v", err)
+		return nil, nil, fmt.Errorf("failed to store server private key: %v", err)
 	}
 
 	log.Println("Generated and stored new server key pair")
-	return publicKey, nil
+	return publicKey, privateKey, nil
 }
 
 // handleJSONRPC handles JSON-RPC 2.0 requests

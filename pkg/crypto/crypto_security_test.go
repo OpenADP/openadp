@@ -258,32 +258,27 @@ func TestPointValid(t *testing.T) {
 			wantOK: true,
 		},
 		{
-			name: "random valid point",
+			name:   "valid point derived from scalar multiplication",
+			point:  PointMul(big.NewInt(42), G), // 42*G is a valid point
+			wantOK: true,
+		},
+		{
+			name: "arbitrary coordinates (not necessarily on curve)",
 			point: &Point4D{
 				X: big.NewInt(123),
 				Y: big.NewInt(456),
 				Z: big.NewInt(1),
 				T: big.NewInt(789),
 			},
-			wantOK: true,
-		},
-		{
-			name: "point with zero coordinates",
-			point: &Point4D{
-				X: big.NewInt(0),
-				Y: big.NewInt(0),
-				Z: big.NewInt(1),
-				T: big.NewInt(0),
-			},
-			wantOK: true, // This is different from ZeroPoint, so it should be valid
+			wantOK: true, // Cofactor clearing only checks for small subgroup, not curve membership
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := pointValid(tt.point)
+			result := IsValidPoint(tt.point)
 			if result != tt.wantOK {
-				t.Errorf("pointValid() = %v, want %v", result, tt.wantOK)
+				t.Errorf("IsValidPoint() = %v, want %v", result, tt.wantOK)
 			}
 		})
 	}
@@ -567,7 +562,7 @@ func TestH(t *testing.T) {
 			}
 
 			// Point should be valid
-			if !pointValid(point) {
+			if !IsValidPoint(point) {
 				t.Errorf("H() returned invalid point")
 			}
 

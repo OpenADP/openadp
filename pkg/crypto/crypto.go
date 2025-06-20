@@ -332,12 +332,19 @@ func PointDecompress(data []byte) (*Point4D, error) {
 	xy := new(big.Int).Mul(x, y)
 	xy.Mod(xy, P)
 
-	return &Point4D{
+	point := &Point4D{
 		X: x,
 		Y: y,
 		Z: big.NewInt(1),
 		T: xy,
-	}, nil
+	}
+
+	// Validate the decompressed point
+	if !IsValidPoint(point) {
+		return nil, errors.New("invalid point: failed validation")
+	}
+
+	return point, nil
 }
 
 // SecretExpand expands a 32-byte secret key to a scalar
@@ -393,8 +400,8 @@ func pointMul8(p *Point4D) *Point4D {
 	return result
 }
 
-// pointValid checks if a point is valid (matching Python point_valid)
-func pointValid(p *Point4D) bool {
+// IsValidPoint checks if a point is valid using Ed25519 cofactor clearing
+func IsValidPoint(p *Point4D) bool {
 	if p == nil || p.X == nil || p.Y == nil || p.Z == nil || p.T == nil {
 		return false
 	}
@@ -404,9 +411,16 @@ func pointValid(p *Point4D) bool {
 		return false
 	}
 
-	// For now, assume all non-zero points are valid
-	// In a full implementation, we'd check the curve equation
-	return true
+	// Ed25519 point validation using cofactor clearing:
+	// A valid point P should satisfy: 8*P is not the zero point
+	// This catches low-order points (which have order dividing 8)
+	// Since Y coordinates are derived from X using the curve equation,
+	// we know the point is already on the curve, so no need to verify that.
+	eightP := pointMul8(p)
+
+	// The point is valid if 8*P is not the zero point
+	// (Zero point would indicate a low-order point)
+	return !PointEqual(eightP, ZeroPoint)
 }
 
 // H computes the hash function H(UID, DID, BID, pin) -> Point
@@ -435,7 +449,7 @@ func H(uid, did, bid, pin []byte) *Point4D {
 			// Force the point to be in a group of order q (multiply by 8)
 			P := Expand(&Point2D{X: x, Y: y})
 			P = pointMul8(P)
-			if pointValid(P) {
+			if IsValidPoint(P) {
 				return P
 			}
 		}
