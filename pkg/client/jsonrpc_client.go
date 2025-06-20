@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"time"
 
-	"encoding/base64"
-
 	"github.com/openadp/openadp/pkg/crypto"
 )
 
@@ -103,26 +101,7 @@ func NewOpenADPClient(url string) *OpenADPClient {
 	}
 }
 
-// RegisterSecretParams represents parameters for register_secret method
-type RegisterSecretParams struct {
-	UID        string `json:"uid"`
-	DID        string `json:"did"`
-	BID        string `json:"bid"`
-	Version    int    `json:"version"`
-	X          int    `json:"x"`
-	Y          string `json:"y"`
-	MaxGuesses int    `json:"max_guesses"`
-	Expiration int    `json:"expiration"`
-}
-
-// RecoverSecretParams represents parameters for recover_secret method
-type RecoverSecretParams struct {
-	UID      string          `json:"uid"`
-	DID      string          `json:"did"`
-	BID      string          `json:"bid"`
-	B        *crypto.Point2D `json:"b"`
-	GuessNum int             `json:"guess_num"`
-}
+// Legacy param structs removed - replaced by standardized interface types in interfaces.go
 
 // RecoverSecretResult represents the result of recover_secret method
 type RecoverSecretResult struct {
@@ -189,15 +168,15 @@ func (c *OpenADPClient) makeRequest(method string, params interface{}) (*JSONRPC
 
 // RegisterSecret registers a secret share with the server
 func (c *OpenADPClient) RegisterSecret(uid, did, bid string, version, x int, y string, maxGuesses, expiration int) (bool, error) {
-	params := RegisterSecretParams{
-		UID:        uid,
-		DID:        did,
-		BID:        bid,
-		Version:    version,
-		X:          x,
-		Y:          y,
-		MaxGuesses: maxGuesses,
-		Expiration: expiration,
+	params := map[string]interface{}{
+		"uid":         uid,
+		"did":         did,
+		"bid":         bid,
+		"version":     version,
+		"x":           x,
+		"y":           y,
+		"max_guesses": maxGuesses,
+		"expiration":  expiration,
 	}
 
 	response, err := c.makeRequest("register_secret", params)
@@ -215,12 +194,12 @@ func (c *OpenADPClient) RegisterSecret(uid, did, bid string, version, x int, y s
 
 // RecoverSecret recovers a secret share from the server
 func (c *OpenADPClient) RecoverSecret(uid, did, bid string, b *crypto.Point2D, guessNum int) (*RecoverSecretResult, error) {
-	params := RecoverSecretParams{
-		UID:      uid,
-		DID:      did,
-		BID:      bid,
-		B:        b,
-		GuessNum: guessNum,
+	params := map[string]interface{}{
+		"uid":       uid,
+		"did":       did,
+		"bid":       bid,
+		"b":         b,
+		"guess_num": guessNum,
 	}
 
 	response, err := c.makeRequest("recover_secret", params)
@@ -295,183 +274,9 @@ func (c *OpenADPClient) GetServerInfo() (map[string]interface{}, error) {
 	return nil, fmt.Errorf("unexpected response type: %T", response.Result)
 }
 
-// ClientManager manages multiple OpenADP clients
-type ClientManager struct {
-	clients     []*OpenADPClient
-	liveClients []*OpenADPClient
-}
+// ClientManager functionality has been moved to the high-level Client in client.go
+// This legacy ClientManager is no longer needed
 
-// NewClientManager creates a new client manager
-func NewClientManager(serverURLs []string) *ClientManager {
-	clients := make([]*OpenADPClient, len(serverURLs))
-	for i, url := range serverURLs {
-		clients[i] = NewOpenADPClient(url)
-	}
+// Legacy auth methods removed - use EncryptedOpenADPClient for auth code support
 
-	return &ClientManager{
-		clients: clients,
-	}
-}
-
-// TestConnectivity tests connectivity to all servers and updates live clients
-func (cm *ClientManager) TestConnectivity() error {
-	cm.liveClients = nil
-
-	for _, client := range cm.clients {
-		if err := client.Ping(); err == nil {
-			cm.liveClients = append(cm.liveClients, client)
-		}
-	}
-
-	if len(cm.liveClients) == 0 {
-		return fmt.Errorf("no live servers available")
-	}
-
-	return nil
-}
-
-// GetLiveClients returns the list of live clients
-func (cm *ClientManager) GetLiveClients() []*OpenADPClient {
-	return cm.liveClients
-}
-
-// GetLiveClientCount returns the number of live clients
-func (cm *ClientManager) GetLiveClientCount() int {
-	return len(cm.liveClients)
-}
-
-// GetLiveServerURLs returns the URLs of live servers
-func (cm *ClientManager) GetLiveServerURLs() []string {
-	urls := make([]string, len(cm.liveClients))
-	for i, client := range cm.liveClients {
-		urls[i] = client.URL
-	}
-	return urls
-}
-
-// RegisterSecretWithAuthCode registers a secret share with the server using authentication codes
-func (c *OpenADPClient) RegisterSecretWithAuthCode(authCode, uid, did, bid string, version, x int, y string, maxGuesses, expiration int) (bool, error) {
-	// Server expects: [auth_code, uid, did, bid, version, x, y, max_guesses, expiration]
-	// uid is the actual user identifier, auth_code is the sensitive authentication secret
-	params := []interface{}{authCode, uid, did, bid, version, x, y, maxGuesses, expiration}
-
-	response, err := c.makeRequest("RegisterSecret", params)
-	if err != nil {
-		return false, err
-	}
-
-	result, ok := response.Result.(bool)
-	if !ok {
-		return false, fmt.Errorf("unexpected response type: %T", response.Result)
-	}
-
-	return result, nil
-}
-
-// RecoverSecretWithAuthCode recovers a secret share from the server using authentication codes
-func (c *OpenADPClient) RecoverSecretWithAuthCode(authCode, did, bid string, b interface{}, guessNum int) (*RecoverSecretResult, error) {
-	// Server expects: [auth_code, did, bid, b, guess_num]
-	// b can be either [x, y] array (for Python servers) or base64 string (for Go servers)
-	params := []interface{}{authCode, did, bid, b, guessNum}
-
-	response, err := c.makeRequest("RecoverSecret", params)
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse the result map
-	resultMap, ok := response.Result.(map[string]interface{})
-	if !ok {
-		return nil, fmt.Errorf("unexpected response type: %T", response.Result)
-	}
-
-	// Extract fields from the map
-	version, ok := resultMap["version"].(float64)
-	if !ok {
-		return nil, fmt.Errorf("invalid version field")
-	}
-
-	x, ok := resultMap["x"].(float64)
-	if !ok {
-		return nil, fmt.Errorf("invalid x field")
-	}
-
-	siBBase64, ok := resultMap["si_b"].(string)
-	if !ok {
-		return nil, fmt.Errorf("invalid si_b field")
-	}
-
-	numGuesses, ok := resultMap["num_guesses"].(float64)
-	if !ok {
-		return nil, fmt.Errorf("invalid num_guesses field")
-	}
-
-	maxGuesses, ok := resultMap["max_guesses"].(float64)
-	if !ok {
-		return nil, fmt.Errorf("invalid max_guesses field")
-	}
-
-	expiration, ok := resultMap["expiration"].(float64)
-	if !ok {
-		return nil, fmt.Errorf("invalid expiration field")
-	}
-
-	// Decode si_b from base64
-	siBBytes, err := base64.StdEncoding.DecodeString(siBBase64)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode si_b: %v", err)
-	}
-
-	return &RecoverSecretResult{
-		Version:    int(version),
-		X:          int(x),
-		SiBBytes:   siBBytes, // Store as bytes for now
-		NumGuesses: int(numGuesses),
-		MaxGuesses: int(maxGuesses),
-		Expiration: int(expiration),
-	}, nil
-}
-
-// ListBackupsWithAuthCode lists all backups for an authentication code
-func (c *OpenADPClient) ListBackupsWithAuthCode(authCode string) ([]ListBackupsResult, error) {
-	params := []interface{}{authCode}
-
-	response, err := c.makeRequest("ListBackups", params)
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse the result as array of arrays
-	resultArray, ok := response.Result.([]interface{})
-	if !ok {
-		return nil, fmt.Errorf("unexpected response type: %T", response.Result)
-	}
-
-	var backups []ListBackupsResult
-	for _, item := range resultArray {
-		backupArray, ok := item.([]interface{})
-		if !ok || len(backupArray) < 7 {
-			continue // Skip invalid entries
-		}
-
-		// Parse backup entry: [uid, did, bid, version, num_guesses, max_guesses, expiration]
-		uid, _ := backupArray[0].(string)
-		// did is at index 1, but we don't need it for ListBackupsResult
-		bid, _ := backupArray[2].(string)
-		version, _ := backupArray[3].(float64)
-		numGuesses, _ := backupArray[4].(float64)
-		maxGuesses, _ := backupArray[5].(float64)
-		expiration, _ := backupArray[6].(float64)
-
-		backups = append(backups, ListBackupsResult{
-			UID:        uid,
-			BID:        bid,
-			Version:    int(version),
-			NumGuesses: int(numGuesses),
-			MaxGuesses: int(maxGuesses),
-			Expiration: int(expiration),
-		})
-	}
-
-	return backups, nil
-}
+// Legacy duplicate auth methods removed - functionality available in EncryptedOpenADPClient

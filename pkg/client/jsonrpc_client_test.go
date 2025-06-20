@@ -339,70 +339,8 @@ func TestOpenADPClient_GetServerInfo(t *testing.T) {
 	}
 }
 
-func TestClientManager(t *testing.T) {
-	// Create test servers
-	server1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"jsonrpc":"2.0","result":"pong","id":1}`))
-	}))
-	defer server1.Close()
-
-	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer server2.Close()
-
-	serverURLs := []string{server1.URL, server2.URL, "http://invalid-server.com"}
-
-	t.Run("NewClientManager", func(t *testing.T) {
-		cm := NewClientManager(serverURLs)
-		if cm == nil {
-			t.Errorf("NewClientManager() returned nil")
-		}
-		if len(cm.clients) != len(serverURLs) {
-			t.Errorf("NewClientManager() created %d clients, want %d", len(cm.clients), len(serverURLs))
-		}
-	})
-
-	t.Run("TestConnectivity", func(t *testing.T) {
-		cm := NewClientManager(serverURLs)
-		err := cm.TestConnectivity()
-
-		// Should not error as long as at least one server is reachable
-		if err != nil {
-			t.Logf("TestConnectivity() error (might be expected in test environment): %v", err)
-		}
-
-		if cm.GetLiveClientCount() == 0 {
-			t.Logf("TestConnectivity() found no live clients (might be expected in test environment)")
-		}
-	})
-
-	t.Run("GetLiveServerURLs", func(t *testing.T) {
-		cm := NewClientManager(serverURLs)
-		cm.TestConnectivity()
-
-		liveURLs := cm.GetLiveServerURLs()
-		t.Logf("GetLiveServerURLs() returned %d URLs", len(liveURLs))
-		if len(liveURLs) > 0 {
-			t.Logf("First live URL: %s", liveURLs[0])
-		}
-	})
-
-	t.Run("No live servers", func(t *testing.T) {
-		// Test with all unreachable servers
-		cm := NewClientManager([]string{"http://invalid1.com", "http://invalid2.com"})
-		err := cm.TestConnectivity()
-
-		if err == nil {
-			t.Errorf("TestConnectivity() expected error with no live servers")
-		}
-
-		if cm.GetLiveClientCount() != 0 {
-			t.Errorf("TestConnectivity() found %d live clients, expected 0", cm.GetLiveClientCount())
-		}
-	})
-}
+// TestClientManager removed - ClientManager functionality moved to high-level Client in client.go
+// Multi-server functionality is now tested in the integration tests
 
 func TestOpenADPClient_ListBackups(t *testing.T) {
 	tests := []struct {
