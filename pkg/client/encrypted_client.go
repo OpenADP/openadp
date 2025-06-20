@@ -95,10 +95,7 @@ func (c *EncryptedOpenADPClient) makeUnencryptedRequest(method string, params in
 // makeEncryptedRequest makes a Noise-NK encrypted JSON-RPC request
 func (c *EncryptedOpenADPClient) makeEncryptedRequest(method string, params interface{}, authData map[string]interface{}) (interface{}, error) {
 	// Step 1: Generate session ID
-	sessionID, err := GenerateSessionID()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate session ID: %v", err)
-	}
+	sessionID := fmt.Sprintf("session_%d", time.Now().UnixNano())
 
 	// Step 2: Create Noise client
 	noiseClient, err := noise.NewNoiseNK("initiator", nil, c.serverPublicKey, []byte(""))
@@ -383,50 +380,7 @@ func (c *EncryptedOpenADPClient) GetServerInfo() (map[string]interface{}, error)
 	return serverInfo, nil
 }
 
-// CreateAuthPayload creates authentication payload for OAuth/DPoP (if needed)
-func (c *EncryptedOpenADPClient) CreateAuthPayload(accessToken string, privateKey interface{}, publicKeyJWK map[string]interface{}, handshakeHash []byte) map[string]interface{} {
-	// This would implement DPoP token creation if needed
-	// For now, return basic auth data structure
-	return map[string]interface{}{
-		"access_token":   accessToken,
-		"token_type":     "DPoP",
-		"handshake_hash": base64.StdEncoding.EncodeToString(handshakeHash),
-	}
-}
-
-// MakeAuthenticatedRequest makes an authenticated request with OAuth/DPoP
-func (c *EncryptedOpenADPClient) MakeAuthenticatedRequest(method string, params interface{}, accessToken string, privateKey interface{}, publicKeyJWK map[string]interface{}) (interface{}, error) {
-	// Create temporary Noise client to get handshake hash
-	if c.serverPublicKey == nil {
-		return nil, fmt.Errorf("server public key required for authenticated requests")
-	}
-
-	noiseClient, err := noise.NewNoiseNK("initiator", nil, c.serverPublicKey, []byte(""))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Noise client: %v", err)
-	}
-
-	// Perform minimal handshake to get hash
-	_, err = noiseClient.WriteHandshakeMessage([]byte("auth"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate handshake: %v", err)
-	}
-
-	authData := c.CreateAuthPayload(accessToken, privateKey, publicKeyJWK, noiseClient.GetHandshakeHash())
-
-	return c.makeRequest(method, params, true, authData)
-}
-
-// Utility functions
-
 // ParseServerPublicKey parses a base64-encoded server public key
 func ParseServerPublicKey(keyB64 string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(keyB64)
-}
-
-// GenerateSessionID generates a unique session identifier
-func GenerateSessionID() (string, error) {
-	// This would generate a cryptographically secure random session ID
-	// For now, use a simple implementation
-	return fmt.Sprintf("session_%d", time.Now().UnixNano()), nil
 }

@@ -339,9 +339,6 @@ func TestOpenADPClient_GetServerInfo(t *testing.T) {
 	}
 }
 
-// TestClientManager removed - ClientManager functionality moved to high-level Client in client.go
-// Multi-server functionality is now tested in the integration tests
-
 func TestOpenADPClient_ListBackups(t *testing.T) {
 	tests := []struct {
 		name         string

@@ -274,10 +274,3 @@ func (c *OpenADPClient) GetServerInfo() (map[string]interface{}, error) {
 
 	return nil, fmt.Errorf("unexpected response type: %T", response.Result)
 }
-
-// ClientManager functionality has been moved to the high-level Client in client.go
-// This legacy ClientManager is no longer needed
-
-// Legacy auth methods removed - use EncryptedOpenADPClient for auth code support
-
-// Legacy duplicate auth methods removed - functionality available in EncryptedOpenADPClient
