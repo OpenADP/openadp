@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/sha256"
 	"encoding/json"
 	"flag"
@@ -9,7 +11,6 @@ import (
 	"strings"
 	"syscall"
 
-	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/term"
 
 	"github.com/openadp/openadp/pkg/client"
@@ -18,7 +19,7 @@ import (
 
 const (
 	version   = "1.0.0"
-	nonceSize = 12 // ChaCha20-Poly1305 nonce size
+	nonceSize = 12 // AES-GCM nonce size
 )
 
 // Metadata represents the metadata stored with encrypted files
@@ -347,12 +348,17 @@ func decryptFile(inputFilename, password, userID string, overrideServers []strin
 	}
 
 	// Decrypt the file using metadata as additional authenticated data
-	cipher, err := chacha20poly1305.New(encKey)
+	block, err := aes.NewCipher(encKey)
 	if err != nil {
 		return fmt.Errorf("failed to create cipher: %v", err)
 	}
 
-	plaintext, err := cipher.Open(nil, nonce, ciphertext, metadataJSON)
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return fmt.Errorf("failed to create GCM: %v", err)
+	}
+
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, metadataJSON)
 	if err != nil {
 		// AEAD authentication failure should always be fatal
 		return fmt.Errorf("decryption failed: %v (wrong password or corrupted file)", err)

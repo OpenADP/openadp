@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"encoding/json"
 	"flag"
@@ -11,7 +13,6 @@ import (
 	"strings"
 	"syscall"
 
-	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/term"
 
 	"github.com/openadp/openadp/pkg/client"
@@ -20,7 +21,7 @@ import (
 
 const (
 	version   = "1.0.0"
-	nonceSize = 12 // ChaCha20-Poly1305 nonce size
+	nonceSize = 12 // AES-GCM nonce size
 )
 
 // Metadata represents the metadata stored with encrypted files
@@ -316,12 +317,17 @@ func encryptFile(inputFilename, password, userID string, serverInfos []client.Se
 	}
 
 	// Encrypt the file using metadata as additional authenticated data
-	cipher, err := chacha20poly1305.New(encKey)
+	block, err := aes.NewCipher(encKey)
 	if err != nil {
 		return fmt.Errorf("failed to create cipher: %v", err)
 	}
 
-	ciphertext := cipher.Seal(nil, nonce, plaintext, metadataJSON)
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return fmt.Errorf("failed to create GCM: %v", err)
+	}
+
+	ciphertext := gcm.Seal(nil, nonce, plaintext, metadataJSON)
 
 	// Write encrypted file: [metadata_length][metadata][nonce][encrypted_data]
 	file, err := os.Create(outputFilename)
@@ -353,7 +359,7 @@ func encryptFile(inputFilename, password, userID string, serverInfos []client.Se
 
 	fmt.Printf("📁 Input:  %s (%d bytes)\n", inputFilename, len(plaintext))
 	fmt.Printf("📁 Output: %s (%d bytes)\n", outputFilename, 4+len(metadataJSON)+nonceSize+len(ciphertext))
-	fmt.Printf("🔐 Encryption: ChaCha20-Poly1305\n")
+	fmt.Printf("🔐 Encryption: AES-GCM\n")
 	fmt.Printf("🌐 Servers: %d servers used\n", len(actualServerURLs))
 	fmt.Printf("🎯 Threshold: %d-of-%d recovery\n", threshold, len(actualServerURLs))
 

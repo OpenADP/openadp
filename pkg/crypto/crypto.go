@@ -471,7 +471,7 @@ func DeriveEncKey(p *Point4D) []byte {
 
 	// Use HKDF to derive a 32-byte key
 	salt := []byte("OpenADP-EncKey-v1")
-	info := []byte("ChaCha20-Poly1305")
+	info := []byte("AES-256-GCM")
 
 	hkdf := hkdf.New(sha256.New, compressed, salt, info)
 	key := make([]byte, 32)

@@ -322,8 +322,14 @@ func (suite *E2ETestSuite) testFileDecryption(t *testing.T) {
 		t.Logf("✅ Removed original file to ensure clean decryption test")
 	}
 
-	// Run decryption with password flag
-	cmd := exec.Command(decryptTool, "-file", suite.encryptedFilePath, "-password", "test-password-123")
+	// Run decryption with password flag and server override
+	serverURLs := make([]string, len(suite.serverInfos))
+	for i, info := range suite.serverInfos {
+		serverURLs[i] = info.URL
+	}
+	serverList := strings.Join(serverURLs, ",")
+
+	cmd := exec.Command(decryptTool, "-file", suite.encryptedFilePath, "-password", "test-password-123", "-servers", serverList)
 
 	output, err := cmd.CombinedOutput()
 
@@ -425,7 +431,13 @@ to verify that guess numbers are properly tracked via listBackups calls.`
 	t.Log("\n🔓 Step 2: Attempting decryption with wrong password...")
 	decryptTool := "../../build/openadp-decrypt"
 
-	decryptWrongCmd := exec.Command(decryptTool, "-file", wrongPasswordEncryptedFilePath, "-password", wrongPassword)
+	serverURLs := make([]string, len(suite.serverInfos))
+	for i, info := range suite.serverInfos {
+		serverURLs[i] = info.URL
+	}
+	serverList := strings.Join(serverURLs, ",")
+
+	decryptWrongCmd := exec.Command(decryptTool, "-file", wrongPasswordEncryptedFilePath, "-password", wrongPassword, "-servers", serverList)
 	decryptWrongOutput, err := decryptWrongCmd.CombinedOutput()
 
 	// Wrong password should fail
@@ -445,7 +457,7 @@ to verify that guess numbers are properly tracked via listBackups calls.`
 
 	// Step 3: Attempt decryption with wrong password again (should fail and increment guess count again)
 	t.Log("\n🔓 Step 3: Attempting decryption with wrong password again...")
-	decryptWrongCmd2 := exec.Command(decryptTool, "-file", wrongPasswordEncryptedFilePath, "-password", wrongPassword)
+	decryptWrongCmd2 := exec.Command(decryptTool, "-file", wrongPasswordEncryptedFilePath, "-password", wrongPassword, "-servers", serverList)
 	decryptWrongOutput2, err := decryptWrongCmd2.CombinedOutput()
 
 	// Wrong password should fail again
@@ -458,7 +470,7 @@ to verify that guess numbers are properly tracked via listBackups calls.`
 
 	// Step 4: Attempt decryption with correct password (should succeed with updated guess count)
 	t.Log("\n🔓 Step 4: Attempting decryption with correct password...")
-	decryptCorrectCmd := exec.Command(decryptTool, "-file", wrongPasswordEncryptedFilePath, "-password", correctPassword)
+	decryptCorrectCmd := exec.Command(decryptTool, "-file", wrongPasswordEncryptedFilePath, "-password", correctPassword, "-servers", serverList)
 	decryptCorrectOutput, err := decryptCorrectCmd.CombinedOutput()
 
 	if err != nil {
