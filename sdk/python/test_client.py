@@ -19,7 +19,7 @@ try:
         ServerInfo, OpenADPError, ErrorCode,
         get_fallback_servers, discover_servers
     )
-    from openadp.crypto import Point2D, G, H, point_multiply, point_compress
+    from openadp.crypto import Point2D, Point4D, G, P, Q, D, point_add, point_mul, point_compress, point_decompress
     from openadp.keygen import generate_encryption_key, derive_identifiers
     print("✅ All imports successful")
 except ImportError as e:
@@ -32,17 +32,17 @@ def test_crypto_operations():
     
     try:
         # Test point operations
-        point = point_multiply(G, 12345)
+        point = point_mul(12345, G)
         compressed = point_compress(point)
         print(f"✅ Point operations work, compressed point: {compressed.hex()[:16]}...")
         
-        # Test H function
-        h_result = H("test", "data", "input")
-        print(f"✅ H function works, result: {point_compress(h_result).hex()[:16]}...")
+        # Test point decompression
+        decompressed = point_decompress(compressed)
+        print(f"✅ Point decompression works")
         
         # Test key derivation
-        identifiers = derive_identifiers("user@example.com", "device123", "backup456")
-        print(f"✅ Key derivation works, UID point: {point_compress(identifiers.uid_point).hex()[:16]}...")
+        uid, did, bid = derive_identifiers("test_file.txt", "user@example.com", "device123")
+        print(f"✅ Key derivation works, UID: {uid[:16]}...")
         
     except Exception as e:
         print(f"❌ Crypto test failed: {e}")

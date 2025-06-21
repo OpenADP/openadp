@@ -4,6 +4,7 @@
 
 # Cryptographic operations
 cryptography>=41.0.0
+noiseprotocol>=0.3.1
 
 # HTTP client for JSON-RPC communication
 requests>=2.28.0

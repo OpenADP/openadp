@@ -295,7 +295,10 @@ Retrieves server information including public keys (no authentication required).
 - **Required for:** `RegisterSecret`, `RecoverSecret`, `ListBackups`
 - **Optional for:** `Echo`, `GetServerInfo`
 - **Protocol:** Noise-NK with Ed25519 keys
+- **Cipher Suite:** `Noise_NK_25519_AESGCM_SHA256` (X25519 + AES-256-GCM + SHA-256)
 - **Handshake:** 2-round pattern with forward secrecy
+
+**Important:** OpenADP servers use **AES-256-GCM** for encryption, not ChaCha20-Poly1305. Client implementations must use the exact cipher suite `Noise_NK_25519_AESGCM_SHA256` to ensure compatibility.
 
 ---
 
@@ -390,6 +393,25 @@ CREATE TABLE server_config(
 ---
 
 ## Client Implementation Notes
+
+### Noise-NK Cipher Suite
+**CRITICAL:** OpenADP servers use the exact cipher suite `Noise_NK_25519_AESGCM_SHA256`:
+- **Key Exchange:** X25519 (Curve25519)
+- **Encryption:** AES-256-GCM (NOT ChaCha20-Poly1305)
+- **Hash:** SHA-256
+
+**Common Mistake:** Many Noise-NK examples use ChaCha20-Poly1305, but OpenADP specifically requires AES-256-GCM for cross-platform compatibility.
+
+**Client Library Examples:**
+```python
+# Python (noiseprotocol library)
+conn = NoiseConnection.from_name(b'Noise_NK_25519_AESGCM_SHA256')
+
+# Go (flynn/noise library)  
+config.CipherSuite = noise.NewCipherSuite(noise.DH25519, noise.CipherAESGCM, noise.HashSHA256)
+
+# JavaScript - Use a library that supports AES-GCM cipher suite
+```
 
 ### Parameter Order
 Always use **positional parameters** in the exact order specified. Named parameters are not supported.

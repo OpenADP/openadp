@@ -46,18 +46,18 @@ Example Usage:
 from .crypto import (
     # Point operations
     Point2D, Point4D, G, P, Q, D,
-    point_add, point_double, point_multiply,
+    point_add, point_mul, point_mul8,
     point_compress, point_decompress,
-    point_is_valid, point_from_bytes, point_to_bytes,
+    is_valid_point, expand, unexpand,
     
     # Hash and key derivation
-    H, hkdf_derive,
+    H, sha256_hash, prefixed,
     
     # Shamir secret sharing
-    shamir_split, shamir_recover,
+    ShamirSecretSharing,
     
     # Utilities
-    bytes_to_int, int_to_bytes, mod_inverse
+    mod_inverse
 )
 
 # Key generation and recovery
@@ -123,12 +123,12 @@ BasicClient = OpenADPClient  # For simple use cases without encryption
 __all__ = [
     # Crypto
     "Point2D", "Point4D", "G", "P", "Q", "D",
-    "point_add", "point_double", "point_multiply", 
+    "point_add", "point_mul", "point_mul8", 
     "point_compress", "point_decompress",
-    "point_is_valid", "point_from_bytes", "point_to_bytes",
-    "H", "hkdf_derive",
-    "shamir_split", "shamir_recover",
-    "bytes_to_int", "int_to_bytes", "mod_inverse",
+    "is_valid_point", "expand", "unexpand",
+    "H", "sha256_hash", "prefixed",
+    "ShamirSecretSharing",
+    "mod_inverse",
     
     # Keygen
     "generate_encryption_key", "recover_encryption_key",

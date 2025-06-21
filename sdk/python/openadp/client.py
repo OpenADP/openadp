@@ -369,223 +369,89 @@ class OpenADPClient:
         return False 
 
 class NoiseNK:
-    """
-    Noise-NK protocol implementation for secure communication.
+    """Noise-NK protocol implementation using the noiseprotocol library."""
     
-    This implements the Noise-NK handshake pattern where:
-    - Only responder (server) has a static key known to initiator (client)
-    - Client uses ephemeral keys only
-    - Provides forward secrecy and server authentication
-    
-    Matches the Go pkg/noise implementation exactly.
-    """
-    
-    def __init__(self, role: str, local_static_key: Optional[bytes] = None, 
-                 remote_static_key: Optional[bytes] = None, prologue: bytes = b""):
-        if not CRYPTO_AVAILABLE:
-            raise OpenADPError(
-                ErrorCode.ENCRYPTION_FAILED,
-                "Cryptographic dependencies not available. Install: pip install cryptography"
-            )
-        
-        if role not in ("initiator", "responder"):
-            raise ValueError("role must be 'initiator' or 'responder'")
-        
-        self.role = role
-        self.is_initiator = (role == "initiator")
-        self.prologue = prologue
+    def __init__(self, remote_static_key=None):
+        """Initialize NoiseNK with optional remote static key."""
+        self.remote_static_key = remote_static_key
+        self.noise = None
+        self.is_initiator = False
         self.handshake_complete = False
-        self.read_message = False
-        self.wrote_message = False
         
-        # In NK pattern, only responder has static key
-        if self.is_initiator:
-            if remote_static_key is None:
-                raise ValueError("initiator must provide responder's static public key")
-            self.remote_static_key = remote_static_key
-            self.local_static_key = None
-        else:
-            if local_static_key is None:
-                # Generate new keypair for responder
-                self.local_static_key = x25519.X25519PrivateKey.generate()
-            else:
-                self.local_static_key = x25519.X25519PrivateKey.from_private_bytes(local_static_key)
-            self.remote_static_key = None
+    def initialize_as_initiator(self, remote_static_key):
+        """Initialize as initiator with remote static key."""
+        from noise.connection import NoiseConnection, Keypair
         
-        # Initialize handshake state
-        self._initialize_handshake()
-    
-    def _initialize_handshake(self):
-        """Initialize handshake state."""
-        self.handshake_state = "initialized"
-        self.send_cipher = None
-        self.recv_cipher = None
-        self.handshake_hash = None
-        self.send_nonce = 0
-        self.recv_nonce = 0
-    
-    def get_public_key(self) -> Optional[bytes]:
-        """Return this party's static public key as bytes."""
-        if self.is_initiator:
-            return None  # Initiator has no static key in NK pattern
+        self.remote_static_key = remote_static_key
+        self.is_initiator = True
         
-        return self.local_static_key.public_key().public_bytes(
-            encoding=serialization.Encoding.Raw,
-            format=serialization.PublicFormat.Raw
-        )
-    
-    def write_handshake_message(self, payload: bytes = b"") -> bytes:
-        """Write the next handshake message."""
-        if self.handshake_complete:
-            raise ValueError("handshake is already complete")
+        # Create NoiseConnection with NK pattern
+        # For NK pattern, initiator knows responder's static key
+        self.noise = NoiseConnection.from_name(b'Noise_NK_25519_AESGCM_SHA256')
+        self.noise.set_as_initiator()
         
-        self.wrote_message = True
+        # Set the remote static key (responder's public key)
+        # This is required for NK pattern
+        self.noise.set_keypair_from_public_bytes(Keypair.REMOTE_STATIC, remote_static_key)
         
-        if self.is_initiator:
-            # Initiator's first message: ephemeral key + encrypted payload
-            ephemeral_key = x25519.X25519PrivateKey.generate()
-            ephemeral_public = ephemeral_key.public_key().public_bytes(
-                encoding=serialization.Encoding.Raw,
-                format=serialization.PublicFormat.Raw
-            )
+        # Start handshake
+        self.noise.start_handshake()
+        
+    def initialize_as_responder(self, local_static_private_key):
+        """Initialize as responder with local static private key."""
+        from noise.connection import NoiseConnection, Keypair
+        
+        self.is_initiator = False
+        
+        # Create NoiseConnection with NK pattern
+        self.noise = NoiseConnection.from_name(b'Noise_NK_25519_AESGCM_SHA256')
+        self.noise.set_as_responder()
+        
+        # Set our static private key
+        self.noise.set_keypair_from_private_bytes(Keypair.STATIC, local_static_private_key)
+        
+        # Start handshake
+        self.noise.start_handshake()
+        
+    def write_message(self, payload=b''):
+        """Write a handshake message."""
+        if not self.noise:
+            raise ValueError("NoiseNK not initialized")
             
-            # Perform DH with server's static key
-            server_public_key = x25519.X25519PublicKey.from_public_bytes(self.remote_static_key)
-            shared_secret = ephemeral_key.exchange(server_public_key)
-            
-            # Store ephemeral key for later use
-            self._ephemeral_key = ephemeral_key
-            self._shared_secret = shared_secret
-            
-            # For now, return ephemeral public key + payload (simplified)
-            # In full Noise-NK, this would be more complex with proper encryption
-            return ephemeral_public + payload
-        else:
-            # Responder's response message
-            if not hasattr(self, '_client_ephemeral_public'):
-                raise ValueError("responder must read initiator's message first")
-            
-            # Generate our ephemeral key
-            ephemeral_key = x25519.X25519PrivateKey.generate()
-            ephemeral_public = ephemeral_key.public_key().public_bytes(
-                encoding=serialization.Encoding.Raw,
-                format=serialization.PublicFormat.Raw
-            )
-            
-            # Perform DH operations
-            client_ephemeral = x25519.X25519PublicKey.from_public_bytes(self._client_ephemeral_public)
-            
-            # DH between our static and client's ephemeral (es)
-            dh1 = self.local_static_key.exchange(client_ephemeral)
-            
-            # DH between our ephemeral and client's ephemeral (ee)
-            dh2 = ephemeral_key.exchange(client_ephemeral)
-            
-            # Derive final keys
-            self._derive_keys(dh1 + dh2)
+        message = self.noise.write_message(payload)
+        
+        # Check if handshake is complete
+        if self.noise.handshake_finished:
             self.handshake_complete = True
             
-            return ephemeral_public + payload
-    
-    def read_handshake_message(self, message: bytes) -> bytes:
-        """Read and process a handshake message from the other party."""
-        if self.handshake_complete:
-            raise ValueError("handshake is already complete")
+        return message
         
-        self.read_message = True
+    def read_message(self, message):
+        """Read a handshake message."""
+        if not self.noise:
+            raise ValueError("NoiseNK not initialized")
+            
+        payload = self.noise.read_message(message)
         
-        if self.is_initiator:
-            # Initiator reading responder's response
-            if len(message) < 32:
-                raise ValueError("invalid handshake message length")
-            
-            server_ephemeral_public = message[:32]
-            payload = message[32:]
-            
-            # Perform DH operations to complete handshake
-            server_ephemeral = x25519.X25519PublicKey.from_public_bytes(server_ephemeral_public)
-            
-            # DH between server's static and our ephemeral (es) - already done
-            # DH between ephemeral keys (ee)
-            dh2 = self._ephemeral_key.exchange(server_ephemeral)
-            
-            # Derive final keys
-            self._derive_keys(self._shared_secret + dh2)
+        # Check if handshake is complete
+        if self.noise.handshake_finished:
             self.handshake_complete = True
             
-            return payload
-        else:
-            # Responder reading initiator's first message
-            if len(message) < 32:
-                raise ValueError("invalid handshake message length")
-            
-            client_ephemeral_public = message[:32]
-            payload = message[32:]
-            
-            # Store client's ephemeral public key for response
-            self._client_ephemeral_public = client_ephemeral_public
-            
-            return payload
-    
-    def _derive_keys(self, shared_secrets: bytes):
-        """Derive encryption keys from shared secrets."""
-        # Use HKDF to derive keys
-        hkdf = HKDF(
-            algorithm=hashes.SHA256(),
-            length=64,  # 32 bytes for send, 32 bytes for recv
-            salt=b"",
-            info=b"Noise_NK_25519_ChaChaPoly_SHA256",
-            backend=default_backend()
-        )
+        return payload
         
-        keys = hkdf.derive(shared_secrets)
-        
-        # Split keys based on role
-        if self.is_initiator:
-            self.send_key = keys[:32]
-            self.recv_key = keys[32:]
-        else:
-            self.send_key = keys[32:]
-            self.recv_key = keys[:32]
-        
-        # Calculate handshake hash (simplified)
-        self.handshake_hash = hashlib.sha256(shared_secrets).digest()
-    
-    def encrypt(self, plaintext: bytes, associated_data: Optional[bytes] = None) -> bytes:
-        """Encrypt a message (post-handshake)."""
+    def encrypt(self, plaintext):
+        """Encrypt data after handshake is complete."""
         if not self.handshake_complete:
-            raise ValueError("handshake must be completed before encrypting messages")
+            raise ValueError("Handshake not complete")
+            
+        return self.noise.encrypt(plaintext)
         
-        # Use ChaCha20Poly1305 for encryption
-        cipher = ChaCha20Poly1305(self.send_key)
-        
-        # Convert nonce to 12 bytes (ChaCha20Poly1305 nonce format)
-        nonce_bytes = self.send_nonce.to_bytes(12, byteorder='little')
-        self.send_nonce += 1
-        
-        return cipher.encrypt(nonce_bytes, plaintext, associated_data)
-    
-    def decrypt(self, ciphertext: bytes, associated_data: Optional[bytes] = None) -> bytes:
-        """Decrypt a message (post-handshake)."""
+    def decrypt(self, ciphertext):
+        """Decrypt data after handshake is complete."""
         if not self.handshake_complete:
-            raise ValueError("handshake must be completed before decrypting messages")
-        
-        # Use ChaCha20Poly1305 for decryption
-        cipher = ChaCha20Poly1305(self.recv_key)
-        
-        # Convert nonce to 12 bytes
-        nonce_bytes = self.recv_nonce.to_bytes(12, byteorder='little')
-        self.recv_nonce += 1
-        
-        return cipher.decrypt(nonce_bytes, ciphertext, associated_data)
-    
-    def get_handshake_hash(self) -> bytes:
-        """Return the handshake hash for channel binding."""
-        return self.handshake_hash or b""
-    
-    def is_handshake_complete(self) -> bool:
-        """Return whether the handshake is complete."""
-        return self.handshake_complete
+            raise ValueError("Handshake not complete")
+            
+        return self.noise.decrypt(ciphertext)
 
 def generate_keypair() -> Tuple[bytes, bytes]:
     """Generate a new X25519 keypair for Noise-NK."""
@@ -694,22 +560,23 @@ class EncryptedOpenADPClient:
         # Step 1: Generate session ID
         session_id = f"session_{int(time.time() * 1000000)}"
         
-        # Step 2: Create Noise client
+        # Step 2: Initialize Noise-NK as initiator
         try:
-            noise_client = NoiseNK("initiator", None, self.server_public_key, b"")
+            noise_client = NoiseNK()
+            noise_client.initialize_as_initiator(self.server_public_key)
         except Exception as e:
             raise OpenADPError(
                 ErrorCode.ENCRYPTION_FAILED,
-                f"failed to create Noise client: {str(e)}"
+                f"Failed to initialize Noise-NK: {e}"
             )
         
         # Step 3: Start handshake
         try:
-            handshake_msg1 = noise_client.write_handshake_message(b"test")
+            handshake_msg1 = noise_client.write_message(b"test")
         except Exception as e:
             raise OpenADPError(
                 ErrorCode.ENCRYPTION_FAILED,
-                f"failed to create handshake message: {str(e)}"
+                f"Failed to create handshake message: {e}"
             )
         
         # Step 4: Send handshake to server
@@ -778,11 +645,11 @@ class EncryptedOpenADPClient:
         
         # Complete handshake
         try:
-            noise_client.read_handshake_message(handshake_msg2)
+            noise_client.read_message(handshake_msg2)
         except Exception as e:
             raise OpenADPError(
                 ErrorCode.ENCRYPTION_FAILED,
-                f"failed to complete handshake: {str(e)}"
+                f"Failed to complete handshake: {e}"
             )
         
         # Step 6: Prepare the actual method call
@@ -808,7 +675,7 @@ class EncryptedOpenADPClient:
         
         # Step 7: Encrypt the method call
         try:
-            encrypted_call = noise_client.encrypt(method_call_bytes, None)
+            encrypted_call = noise_client.encrypt(method_call_bytes)
         except Exception as e:
             raise OpenADPError(
                 ErrorCode.ENCRYPTION_FAILED,
@@ -822,7 +689,7 @@ class EncryptedOpenADPClient:
                 "session": session_id,
                 "data": base64.b64encode(encrypted_call).decode('ascii')
             }],
-            request_id + 1  # Different ID for second round
+            self.request_id + 1  # Different ID for second round
         )
         
         try:
@@ -877,7 +744,7 @@ class EncryptedOpenADPClient:
             )
         
         try:
-            decrypted_data = noise_client.decrypt(encrypted_data, None)
+            decrypted_data = noise_client.decrypt(encrypted_data)
         except Exception as e:
             raise OpenADPError(
                 ErrorCode.ENCRYPTION_FAILED,
