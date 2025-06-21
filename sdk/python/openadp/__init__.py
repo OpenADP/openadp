@@ -1,0 +1,161 @@
+"""
+OpenADP Python SDK
+
+This package provides Python implementations for OpenADP (Open Advanced Data Protection),
+a distributed secret sharing system designed to protect against nation-state attacks.
+
+Key Features:
+- Ed25519 elliptic curve operations
+- Shamir secret sharing with threshold recovery
+- Noise-NK protocol for secure communication
+- JSON-RPC 2.0 API with multi-server support
+- Cross-language compatibility with Go implementation
+
+Main Components:
+- Cryptographic operations (crypto module)
+- Key generation and recovery (keygen module)  
+- Client implementations (client module)
+
+Example Usage:
+    from openadp import EncryptedOpenADPClient, MultiServerClient
+    from openadp.keygen import generate_encryption_key, recover_encryption_key
+    
+    # Generate encryption key with distributed backup
+    key, auth_code = generate_encryption_key(
+        password="secure_password",
+        uid="user@example.com", 
+        did="device123",
+        bid="backup456"
+    )
+    
+    # Create multi-server client
+    client = MultiServerClient()
+    
+    # Later, recover the key
+    recovered_key = recover_encryption_key(
+        password="secure_password",
+        auth_code=auth_code,
+        uid="user@example.com",
+        did="device123", 
+        bid="backup456",
+        client=client
+    )
+"""
+
+# Core cryptographic operations
+from .crypto import (
+    # Point operations
+    Point2D, Point4D, G, P, Q, D,
+    point_add, point_double, point_multiply,
+    point_compress, point_decompress,
+    point_is_valid, point_from_bytes, point_to_bytes,
+    
+    # Hash and key derivation
+    H, hkdf_derive,
+    
+    # Shamir secret sharing
+    shamir_split, shamir_recover,
+    
+    # Utilities
+    bytes_to_int, int_to_bytes, mod_inverse
+)
+
+# Key generation and recovery
+from .keygen import (
+    generate_encryption_key,
+    recover_encryption_key,
+    derive_identifiers,
+    password_to_pin,
+    generate_auth_codes
+)
+
+# Client implementations
+from .client import (
+    # Core client classes
+    OpenADPClient,
+    EncryptedOpenADPClient, 
+    MultiServerClient,
+    
+    # Noise-NK protocol
+    NoiseNK,
+    generate_keypair,
+    parse_server_public_key,
+    
+    # Data structures
+    ServerInfo,
+    RegisterSecretRequest,
+    RegisterSecretResponse,
+    RecoverSecretRequest,
+    RecoverSecretResponse,
+    ListBackupsRequest,
+    ListBackupsResponse,
+    BackupInfo,
+    ServerInfoResponse,
+    
+    # Enums
+    ErrorCode,
+    ServerSelectionStrategy,
+    
+    # Exceptions
+    OpenADPError,
+    
+    # Server discovery
+    get_servers,
+    get_server_urls,
+    scrape_server_urls,
+    get_servers_by_country,
+    get_fallback_servers,
+    get_fallback_server_info,
+    convert_urls_to_server_info,
+    discover_servers,
+    discover_server_urls
+)
+
+__version__ = "1.0.0"
+__author__ = "OpenADP Team"
+__email__ = "contact@openadp.org"
+__description__ = "OpenADP Python SDK for distributed secret sharing and advanced data protection"
+
+# Convenience aliases for common use cases
+Client = MultiServerClient  # Most users will want the multi-server client
+BasicClient = OpenADPClient  # For simple use cases without encryption
+
+__all__ = [
+    # Crypto
+    "Point2D", "Point4D", "G", "P", "Q", "D",
+    "point_add", "point_double", "point_multiply", 
+    "point_compress", "point_decompress",
+    "point_is_valid", "point_from_bytes", "point_to_bytes",
+    "H", "hkdf_derive",
+    "shamir_split", "shamir_recover",
+    "bytes_to_int", "int_to_bytes", "mod_inverse",
+    
+    # Keygen
+    "generate_encryption_key", "recover_encryption_key",
+    "derive_identifiers", "password_to_pin", "generate_auth_codes",
+    
+    # Client classes
+    "OpenADPClient", "EncryptedOpenADPClient", "MultiServerClient",
+    "Client", "BasicClient",  # Aliases
+    
+    # Noise-NK
+    "NoiseNK", "generate_keypair", "parse_server_public_key",
+    
+    # Data structures
+    "ServerInfo", "RegisterSecretRequest", "RegisterSecretResponse",
+    "RecoverSecretRequest", "RecoverSecretResponse", 
+    "ListBackupsRequest", "ListBackupsResponse", "BackupInfo",
+    "ServerInfoResponse",
+    
+    # Enums and errors
+    "ErrorCode", "ServerSelectionStrategy", "OpenADPError",
+    
+    # Server discovery
+    "get_servers", "get_server_urls", "scrape_server_urls",
+    "get_servers_by_country", "get_fallback_servers", 
+    "get_fallback_server_info", "convert_urls_to_server_info",
+    "discover_servers", "discover_server_urls",
+    
+    # Package metadata
+    "__version__", "__author__", "__email__", "__description__"
+] 
