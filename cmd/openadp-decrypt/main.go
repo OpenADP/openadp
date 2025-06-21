@@ -258,41 +258,51 @@ func decryptFile(inputFilename, password, userID string, overrideServers []strin
 
 		serverURLs = overrideServers
 	} else {
-		// Get public keys directly from each metadata server via GetServerInfo
-		fmt.Println("   🔍 Querying metadata servers for public keys...")
+		// Get server information from the secure registry (servers.json) instead of querying each server individually
+		fmt.Println("   🔍 Fetching server information from secure registry...")
+
+		// Use the default servers.json registry URL
+		serversURL := "https://servers.openadp.org"
+
+		// Try to get full server information including public keys from the registry
+		registryServerInfos, err := client.GetServers(serversURL)
+		if err != nil || len(registryServerInfos) == 0 {
+			fmt.Printf("   ⚠️  Failed to fetch from registry: %v\n", err)
+			fmt.Println("   🔄 Falling back to hardcoded servers...")
+			registryServerInfos = client.GetFallbackServerInfo()
+		} else {
+			fmt.Printf("   ✅ Successfully fetched %d servers from registry\n", len(registryServerInfos))
+		}
+
+		// Match servers from metadata with registry servers to get public keys
 		serverInfos = make([]client.ServerInfo, 0, len(serverURLs))
-		for _, url := range serverURLs {
-			// Create a basic client to call GetServerInfo
-			basicClient := client.NewOpenADPClient(url)
-			serverInfo, err := basicClient.GetServerInfo()
-			if err != nil {
-				fmt.Printf("   ⚠️  Failed to get server info from %s: %v\n", url, err)
-				// Add server without public key as fallback
+		for _, metadataURL := range serverURLs {
+			// Find matching server in registry
+			var matchedServer *client.ServerInfo
+			for _, registryServer := range registryServerInfos {
+				if registryServer.URL == metadataURL {
+					matchedServer = &registryServer
+					break
+				}
+			}
+
+			if matchedServer != nil {
+				// Use server info from registry (includes public key)
+				serverInfos = append(serverInfos, *matchedServer)
+				keyStatus := "❌ No public key"
+				if matchedServer.PublicKey != "" {
+					keyStatus = "🔐 Public key available (from registry)"
+				}
+				fmt.Printf("   ✅ %s - %s\n", metadataURL, keyStatus)
+			} else {
+				// Server not found in registry, add without public key as fallback
+				fmt.Printf("   ⚠️  Server %s not found in registry, adding without public key\n", metadataURL)
 				serverInfos = append(serverInfos, client.ServerInfo{
-					URL:       url,
+					URL:       metadataURL,
 					PublicKey: "",
 					Country:   "Unknown",
 				})
-				continue
 			}
-
-			// Extract public key from server info
-			publicKey := ""
-			if noiseKey, ok := serverInfo["noise_nk_public_key"].(string); ok && noiseKey != "" {
-				publicKey = "ed25519:" + noiseKey
-			}
-
-			serverInfos = append(serverInfos, client.ServerInfo{
-				URL:       url,
-				PublicKey: publicKey,
-				Country:   "Unknown",
-			})
-
-			keyStatus := "❌ No public key"
-			if publicKey != "" {
-				keyStatus = "🔐 Public key available"
-			}
-			fmt.Printf("   ✅ %s - %s\n", url, keyStatus)
 		}
 	}
 
