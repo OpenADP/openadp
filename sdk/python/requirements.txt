@@ -1,28 +1,17 @@
 # OpenADP Python SDK Dependencies
 # 
-# Core dependencies for cryptographic operations and network communication
+# This file includes only the essential dependencies for core functionality.
+# For development tools (mypy, sphinx, black, etc.), use requirements-dev.txt
 
-# Cryptographic operations
-cryptography>=41.0.0
-noiseprotocol>=0.3.1
-pycryptodome>=3.18.0
+# Include minimal core requirements
+-r requirements-minimal.txt
 
-# HTTP client for JSON-RPC communication
-requests>=2.28.0
-
-# Development and testing dependencies (optional)
-pytest>=7.0.0
-pytest-cov>=4.0.0
-pytest-asyncio>=0.21.0
-
-# Type checking (optional)
-mypy>=1.0.0
-types-requests>=2.28.0
-
-# Code formatting (optional)
-black>=23.0.0
-isort>=5.12.0
-
-# Documentation (optional)
-sphinx>=6.0.0
-sphinx-rtd-theme>=1.3.0 
+# Development Dependencies (optional)
+# To install development tools, use:
+#   pip install -r requirements-dev.txt
+# 
+# Development tools include:
+# - mypy: Type checking
+# - black/isort: Code formatting
+# - sphinx: Documentation generation
+# - Additional testing utilities 
