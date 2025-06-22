@@ -107,8 +107,8 @@ def generate_auth_codes(server_urls: List[str]) -> AuthCodes:
     # Derive server-specific auth codes
     server_auth_codes = {}
     for server_url in server_urls:
-        # Combine base auth code with server URL and hash
-        combined = base_auth_code + server_url
+        # Combine base auth code with server URL and hash (matches Go format with colon separator)
+        combined = f"{base_auth_code}:{server_url}"
         server_hash = hashlib.sha256(combined.encode('utf-8')).digest()
         server_auth_codes[server_url] = server_hash.hex()
     

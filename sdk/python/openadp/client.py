@@ -443,14 +443,9 @@ class NoiseNK:
         if not self.handshake_complete:
             raise ValueError("Handshake not complete")
         
-        print(f"🐍 DEBUG: TRANSPORT ENCRYPT")
-        print(f"🐍 DEBUG: - plaintext length: {len(plaintext)}")
-        print(f"🐍 DEBUG: - plaintext hex: {plaintext.hex() if isinstance(plaintext, bytes) else plaintext}")
         
         result = self.noise.encrypt(plaintext)
         
-        print(f"🐍 DEBUG: - ciphertext length: {len(result)}")
-        print(f"🐍 DEBUG: - ciphertext hex: {result.hex()}")
         
         return result
         
@@ -459,24 +454,11 @@ class NoiseNK:
         if not self.handshake_complete:
             raise ValueError("Handshake not complete")
         
-        print(f"🐍 DEBUG: TRANSPORT DECRYPT")
-        print(f"🐍 DEBUG: - ciphertext length: {len(ciphertext)}")
-        print(f"🐍 DEBUG: - ciphertext hex: {ciphertext.hex()}")
-        
         try:
             result = self.noise.decrypt(ciphertext)
             
-            if result is not None:
-                print(f"🐍 DEBUG: - decrypted length: {len(result)}")
-                print(f"🐍 DEBUG: - decrypted hex: {result.hex()}")
-                print(f"🐍 DEBUG: - decrypted text: {result.decode('utf-8', errors='ignore')}")
-            else:
-                print(f"🐍 DEBUG: - decryption returned None")
-            
             return result
         except Exception as e:
-            print(f"🐍 DEBUG: - decryption failed with exception: {e}")
-            print(f"🐍 DEBUG: - exception type: {type(e)}")
             raise
         
     def get_handshake_hash(self):
@@ -490,22 +472,11 @@ class NoiseNK:
         if not self.handshake_complete:
             raise ValueError("Handshake not complete - cannot split keys")
         
-        print(f"🐍 DEBUG: SPLITTING TRANSPORT KEYS")
-        print(f"🐍 DEBUG: - attempting to split keys...")
-        
         try:
             # The noise library's split() method returns two CipherState objects
             cipher1, cipher2 = self.noise.split()
-            
-            print(f"🐍 DEBUG: - split successful")
-            print(f"🐍 DEBUG: RESPONDER FINAL KEYS")
-            print(f"🐍 DEBUG: - responder send key: (cipher2)")
-            print(f"🐍 DEBUG: - responder receive key: (cipher1)")
-            
             return cipher1, cipher2
-            
         except Exception as e:
-            print(f"🐍 DEBUG: - split failed: {e}")
             raise
 
 def generate_keypair() -> Tuple[bytes, bytes]:
@@ -1166,7 +1137,6 @@ class MultiServerClient:
         # Test servers directly with provided ServerInfo
         client.live_servers = client._test_servers_concurrently(server_infos)
         
-        print(f"Initialization complete: {len(client.live_servers)} live servers available")
         client._log_server_status()
         
         return client
@@ -1176,9 +1146,7 @@ class MultiServerClient:
         if self.servers_url:
             try:
                 server_infos = get_servers(self.servers_url)
-                print(f"Scraped {len(server_infos)} servers from {self.servers_url}")
             except OpenADPError as e:
-                print(f"Failed to scrape servers from {self.servers_url}: {e}")
                 server_infos = []
         else:
             server_infos = []
@@ -1186,12 +1154,10 @@ class MultiServerClient:
         # Add fallback servers if needed
         if not server_infos:
             server_infos = convert_urls_to_server_info(self.fallback_servers)
-            print(f"Using {len(server_infos)} fallback servers")
         
         # Test servers concurrently
         self.live_servers = self._test_servers_concurrently(server_infos)
         
-        print(f"Initialization complete: {len(self.live_servers)} live servers available")
         self._log_server_status()
     
     def _test_servers_concurrently(self, server_infos: List[ServerInfo]) -> List[EncryptedOpenADPClient]:
@@ -1217,14 +1183,12 @@ class MultiServerClient:
     
     def _test_single_server_with_info(self, server_info: ServerInfo) -> Optional[EncryptedOpenADPClient]:
         """Test a single server for liveness using ServerInfo with public key."""
-        print(f"Testing server: {server_info.url}")
         
         public_key = None
         if server_info.public_key:
             try:
                 public_key = self._parse_public_key(server_info.public_key)
             except Exception as e:
-                print(f"  ⚠️  {server_info.url}: Invalid public key: {e}")
                 public_key = None
         
         # Create encrypted client with public key from servers.json (secure)
@@ -1236,19 +1200,14 @@ class MultiServerClient:
             result = client.echo(test_message, False)
             
             if result != test_message:
-                print(f"  ❌ {server_info.url}: Echo returned unexpected result: {result}")
                 return None
             
             # Check encryption status
-            if client.has_public_key():
-                print(f"  ✅ {server_info.url}: Live (Noise-NK encryption from servers.json)")
-            else:
-                print(f"  ✅ {server_info.url}: Live (no encryption - no public key)")
+            encryption_status = "encrypted" if client.has_public_key() else "unencrypted"
             
             return client
             
         except Exception as e:
-            print(f"  ❌ {server_info.url}: {e}")
             return None
     
     def _parse_public_key(self, public_key: str) -> bytes:
@@ -1265,12 +1224,10 @@ class MultiServerClient:
         """Log current server status."""
         with self._lock:
             if self.live_servers:
-                print("Live servers:")
                 for client in self.live_servers:
                     encryption_status = "encrypted" if client.has_public_key() else "unencrypted"
-                    print(f"  - {client.url} ({encryption_status})")
             else:
-                print("No live servers available")
+                pass  # No live servers to log
     
     def get_live_server_count(self) -> int:
         """Return the number of currently live servers."""
@@ -1284,7 +1241,6 @@ class MultiServerClient:
     
     def refresh_servers(self) -> None:
         """Re-scrape and re-test all servers to refresh the live server list."""
-        print("Refreshing server list...")
         with self._lock:
             self._initialize_servers()
     
@@ -1315,7 +1271,6 @@ class MultiServerClient:
                     return True
             except Exception as e:
                 last_error = e
-                print(f"Failed to register with {client.url}: {e}")
         
         raise OpenADPError(
             ErrorCode.SERVER_ERROR,
@@ -1343,7 +1298,6 @@ class MultiServerClient:
                 return result
             except Exception as e:
                 last_error = e
-                print(f"Failed to recover from {client.url}: {e}")
         
         raise OpenADPError(
             ErrorCode.SERVER_ERROR,
@@ -1369,7 +1323,6 @@ class MultiServerClient:
                 return result
             except Exception as e:
                 last_error = e
-                print(f"Failed to list backups from {client.url}: {e}")
         
         raise OpenADPError(
             ErrorCode.SERVER_ERROR,
