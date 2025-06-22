@@ -131,7 +131,7 @@ class OpenADPTestRunner:
         if args.no_color or not sys.stdout.isatty():
             Colors.disable_colors()
         
-    def log(self, message: str, color: str = Colors.EMPHASIS):
+    def log(self, message: str, color: str = Colors.INFO):
         if self.args.verbose or "FAIL" in message or "PASS" in message:
             print(f"{color}{message}{Colors.RESET}")
     
@@ -154,7 +154,7 @@ class OpenADPTestRunner:
     def test_go_build(self) -> TestResult:
         """Test that all Go components build successfully"""
         start_time = time.time()
-        self.log("🔨 Building Go components...")
+        self.log("🔨 Building Go components...", Colors.INFO)
         
         # First clean, then build all components including tools needed for tests
         success, stdout, stderr = self.run_command([
@@ -172,7 +172,7 @@ class OpenADPTestRunner:
     def test_go_unit_tests(self) -> TestResult:
         """Run Go unit tests"""
         start_time = time.time()
-        self.log("🧪 Running Go unit tests...")
+        self.log("🧪 Running Go unit tests...", Colors.INFO)
         
         success, stdout, stderr = self.run_command(["go", "test", "./pkg/...", "-v"])
         duration = time.time() - start_time
@@ -187,7 +187,7 @@ class OpenADPTestRunner:
     def test_go_integration_tests(self) -> TestResult:
         """Run Go integration tests"""
         start_time = time.time()
-        self.log("🔗 Running Go integration tests...")
+        self.log("🔗 Running Go integration tests...", Colors.INFO)
         
         success, stdout, stderr = self.run_command(["go", "test", "./tests/...", "-v"], timeout=600)
         duration = time.time() - start_time
@@ -202,7 +202,7 @@ class OpenADPTestRunner:
     def test_python_sdk_setup(self) -> TestResult:
         """Test Python SDK setup and dependencies"""
         start_time = time.time()
-        self.log("🐍 Testing Python SDK setup...")
+        self.log("🐍 Testing Python SDK setup...", Colors.INFO)
         
         # Check if venv exists and is activated
         venv_path = self.root_dir / "venv"
@@ -227,7 +227,7 @@ class OpenADPTestRunner:
     def test_python_unit_tests(self) -> TestResult:
         """Run Python unit tests"""
         start_time = time.time()
-        self.log("🧪 Running Python unit tests...")
+        self.log("🧪 Running Python unit tests...", Colors.INFO)
         
         python_test_dir = self.root_dir / "tests" / "python"
         success, stdout, stderr = self.run_command([
@@ -246,7 +246,7 @@ class OpenADPTestRunner:
     def test_python_tools(self) -> TestResult:
         """Test Python encrypt/decrypt tools"""
         start_time = time.time()
-        self.log("🔧 Testing Python tools...")
+        self.log("🔧 Testing Python tools...", Colors.INFO)
         
         with tempfile.TemporaryDirectory() as temp_dir:
             test_file = Path(temp_dir) / "test_file.txt"
@@ -269,7 +269,7 @@ class OpenADPTestRunner:
     def test_cross_language_compatibility(self) -> TestResult:
         """Run cross-language compatibility tests"""
         start_time = time.time()
-        self.log("🔄 Running cross-language compatibility tests...")
+        self.log("🔄 Running cross-language compatibility tests...", Colors.INFO)
         
         # Use our existing cross-language test
         success, stdout, stderr = self.run_command([
@@ -288,7 +288,7 @@ class OpenADPTestRunner:
     def test_makefile_targets(self) -> TestResult:
         """Test key Makefile targets"""
         start_time = time.time()
-        self.log("📋 Testing Makefile targets...")
+        self.log("📋 Testing Makefile targets...", Colors.INFO)
         
         targets_to_test = ["test", "fmt"]
         all_success = True
@@ -315,12 +315,12 @@ class OpenADPTestRunner:
     
     def ensure_go_tools_built(self) -> bool:
         """Ensure Go tools are built before running tests that need them"""
-        self.log("🔧 Ensuring Go tools are built...")
+        self.log("🔧 Ensuring Go tools are built...", Colors.INFO)
         
         # Check if build directory exists and has executables
         build_dir = self.root_dir / "build"
         if not build_dir.exists():
-            self.log("📁 Build directory doesn't exist, building all tools...")
+            self.log("📁 Build directory doesn't exist, building all tools...", Colors.WARNING)
             success, _, _ = self.run_command(["make", "build-server", "build-encrypt", "build-decrypt"])
             return success
         
@@ -334,18 +334,18 @@ class OpenADPTestRunner:
                 missing_tools.append(exe)
         
         if missing_tools:
-            self.log(f"🔨 Missing tools: {missing_tools}, building all tools...")
+            self.log(f"🔨 Missing tools: {missing_tools}, building all tools...", Colors.WARNING)
             success, _, _ = self.run_command(["make", "build-server", "build-encrypt", "build-decrypt"])
             return success
         
-        self.log("✅ Go tools are already built")
+        self.log("✅ Go tools are already built", Colors.SUCCESS)
         return True
     
     def run_all_tests(self):
         """Run all tests based on command line arguments"""
-        self.log(f"{Colors.BOLD}🚀 OpenADP Comprehensive Test Suite{Colors.RESET}")
-        self.log(f"📁 Root directory: {self.root_dir}")
-        self.log("=" * 60)
+        self.log(f"🚀 OpenADP Comprehensive Test Suite", Colors.SUCCESS)
+        self.log(f"📁 Root directory: {self.root_dir}", Colors.INFO)
+        self.log("=" * 60, Colors.INFO)
         
         # Ensure Go tools are built if we're running any tests that need them
         need_go_tools = not self.args.python_only or not self.args.fast
@@ -396,7 +396,7 @@ class OpenADPTestRunner:
         failed = len(self.results) - passed
         
         print("\n" + "=" * 60)
-        print(f"{Colors.BOLD}📊 TEST SUMMARY{Colors.RESET}")
+        print(f"{Colors.SUCCESS}📊 TEST SUMMARY{Colors.RESET}")
         print("=" * 60)
         
         for result in self.results:
