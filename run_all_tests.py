@@ -21,6 +21,7 @@ Usage:
     ./run_all_tests.py --verbose    # Verbose output
     ./run_all_tests.py --go-only    # Only Go tests
     ./run_all_tests.py --python-only # Only Python tests
+    ./run_all_tests.py --no-color   # Disable colored output
 """
 
 import os
@@ -45,23 +46,79 @@ class TestResult:
     error: Optional[str] = None
 
 class Colors:
-    # Protanopia-friendly colors with high contrast
-    SUCCESS = '\033[94m'    # Blue for success (instead of green)
-    FAILURE = '\033[95m'    # Magenta for failure (instead of red)  
-    WARNING = '\033[93m'    # Yellow for warnings
-    INFO = '\033[96m'       # Cyan for info
-    EMPHASIS = '\033[97m'   # Bright white for emphasis
-    BOLD = '\033[1m'        # Bold text
-    RESET = '\033[0m'       # Reset to default
+    # Protanopia-friendly colors with high contrast and bold text
+    # Using bold variants to ensure visibility across different terminal themes
+    _colors_enabled = True
+    
+    @classmethod
+    def disable_colors(cls):
+        """Disable all colors for terminals that don't support them or when requested"""
+        cls._colors_enabled = False
+    
+    @classmethod
+    def _get_color(cls, code):
+        """Return color code if colors are enabled, empty string otherwise"""
+        return code if cls._colors_enabled else ''
+    
+    @property
+    def SUCCESS(self):
+        return self._get_color('\033[1;34m')    # Bold blue for success
+    
+    @property  
+    def FAILURE(self):
+        return self._get_color('\033[1;35m')    # Bold magenta for failure
+    
+    @property
+    def WARNING(self):
+        return self._get_color('\033[1;33m')    # Bold yellow for warnings
+    
+    @property
+    def INFO(self):
+        return self._get_color('\033[1;36m')    # Bold cyan for info
+    
+    @property
+    def EMPHASIS(self):
+        return self._get_color('\033[1;37m')    # Bold white for emphasis
+    
+    @property
+    def BOLD(self):
+        return self._get_color('\033[1m')       # Bold text
+    
+    @property
+    def RESET(self):
+        return self._get_color('\033[0m')       # Reset to default
     
     # Legacy aliases for backward compatibility
-    GREEN = '\033[94m'      # Map to blue
-    RED = '\033[95m'        # Map to magenta
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    MAGENTA = '\033[95m'
-    CYAN = '\033[96m'
-    WHITE = '\033[97m'
+    @property
+    def GREEN(self):
+        return self._get_color('\033[1;34m')    # Map to bold blue
+    
+    @property
+    def RED(self):
+        return self._get_color('\033[1;35m')    # Map to bold magenta
+    
+    @property
+    def YELLOW(self):
+        return self._get_color('\033[1;33m')    # Bold yellow
+    
+    @property
+    def BLUE(self):
+        return self._get_color('\033[1;34m')    # Bold blue
+    
+    @property
+    def MAGENTA(self):
+        return self._get_color('\033[1;35m')    # Bold magenta
+    
+    @property
+    def CYAN(self):
+        return self._get_color('\033[1;36m')    # Bold cyan
+    
+    @property
+    def WHITE(self):
+        return self._get_color('\033[1;37m')    # Bold white
+
+# Create a global instance
+Colors = Colors()
 
 class OpenADPTestRunner:
     def __init__(self, args):
@@ -69,6 +126,10 @@ class OpenADPTestRunner:
         self.root_dir = Path.cwd()
         self.results: List[TestResult] = []
         self.start_time = time.time()
+        
+        # Disable colors if requested or if not in a terminal
+        if args.no_color or not sys.stdout.isatty():
+            Colors.disable_colors()
         
     def log(self, message: str, color: str = Colors.EMPHASIS):
         if self.args.verbose or "FAIL" in message or "PASS" in message:
@@ -372,6 +433,7 @@ def main():
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     parser.add_argument("--go-only", action="store_true", help="Only run Go tests")
     parser.add_argument("--python-only", action="store_true", help="Only run Python tests")
+    parser.add_argument("--no-color", action="store_true", help="Disable colored output")
     
     args = parser.parse_args()
     
