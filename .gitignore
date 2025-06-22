@@ -55,7 +55,6 @@ test-file.txt
 test-file.txt.enc
 
 # Build artifacts  
-openadp-*
 !build/openadp-*
 
 # Temporary files
