@@ -9,6 +9,12 @@ This script runs all tests across all languages and components:
 - Cross-language compatibility tests
 - Build verification tests
 
+Color Scheme:
+- Uses protanopia-friendly colors with high contrast
+- SUCCESS: Blue (instead of green) for passed tests
+- FAILURE: Magenta (instead of red) for failed tests
+- These colors are easily distinguishable for people with red-green color blindness
+
 Usage:
     ./run_all_tests.py              # Run all tests
     ./run_all_tests.py --fast       # Skip slow integration tests
@@ -39,15 +45,23 @@ class TestResult:
     error: Optional[str] = None
 
 class Colors:
-    GREEN = '\033[92m'
-    RED = '\033[91m'
+    # Protanopia-friendly colors with high contrast
+    SUCCESS = '\033[94m'    # Blue for success (instead of green)
+    FAILURE = '\033[95m'    # Magenta for failure (instead of red)  
+    WARNING = '\033[93m'    # Yellow for warnings
+    INFO = '\033[96m'       # Cyan for info
+    EMPHASIS = '\033[97m'   # Bright white for emphasis
+    BOLD = '\033[1m'        # Bold text
+    RESET = '\033[0m'       # Reset to default
+    
+    # Legacy aliases for backward compatibility
+    GREEN = '\033[94m'      # Map to blue
+    RED = '\033[95m'        # Map to magenta
     YELLOW = '\033[93m'
     BLUE = '\033[94m'
     MAGENTA = '\033[95m'
     CYAN = '\033[96m'
     WHITE = '\033[97m'
-    BOLD = '\033[1m'
-    RESET = '\033[0m'
 
 class OpenADPTestRunner:
     def __init__(self, args):
@@ -56,7 +70,7 @@ class OpenADPTestRunner:
         self.results: List[TestResult] = []
         self.start_time = time.time()
         
-    def log(self, message: str, color: str = Colors.WHITE):
+    def log(self, message: str, color: str = Colors.EMPHASIS):
         if self.args.verbose or "FAIL" in message or "PASS" in message:
             print(f"{color}{message}{Colors.RESET}")
     
@@ -88,10 +102,10 @@ class OpenADPTestRunner:
         duration = time.time() - start_time
         
         if success:
-            self.log("✅ Go build: PASS", Colors.GREEN)
+            self.log("✅ Go build: PASS", Colors.SUCCESS)
             return TestResult("Go Build", True, duration, stdout)
         else:
-            self.log("❌ Go build: FAIL", Colors.RED)
+            self.log("❌ Go build: FAIL", Colors.FAILURE)
             return TestResult("Go Build", False, duration, stdout, stderr)
     
     def test_go_unit_tests(self) -> TestResult:
@@ -103,10 +117,10 @@ class OpenADPTestRunner:
         duration = time.time() - start_time
         
         if success:
-            self.log("✅ Go unit tests: PASS", Colors.GREEN)
+            self.log("✅ Go unit tests: PASS", Colors.SUCCESS)
             return TestResult("Go Unit Tests", True, duration, stdout)
         else:
-            self.log("❌ Go unit tests: FAIL", Colors.RED)
+            self.log("❌ Go unit tests: FAIL", Colors.FAILURE)
             return TestResult("Go Unit Tests", False, duration, stdout, stderr)
     
     def test_go_integration_tests(self) -> TestResult:
@@ -118,10 +132,10 @@ class OpenADPTestRunner:
         duration = time.time() - start_time
         
         if success:
-            self.log("✅ Go integration tests: PASS", Colors.GREEN)
+            self.log("✅ Go integration tests: PASS", Colors.SUCCESS)
             return TestResult("Go Integration Tests", True, duration, stdout)
         else:
-            self.log("❌ Go integration tests: FAIL", Colors.RED)
+            self.log("❌ Go integration tests: FAIL", Colors.FAILURE)
             return TestResult("Go Integration Tests", False, duration, stdout, stderr)
     
     def test_python_sdk_setup(self) -> TestResult:
@@ -143,10 +157,10 @@ class OpenADPTestRunner:
         duration = time.time() - start_time
         
         if success:
-            self.log("✅ Python SDK setup: PASS", Colors.GREEN)
+            self.log("✅ Python SDK setup: PASS", Colors.SUCCESS)
             return TestResult("Python SDK Setup", True, duration, stdout)
         else:
-            self.log("❌ Python SDK setup: FAIL", Colors.RED)
+            self.log("❌ Python SDK setup: FAIL", Colors.FAILURE)
             return TestResult("Python SDK Setup", False, duration, stdout, stderr)
     
     def test_python_unit_tests(self) -> TestResult:
@@ -162,10 +176,10 @@ class OpenADPTestRunner:
         duration = time.time() - start_time
         
         if success:
-            self.log("✅ Python unit tests: PASS", Colors.GREEN)
+            self.log("✅ Python unit tests: PASS", Colors.SUCCESS)
             return TestResult("Python Unit Tests", True, duration, stdout)
         else:
-            self.log("❌ Python unit tests: FAIL", Colors.RED)
+            self.log("❌ Python unit tests: FAIL", Colors.FAILURE)
             return TestResult("Python Unit Tests", False, duration, stdout, stderr)
     
     def test_python_tools(self) -> TestResult:
@@ -185,10 +199,10 @@ class OpenADPTestRunner:
             duration = time.time() - start_time
             
             if success1 and success2:
-                self.log("✅ Python tools: PASS", Colors.GREEN)
+                self.log("✅ Python tools: PASS", Colors.SUCCESS)
                 return TestResult("Python Tools", True, duration, "Version checks passed")
             else:
-                self.log("❌ Python tools: FAIL", Colors.RED)
+                self.log("❌ Python tools: FAIL", Colors.FAILURE)
                 return TestResult("Python Tools", False, duration, "", "Version checks failed")
     
     def test_cross_language_compatibility(self) -> TestResult:
@@ -204,10 +218,10 @@ class OpenADPTestRunner:
         duration = time.time() - start_time
         
         if success:
-            self.log("✅ Cross-language compatibility: PASS", Colors.GREEN)
+            self.log("✅ Cross-language compatibility: PASS", Colors.SUCCESS)
             return TestResult("Cross-Language Compatibility", True, duration, stdout)
         else:
-            self.log("❌ Cross-language compatibility: FAIL", Colors.RED)
+            self.log("❌ Cross-language compatibility: FAIL", Colors.FAILURE)
             return TestResult("Cross-Language Compatibility", False, duration, stdout, stderr)
     
     def test_makefile_targets(self) -> TestResult:
@@ -224,18 +238,18 @@ class OpenADPTestRunner:
             combined_output.append(f"=== make {target} ===\n{stdout}\n{stderr}")
             if not success:
                 all_success = False
-                self.log(f"❌ make {target}: FAIL", Colors.RED)
+                self.log(f"❌ make {target}: FAIL", Colors.FAILURE)
             else:
-                self.log(f"✅ make {target}: PASS", Colors.GREEN)
+                self.log(f"✅ make {target}: PASS", Colors.SUCCESS)
         
         duration = time.time() - start_time
         output = "\n".join(combined_output)
         
         if all_success:
-            self.log("✅ Makefile targets: PASS", Colors.GREEN)
+            self.log("✅ Makefile targets: PASS", Colors.SUCCESS)
             return TestResult("Makefile Targets", True, duration, output)
         else:
-            self.log("❌ Makefile targets: FAIL", Colors.RED)
+            self.log("❌ Makefile targets: FAIL", Colors.FAILURE)
             return TestResult("Makefile Targets", False, duration, output, "Some targets failed")
     
     def ensure_go_tools_built(self) -> bool:
@@ -276,7 +290,7 @@ class OpenADPTestRunner:
         need_go_tools = not self.args.python_only or not self.args.fast
         if need_go_tools:
             if not self.ensure_go_tools_built():
-                self.log("❌ Failed to build Go tools, some tests may fail", Colors.RED)
+                self.log("❌ Failed to build Go tools, some tests may fail", Colors.FAILURE)
         
         # Determine which tests to run
         tests_to_run = []
@@ -308,7 +322,7 @@ class OpenADPTestRunner:
                 result = test_func()
                 self.results.append(result)
             except Exception as e:
-                self.log(f"❌ {test_name}: EXCEPTION - {str(e)}", Colors.RED)
+                self.log(f"❌ {test_name}: EXCEPTION - {str(e)}", Colors.FAILURE)
                 self.results.append(TestResult(test_name, False, 0, "", str(e)))
         
         # Print summary
@@ -325,25 +339,25 @@ class OpenADPTestRunner:
         print("=" * 60)
         
         for result in self.results:
-            status_color = Colors.GREEN if result.success else Colors.RED
+            status_color = Colors.SUCCESS if result.success else Colors.FAILURE
             status = "PASS" if result.success else "FAIL"
             duration_str = f"{result.duration:.2f}s"
             print(f"{status_color}{status:<4}{Colors.RESET} {result.name:<30} ({duration_str})")
         
         print("=" * 60)
         print(f"📈 Total: {len(self.results)} tests")
-        print(f"{Colors.GREEN}✅ Passed: {passed}{Colors.RESET}")
+        print(f"{Colors.SUCCESS}✅ Passed: {passed}{Colors.RESET}")
         if failed > 0:
-            print(f"{Colors.RED}❌ Failed: {failed}{Colors.RESET}")
+            print(f"{Colors.FAILURE}❌ Failed: {failed}{Colors.RESET}")
         print(f"⏱️  Total time: {total_time:.2f}s")
         
         # Print failure details
         if failed > 0:
-            print(f"\n{Colors.RED}💥 FAILURE DETAILS:{Colors.RESET}")
+            print(f"\n{Colors.FAILURE}💥 FAILURE DETAILS:{Colors.RESET}")
             print("=" * 60)
             for result in self.results:
                 if not result.success:
-                    print(f"\n{Colors.RED}❌ {result.name}:{Colors.RESET}")
+                    print(f"\n{Colors.FAILURE}❌ {result.name}:{Colors.RESET}")
                     if result.error:
                         print(f"Error: {result.error}")
                     if result.output and self.args.verbose:
