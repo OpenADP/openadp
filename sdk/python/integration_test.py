@@ -71,9 +71,10 @@ class IntegrationTestSuite:
                 cmd = [
                     server_binary,
                     '-port', str(port),
-                    '-database', temp_db.name,
-                    '-noise-nk-enabled'  # Enable Noise-NK encryption
+                    '-db', temp_db.name,
                 ]
+#temp
+                print("cmd =", cmd)
                 
                 process = subprocess.Popen(
                     cmd,
