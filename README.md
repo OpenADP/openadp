@@ -338,3 +338,49 @@ For additional technical documentation, see the [`docs/`](docs/) directory:
 - ✅ **Ed25519 Point Validation**: Implemented using cofactor clearing method  
 - ✅ **Standardized Client Interfaces**: Ready for multi-language implementation
 - 🔄 **Multi-Language Clients**: Ready to implement (Python, JavaScript, Java)
+
+## Testing
+
+OpenADP includes comprehensive tests across all components:
+
+```bash
+# Run all tests
+./run_all_tests.py
+
+# Run only fast tests (skip integration tests)
+./run_all_tests.py --fast
+
+# Run only Go tests
+./run_all_tests.py --go-only
+
+# Run only Python tests
+./run_all_tests.py --python-only
+
+# Verbose output
+./run_all_tests.py --verbose
+```
+
+### Noise-NK Cross-Platform Compatibility Test
+
+OpenADP includes a dedicated test for cross-platform compatibility between the Python Noise-NK server and JavaScript client:
+
+```bash
+# Run the standalone Noise-NK compatibility test
+./test_noise_nk_compatibility.py
+
+# With verbose output
+./test_noise_nk_compatibility.py --verbose
+
+# Keep files for debugging (don't clean up server_info.json)
+./test_noise_nk_compatibility.py --no-cleanup
+```
+
+This test:
+- ✅ Verifies Node.js and Python dependencies
+- 🚀 Starts a Python Noise-NK server automatically
+- 🔗 Runs the JavaScript client against the server
+- 📋 Tests complete handshake and secure message exchange
+- 🧹 Cleans up processes and files automatically
+- 📊 Reports detailed results and timing
+
+The test is also integrated into the main test suite and runs automatically with `./run_all_tests.py`.

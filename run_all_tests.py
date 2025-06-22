@@ -285,6 +285,95 @@ class OpenADPTestRunner:
             self.log("❌ Cross-language compatibility: FAIL", Colors.FAILURE)
             return TestResult("Cross-Language Compatibility", False, duration, stdout, stderr)
     
+    def test_noise_nk_compatibility(self) -> TestResult:
+        """Test Noise-NK cross-platform compatibility between Python server and JavaScript client"""
+        start_time = time.time()
+        self.log("🔒 Testing Noise-NK cross-platform compatibility...", Colors.INFO)
+        
+        # Check JavaScript dependencies first
+        if not self.check_javascript_dependencies():
+            duration = time.time() - start_time
+            return TestResult("Noise-NK Compatibility", False, duration, 
+                            "", "JavaScript dependencies not available")
+        
+        server_process = None
+        try:
+            # Start Python Noise server in background
+            self.log("🚀 Starting Python Noise-NK server...", Colors.INFO)
+            server_process = subprocess.Popen(
+                ["python", "noise_server.py"],
+                cwd=self.root_dir / "sdk" / "python",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            # Wait for server to start and create server_info.json
+            server_info_path = self.root_dir / "sdk" / "python" / "server_info.json"
+            max_wait = 10  # Wait up to 10 seconds for server to start
+            wait_time = 0
+            
+            while wait_time < max_wait:
+                if server_info_path.exists():
+                    # Give it another second to fully initialize
+                    time.sleep(1)
+                    break
+                time.sleep(0.5)
+                wait_time += 0.5
+            
+            if not server_info_path.exists():
+                if server_process.poll() is not None:
+                    # Server process died
+                    _, stderr = server_process.communicate()
+                    return TestResult("Noise-NK Compatibility", False, time.time() - start_time, 
+                                    "", f"Server failed to start: {stderr}")
+                else:
+                    return TestResult("Noise-NK Compatibility", False, time.time() - start_time,
+                                    "", "Server didn't create server_info.json in time")
+            
+            self.log("📡 Server started, running JavaScript client test...", Colors.INFO)
+            
+            # Run JavaScript client test
+            success, stdout, stderr = self.run_command([
+                "node", "noise_client.js"
+            ], cwd=self.root_dir / "sdk" / "javascript", timeout=60)
+            
+            duration = time.time() - start_time
+            
+            # Check for successful test completion
+            if success and "All tests completed successfully!" in stdout:
+                self.log("✅ Noise-NK compatibility: PASS", Colors.SUCCESS)
+                return TestResult("Noise-NK Compatibility", True, duration, stdout)
+            else:
+                self.log("❌ Noise-NK compatibility: FAIL", Colors.FAILURE)
+                error_msg = stderr if stderr else "JavaScript client test failed or didn't complete successfully"
+                return TestResult("Noise-NK Compatibility", False, duration, stdout, error_msg)
+                
+        except Exception as e:
+            duration = time.time() - start_time
+            self.log(f"❌ Noise-NK compatibility: EXCEPTION - {str(e)}", Colors.FAILURE)
+            return TestResult("Noise-NK Compatibility", False, duration, "", str(e))
+            
+        finally:
+            # Clean up server process
+            if server_process:
+                try:
+                    server_process.terminate()
+                    server_process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    server_process.kill()
+                    server_process.wait()
+                except Exception:
+                    pass  # Ignore cleanup errors
+                
+                # Clean up server_info.json
+                try:
+                    server_info_path = self.root_dir / "sdk" / "python" / "server_info.json"
+                    if server_info_path.exists():
+                        server_info_path.unlink()
+                except Exception:
+                    pass  # Ignore cleanup errors
+    
     def test_makefile_targets(self) -> TestResult:
         """Test key Makefile targets"""
         start_time = time.time()
@@ -341,6 +430,39 @@ class OpenADPTestRunner:
         self.log("✅ Go tools are already built", Colors.SUCCESS)
         return True
     
+    def check_javascript_dependencies(self) -> bool:
+        """Check if Node.js and JavaScript dependencies are available"""
+        self.log("📦 Checking JavaScript dependencies...", Colors.INFO)
+        
+        # Check if Node.js is available
+        success, stdout, stderr = self.run_command(["node", "--version"])
+        if not success:
+            self.log("❌ Node.js not found. Please install Node.js to run Noise-NK tests.", Colors.FAILURE)
+            return False
+        
+        node_version = stdout.strip()
+        self.log(f"✅ Node.js version: {node_version}", Colors.SUCCESS)
+        
+        # Check if package.json exists in JavaScript SDK
+        js_sdk_path = self.root_dir / "sdk" / "javascript"
+        package_json_path = js_sdk_path / "package.json"
+        
+        if not package_json_path.exists():
+            self.log("❌ package.json not found in JavaScript SDK", Colors.FAILURE)
+            return False
+        
+        # Check if node_modules exists, if not try to install
+        node_modules_path = js_sdk_path / "node_modules"
+        if not node_modules_path.exists():
+            self.log("📦 Installing JavaScript dependencies...", Colors.INFO)
+            success, stdout, stderr = self.run_command(["npm", "install"], cwd=js_sdk_path)
+            if not success:
+                self.log(f"❌ Failed to install JavaScript dependencies: {stderr}", Colors.FAILURE)
+                return False
+            self.log("✅ JavaScript dependencies installed", Colors.SUCCESS)
+        
+        return True
+    
     def run_all_tests(self):
         """Run all tests based on command line arguments"""
         self.log(f"🚀 OpenADP Comprehensive Test Suite", Colors.SUCCESS)
@@ -376,6 +498,7 @@ class OpenADPTestRunner:
             
             if not self.args.fast:
                 tests_to_run.append(("Cross-Language", self.test_cross_language_compatibility))
+                tests_to_run.append(("Noise-NK Compatibility", self.test_noise_nk_compatibility))
         
         # Run tests
         for test_name, test_func in tests_to_run:
