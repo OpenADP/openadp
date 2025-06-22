@@ -442,15 +442,71 @@ class NoiseNK:
         """Encrypt data after handshake is complete."""
         if not self.handshake_complete:
             raise ValueError("Handshake not complete")
-            
-        return self.noise.encrypt(plaintext)
+        
+        print(f"🐍 DEBUG: TRANSPORT ENCRYPT")
+        print(f"🐍 DEBUG: - plaintext length: {len(plaintext)}")
+        print(f"🐍 DEBUG: - plaintext hex: {plaintext.hex() if isinstance(plaintext, bytes) else plaintext}")
+        
+        result = self.noise.encrypt(plaintext)
+        
+        print(f"🐍 DEBUG: - ciphertext length: {len(result)}")
+        print(f"🐍 DEBUG: - ciphertext hex: {result.hex()}")
+        
+        return result
         
     def decrypt(self, ciphertext):
         """Decrypt data after handshake is complete."""
         if not self.handshake_complete:
             raise ValueError("Handshake not complete")
+        
+        print(f"🐍 DEBUG: TRANSPORT DECRYPT")
+        print(f"🐍 DEBUG: - ciphertext length: {len(ciphertext)}")
+        print(f"🐍 DEBUG: - ciphertext hex: {ciphertext.hex()}")
+        
+        try:
+            result = self.noise.decrypt(ciphertext)
             
-        return self.noise.decrypt(ciphertext)
+            if result is not None:
+                print(f"🐍 DEBUG: - decrypted length: {len(result)}")
+                print(f"🐍 DEBUG: - decrypted hex: {result.hex()}")
+                print(f"🐍 DEBUG: - decrypted text: {result.decode('utf-8', errors='ignore')}")
+            else:
+                print(f"🐍 DEBUG: - decryption returned None")
+            
+            return result
+        except Exception as e:
+            print(f"🐍 DEBUG: - decryption failed with exception: {e}")
+            print(f"🐍 DEBUG: - exception type: {type(e)}")
+            raise
+        
+    def get_handshake_hash(self):
+        """Get the handshake hash after handshake is complete."""
+        if not self.noise:
+            raise ValueError("NoiseNK not initialized")
+        return self.noise.get_handshake_hash()
+
+    def split_keys(self):
+        """Split final chaining key into transport keys after handshake completion."""
+        if not self.handshake_complete:
+            raise ValueError("Handshake not complete - cannot split keys")
+        
+        print(f"🐍 DEBUG: SPLITTING TRANSPORT KEYS")
+        print(f"🐍 DEBUG: - attempting to split keys...")
+        
+        try:
+            # The noise library's split() method returns two CipherState objects
+            cipher1, cipher2 = self.noise.split()
+            
+            print(f"🐍 DEBUG: - split successful")
+            print(f"🐍 DEBUG: RESPONDER FINAL KEYS")
+            print(f"🐍 DEBUG: - responder send key: (cipher2)")
+            print(f"🐍 DEBUG: - responder receive key: (cipher1)")
+            
+            return cipher1, cipher2
+            
+        except Exception as e:
+            print(f"🐍 DEBUG: - split failed: {e}")
+            raise
 
 def generate_keypair() -> Tuple[bytes, bytes]:
     """Generate a new X25519 keypair for Noise-NK."""

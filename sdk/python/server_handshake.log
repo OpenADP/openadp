@@ -1,0 +1,23 @@
+Traceback (most recent call last):
+  File "/home/waywardgeek/projects/openadp/sdk/python/noise_server.py", line 101, in handle_client
+    payload1 = noise.read_message(message1_data)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/waywardgeek/projects/openadp/sdk/python/openadp/client.py", line 433, in read_message
+    payload = self.noise.read_message(message)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/waywardgeek/projects/openadp/sdk/python/venv/lib/python3.12/site-packages/noise/connection.py", line 125, in read_message
+    result = self.noise_protocol.handshake_state.read_message(data, buffer)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/waywardgeek/projects/openadp/sdk/python/venv/lib/python3.12/site-packages/noise/state.py", line 414, in read_message
+    payload_buffer += self.symmetric_state.decrypt_and_hash(bytes(message))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/waywardgeek/projects/openadp/sdk/python/venv/lib/python3.12/site-packages/noise/state.py", line 184, in decrypt_and_hash
+    plaintext = self.cipher_state.decrypt_with_ad(self.h, ciphertext)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/waywardgeek/projects/openadp/sdk/python/venv/lib/python3.12/site-packages/noise/state.py", line 74, in decrypt_with_ad
+    plaintext = self.cipher.decrypt(self.k, self.n, ad, ciphertext)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/waywardgeek/projects/openadp/sdk/python/venv/lib/python3.12/site-packages/noise/backends/default/ciphers.py", line 13, in decrypt
+    return self.cipher.decrypt(nonce=self.format_nonce(n), data=ciphertext, associated_data=ad)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+cryptography.exceptions.InvalidTag

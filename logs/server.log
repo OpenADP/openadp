@@ -1,0 +1,105 @@
+🔐 Noise-NK TCP Server
+=====================
+🔐 Server static public key: eb02a1a2a5344e689602dbe59331d5052374d3a87d1db17f0ed383b7d4ff2e73
+🔐 Clients should use this key to connect
+💾 Server info saved to server_info.json
+📋 Server info: {
+  "host": "localhost",
+  "port": 8888,
+  "public_key": "eb02a1a2a5344e689602dbe59331d5052374d3a87d1db17f0ed383b7d4ff2e73",
+  "protocol": "Noise_NK_25519_AESGCM_SHA256"
+}
+🚀 Noise-NK server listening on localhost:8888
+📡 Waiting for JavaScript clients...
+📞 New connection from ('127.0.0.1', 49690)
+🔒 Starting Noise-NK handshake with ('127.0.0.1', 49690)
+🔑 Server private key: e0b62332b03f78737b5c77e9a26beea00cd3ea4a8005570144946aa547fecb47
+🔑 Server public key: eb02a1a2a5344e689602dbe59331d5052374d3a87d1db17f0ed383b7d4ff2e73
+Hello from noise protocol!
+🐍 DEBUG: Protocol name: b'Noise_NK_25519_AESGCM_SHA256'
+🐍 DEBUG: Protocol name hex: 4e6f6973655f4e4b5f32353531395f41455347434d5f534841323536
+🐍 DEBUG: Initial h (padded protocol name): 4e6f6973655f4e4b5f32353531395f41455347434d5f53484132353600000000
+🐍 DEBUG: mix_hash - current h: 4e6f6973655f4e4b5f32353531395f41455347434d5f53484132353600000000
+🐍 DEBUG: mix_hash - input data type: <class 'bytes'>
+🐍 DEBUG: mix_hash - input data length: 0
+🐍 DEBUG: mix_hash - input data hex: 
+🐍 DEBUG: mix_hash - input data repr: b''
+🐍 DEBUG: mix_hash - combined (h + data): 4e6f6973655f4e4b5f32353531395f41455347434d5f53484132353600000000
+🐍 DEBUG: mix_hash - combined length: 32
+🐍 DEBUG: mix_hash - about to call SHA256 on: 4e6f6973655f4e4b5f32353531395f41455347434d5f53484132353600000000
+🐍 DEBUG: mix_hash - SHA256 result: 5889617402bf7829b821d6388e73968526e5982a6d51505957c8d3bd7b555a80
+🐍 DEBUG: mix_hash - new h: 5889617402bf7829b821d6388e73968526e5982a6d51505957c8d3bd7b555a80
+🐍 DEBUG: mix_hash - current h: 5889617402bf7829b821d6388e73968526e5982a6d51505957c8d3bd7b555a80
+🐍 DEBUG: mix_hash - input data type: <class 'bytes'>
+🐍 DEBUG: mix_hash - input data length: 32
+🐍 DEBUG: mix_hash - input data hex: eb02a1a2a5344e689602dbe59331d5052374d3a87d1db17f0ed383b7d4ff2e73
+🐍 DEBUG: mix_hash - input data repr: b'\xeb\x02\xa1\xa2\xa54Nh\x96\x02\xdb\xe5\x931\xd5\x05#t\xd3\xa8}\x1d\xb1\x7f\x0e\xd3\x83\xb7\xd4\xff.s'
+🐍 DEBUG: mix_hash - combined (h + data): 5889617402bf7829b821d6388e73968526e5982a6d51505957c8d3bd7b555a80eb02a1a2a5344e689602dbe59331d5052374d3a87d1db17f0ed383b7d4ff2e73
+🐍 DEBUG: mix_hash - combined length: 64
+🐍 DEBUG: mix_hash - about to call SHA256 on: 5889617402bf7829b821d6388e73968526e5982a6d51505957c8d3bd7b555a80eb02a1a2a5344e689602dbe59331d5052374d3a87d1db17f0ed383b7d4ff2e73
+🐍 DEBUG: mix_hash - SHA256 result: 8d33716dfb186c135e6d7bac12757965e79e02964ede6139f6ab7641270d40b9
+🐍 DEBUG: mix_hash - new h: 8d33716dfb186c135e6d7bac12757965e79e02964ede6139f6ab7641270d40b9
+🔍 Cannot inspect noise library's static key
+📨 Received handshake message 1: 48 bytes
+🔍 Raw message 1 hex: 564aef87e37807b6167c3096e67d3fe8eb8c08594b43320810b0b3f80e0b88734489309c059596f218d2b8e106094ad4
+⚠️ Could not get handshake hash before message 1: 'NoneType' object has no attribute 'hex'
+🐍 DEBUG: mix_hash - current h: 8d33716dfb186c135e6d7bac12757965e79e02964ede6139f6ab7641270d40b9
+🐍 DEBUG: mix_hash - input data type: <class 'bytes'>
+🐍 DEBUG: mix_hash - input data length: 32
+🐍 DEBUG: mix_hash - input data hex: 564aef87e37807b6167c3096e67d3fe8eb8c08594b43320810b0b3f80e0b8873
+🐍 DEBUG: mix_hash - input data repr: b'VJ\xef\x87\xe3x\x07\xb6\x16|0\x96\xe6}?\xe8\xeb\x8c\x08YKC2\x08\x10\xb0\xb3\xf8\x0e\x0b\x88s'
+🐍 DEBUG: mix_hash - combined (h + data): 8d33716dfb186c135e6d7bac12757965e79e02964ede6139f6ab7641270d40b9564aef87e37807b6167c3096e67d3fe8eb8c08594b43320810b0b3f80e0b8873
+🐍 DEBUG: mix_hash - combined length: 64
+🐍 DEBUG: mix_hash - about to call SHA256 on: 8d33716dfb186c135e6d7bac12757965e79e02964ede6139f6ab7641270d40b9564aef87e37807b6167c3096e67d3fe8eb8c08594b43320810b0b3f80e0b8873
+🐍 DEBUG: mix_hash - SHA256 result: 87636e58352350c0c406a239e15828315e3d4bcc01dcab5eed58570f235dc65d
+🐍 DEBUG: mix_hash - new h: 87636e58352350c0c406a239e15828315e3d4bcc01dcab5eed58570f235dc65d
+🐍 DEBUG: AES-GCM DECRYPT
+🐍 DEBUG: - ciphertext length: 16
+🐍 DEBUG: - ciphertext hex: 4489309c059596f218d2b8e106094ad4
+🐍 DEBUG: - symmetric key: 0d1eb3dd51182893b826d7e93956f0efa7eb391d09262b6c6d79b96e4f11d314
+🐍 DEBUG: - nonce counter: 0
+🐍 DEBUG: - nonce (12 bytes): 000000000000000000000000
+🐍 DEBUG: - associated data: 87636e58352350c0c406a239e15828315e3d4bcc01dcab5eed58570f235dc65d
+🐍 DEBUG: - decrypted plaintext: 
+🐍 DEBUG: mix_hash - current h: 87636e58352350c0c406a239e15828315e3d4bcc01dcab5eed58570f235dc65d
+🐍 DEBUG: mix_hash - input data type: <class 'bytes'>
+🐍 DEBUG: mix_hash - input data length: 16
+🐍 DEBUG: mix_hash - input data hex: 4489309c059596f218d2b8e106094ad4
+🐍 DEBUG: mix_hash - input data repr: b'D\x890\x9c\x05\x95\x96\xf2\x18\xd2\xb8\xe1\x06\tJ\xd4'
+🐍 DEBUG: mix_hash - combined (h + data): 87636e58352350c0c406a239e15828315e3d4bcc01dcab5eed58570f235dc65d4489309c059596f218d2b8e106094ad4
+🐍 DEBUG: mix_hash - combined length: 48
+🐍 DEBUG: mix_hash - about to call SHA256 on: 87636e58352350c0c406a239e15828315e3d4bcc01dcab5eed58570f235dc65d4489309c059596f218d2b8e106094ad4
+🐍 DEBUG: mix_hash - SHA256 result: e93218615d3c1e46d88ba3dfede0d317b96023008276c1d6133b644c5af34355
+🐍 DEBUG: mix_hash - new h: e93218615d3c1e46d88ba3dfede0d317b96023008276c1d6133b644c5af34355
+📝 Client payload 1: bytearray(b'')
+⚠️ Could not get handshake hash after message 1: 'NoneType' object has no attribute 'hex'
+🐍 DEBUG: mix_hash - current h: e93218615d3c1e46d88ba3dfede0d317b96023008276c1d6133b644c5af34355
+🐍 DEBUG: mix_hash - input data type: <class 'bytes'>
+🐍 DEBUG: mix_hash - input data length: 32
+🐍 DEBUG: mix_hash - input data hex: 6823001db427394ba19a9656465678ebf390b1e03a71aaa91c932e2aca06332b
+🐍 DEBUG: mix_hash - input data repr: b"h#\x00\x1d\xb4'9K\xa1\x9a\x96VFVx\xeb\xf3\x90\xb1\xe0:q\xaa\xa9\x1c\x93.*\xca\x063+"
+🐍 DEBUG: mix_hash - combined (h + data): e93218615d3c1e46d88ba3dfede0d317b96023008276c1d6133b644c5af343556823001db427394ba19a9656465678ebf390b1e03a71aaa91c932e2aca06332b
+🐍 DEBUG: mix_hash - combined length: 64
+🐍 DEBUG: mix_hash - about to call SHA256 on: e93218615d3c1e46d88ba3dfede0d317b96023008276c1d6133b644c5af343556823001db427394ba19a9656465678ebf390b1e03a71aaa91c932e2aca06332b
+🐍 DEBUG: mix_hash - SHA256 result: fa883c7fb9be7f6365e17d34983ff6934819f6b08bebbd9472cf1d62c9c17d59
+🐍 DEBUG: mix_hash - new h: fa883c7fb9be7f6365e17d34983ff6934819f6b08bebbd9472cf1d62c9c17d59
+🐍 DEBUG: AES-GCM ENCRYPT
+🐍 DEBUG: - plaintext length: 0
+🐍 DEBUG: - plaintext hex: 
+🐍 DEBUG: - symmetric key: 7ee72708a8c23ac84a96742fbd9e3afb7bba7c609dcf593d41c91fddcfc513aa
+🐍 DEBUG: - nonce counter: 0
+🐍 DEBUG: - nonce (12 bytes): 000000000000000000000000
+🐍 DEBUG: - associated data: fa883c7fb9be7f6365e17d34983ff6934819f6b08bebbd9472cf1d62c9c17d59
+🐍 DEBUG: - ciphertext: 61b10189fc689197cfc3c9a3e17bc420
+🐍 DEBUG: mix_hash - current h: fa883c7fb9be7f6365e17d34983ff6934819f6b08bebbd9472cf1d62c9c17d59
+🐍 DEBUG: mix_hash - input data type: <class 'bytes'>
+🐍 DEBUG: mix_hash - input data length: 16
+🐍 DEBUG: mix_hash - input data hex: 61b10189fc689197cfc3c9a3e17bc420
+🐍 DEBUG: mix_hash - input data repr: b'a\xb1\x01\x89\xfch\x91\x97\xcf\xc3\xc9\xa3\xe1{\xc4 '
+🐍 DEBUG: mix_hash - combined (h + data): fa883c7fb9be7f6365e17d34983ff6934819f6b08bebbd9472cf1d62c9c17d5961b10189fc689197cfc3c9a3e17bc420
+🐍 DEBUG: mix_hash - combined length: 48
+🐍 DEBUG: mix_hash - about to call SHA256 on: fa883c7fb9be7f6365e17d34983ff6934819f6b08bebbd9472cf1d62c9c17d5961b10189fc689197cfc3c9a3e17bc420
+🐍 DEBUG: mix_hash - SHA256 result: 125b04973c2c253ff8c9b35063249348dc59fb55d4340d7944fec012fcafe2c6
+🐍 DEBUG: mix_hash - new h: 125b04973c2c253ff8c9b35063249348dc59fb55d4340d7944fec012fcafe2c6
+🐍 DEBUG: SPLITTING TRANSPORT KEYS
+🐍 DEBUG: - final chaining key: f7836daf4ee528a8501fe52de0bc794ddd0aaf0aeddd2a2c9cfa38323294a1e3
