@@ -143,7 +143,7 @@ def run_python_encrypt(input_file, output_file=None):
         output_file = input_file + ".enc"
     
     cmd = [
-        "python3", "sdk/python/openadp-encrypt.py",
+        "python3", "tools/openadp-encrypt.py",
         "-file", input_file,
         "-password", TEST_PASSWORD,
         "-user-id", TEST_USER_ID,
@@ -172,7 +172,7 @@ def run_python_decrypt(input_file, output_file=None):
         output_file = input_file.replace(".enc", "_decrypted.txt")
     
     cmd = [
-        "python3", "sdk/python/openadp-decrypt.py",
+        "python3", "tools/openadp-decrypt.py",
         "-file", input_file,
         "-password", TEST_PASSWORD,
         "-user-id", TEST_USER_ID,

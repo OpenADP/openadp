@@ -1,6 +1,0 @@
-{
-  "host": "localhost",
-  "port": 8888,
-  "public_key": "8c6aeddf6ce0f695cc65fc00528febac7f527ae1c3be698d03f8d76d60de5a3d",
-  "protocol": "Noise_NK_25519_AESGCM_SHA256"
-}

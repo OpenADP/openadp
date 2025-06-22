@@ -10,7 +10,7 @@ import sys
 import os
 
 # Add the SDK to Python path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'sdk', 'python'))
 
 try:
     from openadp import (

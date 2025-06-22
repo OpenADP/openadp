@@ -1,0 +1,372 @@
+#!/usr/bin/env python3
+"""
+OpenADP Comprehensive Test Runner
+
+This script runs all tests across all languages and components:
+- Go unit tests
+- Go integration tests  
+- Python SDK tests
+- Cross-language compatibility tests
+- Build verification tests
+
+Usage:
+    ./run_all_tests.py              # Run all tests
+    ./run_all_tests.py --fast       # Skip slow integration tests
+    ./run_all_tests.py --verbose    # Verbose output
+    ./run_all_tests.py --go-only    # Only Go tests
+    ./run_all_tests.py --python-only # Only Python tests
+"""
+
+import os
+import sys
+import subprocess
+import time
+import argparse
+import json
+from pathlib import Path
+from typing import List, Tuple, Dict, Optional
+from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import tempfile
+import shutil
+
+@dataclass
+class TestResult:
+    name: str
+    success: bool
+    duration: float
+    output: str
+    error: Optional[str] = None
+
+class Colors:
+    GREEN = '\033[92m'
+    RED = '\033[91m'
+    YELLOW = '\033[93m'
+    BLUE = '\033[94m'
+    MAGENTA = '\033[95m'
+    CYAN = '\033[96m'
+    WHITE = '\033[97m'
+    BOLD = '\033[1m'
+    RESET = '\033[0m'
+
+class OpenADPTestRunner:
+    def __init__(self, args):
+        self.args = args
+        self.root_dir = Path.cwd()
+        self.results: List[TestResult] = []
+        self.start_time = time.time()
+        
+    def log(self, message: str, color: str = Colors.WHITE):
+        if self.args.verbose or "FAIL" in message or "PASS" in message:
+            print(f"{color}{message}{Colors.RESET}")
+    
+    def run_command(self, cmd: List[str], cwd: Optional[Path] = None, timeout: int = 300) -> Tuple[bool, str, str]:
+        """Run a command and return (success, stdout, stderr)"""
+        try:
+            result = subprocess.run(
+                cmd,
+                cwd=cwd or self.root_dir,
+                capture_output=True,
+                text=True,
+                timeout=timeout
+            )
+            return result.returncode == 0, result.stdout, result.stderr
+        except subprocess.TimeoutExpired:
+            return False, "", f"Command timed out after {timeout} seconds"
+        except Exception as e:
+            return False, "", f"Exception running command: {str(e)}"
+    
+    def test_go_build(self) -> TestResult:
+        """Test that all Go components build successfully"""
+        start_time = time.time()
+        self.log("🔨 Building Go components...")
+        
+        # First clean, then build all components including tools needed for tests
+        success, stdout, stderr = self.run_command([
+            "make", "clean", "build", "build-server", "build-encrypt", "build-decrypt"
+        ])
+        duration = time.time() - start_time
+        
+        if success:
+            self.log("✅ Go build: PASS", Colors.GREEN)
+            return TestResult("Go Build", True, duration, stdout)
+        else:
+            self.log("❌ Go build: FAIL", Colors.RED)
+            return TestResult("Go Build", False, duration, stdout, stderr)
+    
+    def test_go_unit_tests(self) -> TestResult:
+        """Run Go unit tests"""
+        start_time = time.time()
+        self.log("🧪 Running Go unit tests...")
+        
+        success, stdout, stderr = self.run_command(["go", "test", "./pkg/...", "-v"])
+        duration = time.time() - start_time
+        
+        if success:
+            self.log("✅ Go unit tests: PASS", Colors.GREEN)
+            return TestResult("Go Unit Tests", True, duration, stdout)
+        else:
+            self.log("❌ Go unit tests: FAIL", Colors.RED)
+            return TestResult("Go Unit Tests", False, duration, stdout, stderr)
+    
+    def test_go_integration_tests(self) -> TestResult:
+        """Run Go integration tests"""
+        start_time = time.time()
+        self.log("🔗 Running Go integration tests...")
+        
+        success, stdout, stderr = self.run_command(["go", "test", "./tests/...", "-v"], timeout=600)
+        duration = time.time() - start_time
+        
+        if success:
+            self.log("✅ Go integration tests: PASS", Colors.GREEN)
+            return TestResult("Go Integration Tests", True, duration, stdout)
+        else:
+            self.log("❌ Go integration tests: FAIL", Colors.RED)
+            return TestResult("Go Integration Tests", False, duration, stdout, stderr)
+    
+    def test_python_sdk_setup(self) -> TestResult:
+        """Test Python SDK setup and dependencies"""
+        start_time = time.time()
+        self.log("🐍 Testing Python SDK setup...")
+        
+        # Check if venv exists and is activated
+        venv_path = self.root_dir / "venv"
+        if not venv_path.exists():
+            return TestResult("Python SDK Setup", False, 0, "", "Virtual environment not found")
+        
+        # Test import of openadp module
+        success, stdout, stderr = self.run_command([
+            "python", "-c", 
+            "import sys; sys.path.insert(0, 'sdk/python'); import openadp; print('OpenADP Python SDK imported successfully')"
+        ])
+        
+        duration = time.time() - start_time
+        
+        if success:
+            self.log("✅ Python SDK setup: PASS", Colors.GREEN)
+            return TestResult("Python SDK Setup", True, duration, stdout)
+        else:
+            self.log("❌ Python SDK setup: FAIL", Colors.RED)
+            return TestResult("Python SDK Setup", False, duration, stdout, stderr)
+    
+    def test_python_unit_tests(self) -> TestResult:
+        """Run Python unit tests"""
+        start_time = time.time()
+        self.log("🧪 Running Python unit tests...")
+        
+        python_test_dir = self.root_dir / "tests" / "python"
+        success, stdout, stderr = self.run_command([
+            "python", "-m", "pytest", ".", "-v", "--tb=short"
+        ], cwd=python_test_dir)
+        
+        duration = time.time() - start_time
+        
+        if success:
+            self.log("✅ Python unit tests: PASS", Colors.GREEN)
+            return TestResult("Python Unit Tests", True, duration, stdout)
+        else:
+            self.log("❌ Python unit tests: FAIL", Colors.RED)
+            return TestResult("Python Unit Tests", False, duration, stdout, stderr)
+    
+    def test_python_tools(self) -> TestResult:
+        """Test Python encrypt/decrypt tools"""
+        start_time = time.time()
+        self.log("🔧 Testing Python tools...")
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            test_file = Path(temp_dir) / "test_file.txt"
+            test_content = "Test content for Python tools"
+            test_file.write_text(test_content)
+            
+            # Test version flags
+            success1, _, _ = self.run_command(["python", "tools/openadp-encrypt.py", "-version"])
+            success2, _, _ = self.run_command(["python", "tools/openadp-decrypt.py", "-version"])
+            
+            duration = time.time() - start_time
+            
+            if success1 and success2:
+                self.log("✅ Python tools: PASS", Colors.GREEN)
+                return TestResult("Python Tools", True, duration, "Version checks passed")
+            else:
+                self.log("❌ Python tools: FAIL", Colors.RED)
+                return TestResult("Python Tools", False, duration, "", "Version checks failed")
+    
+    def test_cross_language_compatibility(self) -> TestResult:
+        """Run cross-language compatibility tests"""
+        start_time = time.time()
+        self.log("🔄 Running cross-language compatibility tests...")
+        
+        # Use our existing cross-language test
+        success, stdout, stderr = self.run_command([
+            "python", "tests/cross-language/test_cross_language_encrypt_decrypt.py"
+        ], timeout=300)
+        
+        duration = time.time() - start_time
+        
+        if success:
+            self.log("✅ Cross-language compatibility: PASS", Colors.GREEN)
+            return TestResult("Cross-Language Compatibility", True, duration, stdout)
+        else:
+            self.log("❌ Cross-language compatibility: FAIL", Colors.RED)
+            return TestResult("Cross-Language Compatibility", False, duration, stdout, stderr)
+    
+    def test_makefile_targets(self) -> TestResult:
+        """Test key Makefile targets"""
+        start_time = time.time()
+        self.log("📋 Testing Makefile targets...")
+        
+        targets_to_test = ["test", "fmt"]
+        all_success = True
+        combined_output = []
+        
+        for target in targets_to_test:
+            success, stdout, stderr = self.run_command(["make", target])
+            combined_output.append(f"=== make {target} ===\n{stdout}\n{stderr}")
+            if not success:
+                all_success = False
+                self.log(f"❌ make {target}: FAIL", Colors.RED)
+            else:
+                self.log(f"✅ make {target}: PASS", Colors.GREEN)
+        
+        duration = time.time() - start_time
+        output = "\n".join(combined_output)
+        
+        if all_success:
+            self.log("✅ Makefile targets: PASS", Colors.GREEN)
+            return TestResult("Makefile Targets", True, duration, output)
+        else:
+            self.log("❌ Makefile targets: FAIL", Colors.RED)
+            return TestResult("Makefile Targets", False, duration, output, "Some targets failed")
+    
+    def ensure_go_tools_built(self) -> bool:
+        """Ensure Go tools are built before running tests that need them"""
+        self.log("🔧 Ensuring Go tools are built...")
+        
+        # Check if build directory exists and has executables
+        build_dir = self.root_dir / "build"
+        if not build_dir.exists():
+            self.log("📁 Build directory doesn't exist, building all tools...")
+            success, _, _ = self.run_command(["make", "build-server", "build-encrypt", "build-decrypt"])
+            return success
+        
+        # Check for key executables
+        key_executables = ["openadp-server", "openadp-encrypt", "openadp-decrypt"]
+        missing_tools = []
+        
+        for exe in key_executables:
+            exe_path = build_dir / exe
+            if not exe_path.exists():
+                missing_tools.append(exe)
+        
+        if missing_tools:
+            self.log(f"🔨 Missing tools: {missing_tools}, building all tools...")
+            success, _, _ = self.run_command(["make", "build-server", "build-encrypt", "build-decrypt"])
+            return success
+        
+        self.log("✅ Go tools are already built")
+        return True
+    
+    def run_all_tests(self):
+        """Run all tests based on command line arguments"""
+        self.log(f"{Colors.BOLD}🚀 OpenADP Comprehensive Test Suite{Colors.RESET}")
+        self.log(f"📁 Root directory: {self.root_dir}")
+        self.log("=" * 60)
+        
+        # Ensure Go tools are built if we're running any tests that need them
+        need_go_tools = not self.args.python_only or not self.args.fast
+        if need_go_tools:
+            if not self.ensure_go_tools_built():
+                self.log("❌ Failed to build Go tools, some tests may fail", Colors.RED)
+        
+        # Determine which tests to run
+        tests_to_run = []
+        
+        if not self.args.python_only:
+            tests_to_run.extend([
+                ("Build", self.test_go_build),
+                ("Go Unit", self.test_go_unit_tests),
+            ])
+            
+            if not self.args.fast:
+                tests_to_run.append(("Go Integration", self.test_go_integration_tests))
+                
+            tests_to_run.append(("Makefile", self.test_makefile_targets))
+        
+        if not self.args.go_only:
+            tests_to_run.extend([
+                ("Python Setup", self.test_python_sdk_setup),
+                ("Python Tools", self.test_python_tools),
+                ("Python Unit", self.test_python_unit_tests),
+            ])
+            
+            if not self.args.fast:
+                tests_to_run.append(("Cross-Language", self.test_cross_language_compatibility))
+        
+        # Run tests
+        for test_name, test_func in tests_to_run:
+            try:
+                result = test_func()
+                self.results.append(result)
+            except Exception as e:
+                self.log(f"❌ {test_name}: EXCEPTION - {str(e)}", Colors.RED)
+                self.results.append(TestResult(test_name, False, 0, "", str(e)))
+        
+        # Print summary
+        self.print_summary()
+    
+    def print_summary(self):
+        """Print test summary"""
+        total_time = time.time() - self.start_time
+        passed = sum(1 for r in self.results if r.success)
+        failed = len(self.results) - passed
+        
+        print("\n" + "=" * 60)
+        print(f"{Colors.BOLD}📊 TEST SUMMARY{Colors.RESET}")
+        print("=" * 60)
+        
+        for result in self.results:
+            status_color = Colors.GREEN if result.success else Colors.RED
+            status = "PASS" if result.success else "FAIL"
+            duration_str = f"{result.duration:.2f}s"
+            print(f"{status_color}{status:<4}{Colors.RESET} {result.name:<30} ({duration_str})")
+        
+        print("=" * 60)
+        print(f"📈 Total: {len(self.results)} tests")
+        print(f"{Colors.GREEN}✅ Passed: {passed}{Colors.RESET}")
+        if failed > 0:
+            print(f"{Colors.RED}❌ Failed: {failed}{Colors.RESET}")
+        print(f"⏱️  Total time: {total_time:.2f}s")
+        
+        # Print failure details
+        if failed > 0:
+            print(f"\n{Colors.RED}💥 FAILURE DETAILS:{Colors.RESET}")
+            print("=" * 60)
+            for result in self.results:
+                if not result.success:
+                    print(f"\n{Colors.RED}❌ {result.name}:{Colors.RESET}")
+                    if result.error:
+                        print(f"Error: {result.error}")
+                    if result.output and self.args.verbose:
+                        print(f"Output:\n{result.output}")
+        
+        # Exit with appropriate code
+        sys.exit(0 if failed == 0 else 1)
+
+def main():
+    parser = argparse.ArgumentParser(description="OpenADP Comprehensive Test Runner")
+    parser.add_argument("--fast", action="store_true", help="Skip slow integration tests")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+    parser.add_argument("--go-only", action="store_true", help="Only run Go tests")
+    parser.add_argument("--python-only", action="store_true", help="Only run Python tests")
+    
+    args = parser.parse_args()
+    
+    if args.go_only and args.python_only:
+        print("Error: Cannot specify both --go-only and --python-only")
+        sys.exit(1)
+    
+    runner = OpenADPTestRunner(args)
+    runner.run_all_tests()
+
+if __name__ == "__main__":
+    main() 
