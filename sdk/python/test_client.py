@@ -60,20 +60,23 @@ def test_noise_nk():
         print(f"✅ Generated server keypair, public key: {server_public.hex()[:16]}...")
         
         # Create client and server
-        client = NoiseNK("initiator", None, server_public, b"")
-        server = NoiseNK("responder", server_private, None, b"")
+        client = NoiseNK()
+        client.initialize_as_initiator(server_public)
+        
+        server = NoiseNK() 
+        server.initialize_as_responder(server_private)
         
         # Perform handshake
-        msg1 = client.write_handshake_message(b"Hello Server")
-        payload1 = server.read_handshake_message(msg1)
+        msg1 = client.write_message(b"Hello Server")
+        payload1 = server.read_message(msg1)
         print(f"✅ Client -> Server handshake: {payload1}")
         
-        msg2 = server.write_handshake_message(b"Hello Client")
-        payload2 = client.read_handshake_message(msg2)
+        msg2 = server.write_message(b"Hello Client")
+        payload2 = client.read_message(msg2)
         print(f"✅ Server -> Client handshake: {payload2}")
         
         # Test encryption/decryption
-        if client.is_handshake_complete() and server.is_handshake_complete():
+        if client.handshake_complete and server.handshake_complete:
             secret = b"Secret message"
             encrypted = client.encrypt(secret)
             decrypted = server.decrypt(encrypted)
@@ -186,15 +189,22 @@ def test_key_generation():
     try:
         # Test basic key generation (without actual server connection)
         try:
-            key, auth_code = generate_encryption_key(
+            result = generate_encryption_key(
+                filename="test_backup",
                 password="test_password",
-                uid="test@example.com",
-                did="test_device",
-                bid="test_backup"
+                user_id="test@example.com"
             )
-            print("✅ Key generation completed successfully")
-            print(f"✅ Generated key length: {len(key)} bytes")
-            print(f"✅ Auth code length: {len(auth_code)} characters")
+            if result.error:
+                if "No OpenADP servers available" in result.error:
+                    print("⚠️  Key generation failed due to no servers (expected in test)")
+                    print("✅ Key generation function works (server connection failure is normal)")
+                else:
+                    raise OpenADPError(ErrorCode.SERVER_ERROR, result.error)
+            else:
+                print("✅ Key generation completed successfully")
+                print(f"✅ Generated key length: {len(result.encryption_key)} bytes")
+                if result.auth_codes:
+                    print(f"✅ Auth code length: {len(result.auth_codes.base_auth_code)} characters")
         except OpenADPError as e:
             if e.code == ErrorCode.NO_LIVE_SERVERS:
                 print("⚠️  Key generation failed due to no live servers (expected in test)")

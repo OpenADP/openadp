@@ -384,11 +384,11 @@ def recover_encryption_key(
             try:
                 backups = client.list_backups(uid, False, None)
                 # Find our backup in the list using the complete primary key (UID, DID, BID)
-                for backup_map in backups:
-                    if (backup_map.get("uid") == uid and 
-                        backup_map.get("did") == did and 
-                        backup_map.get("bid") == bid):
-                        guess_num = int(backup_map.get("num_guesses", 0))
+                for backup in backups:
+                    if (backup.get("uid") == uid and 
+                        backup.get("did") == did and 
+                        backup.get("bid") == bid):
+                        guess_num = int(backup.get("num_guesses", 0))
                         break
             except Exception as e:
                 print(f"Warning: Could not list backups from server {i+1}: {e}")

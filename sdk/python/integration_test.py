@@ -339,10 +339,10 @@ class IntegrationTestSuite:
         server_infos = self.get_server_infos(server_urls)
         
         try:
-            client = MultiServerClient(server_infos, timeout=5.0, required_servers=1)
+            client = MultiServerClient.from_server_info(server_infos, echo_timeout=5, max_workers=10)
             
             # Test server info retrieval
-            live_count = len([info for info in server_infos if client._test_server_connection(info.url)])
+            live_count = client.get_live_server_count()
             print(f"   ✅ Multi-server client connected to {live_count} servers")
             
             # Test ping functionality

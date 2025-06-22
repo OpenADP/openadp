@@ -510,21 +510,8 @@ func (s *Server) handleListBackups(params []interface{}) (interface{}, error) {
 		return nil, err
 	}
 
-	// Convert to Python-compatible format: array of arrays [uid, did, bid, version, num_guesses, max_guesses, expiration]
-	result := make([][]interface{}, len(backups))
-	for i, backup := range backups {
-		result[i] = []interface{}{
-			backup.UID,        // uid (index 0)
-			backup.DID,        // did (index 1)
-			backup.BID,        // bid (index 2)
-			backup.Version,    // version (index 3)
-			backup.NumGuesses, // num_guesses (index 4)
-			backup.MaxGuesses, // max_guesses (index 5)
-			backup.Expiration, // expiration (index 6)
-		}
-	}
-
-	return result, nil
+	// Return proper JSON object format as documented in SERVER_API.md
+	return backups, nil
 }
 
 // handleNoiseHandshake handles Round 1: Noise-NK handshake establishment
