@@ -482,6 +482,7 @@ func (s *Server) handleRecoverSecret(params []interface{}) (interface{}, error) 
 		Z: big.NewInt(1),
 		T: new(big.Int).Mul(response.SiB.X, response.SiB.Y),
 	}
+	siB4D.T.Mod(siB4D.T, crypto.P)
 
 	return map[string]interface{}{
 		"version":     response.Version,

@@ -197,6 +197,7 @@ func RecoverSecret(db *database.Database, uid, did, bid string, b *crypto.Point2
 		Z: big.NewInt(1),
 		T: new(big.Int).Mul(b.X, b.Y),
 	}
+	b4D.T.Mod(b4D.T, crypto.P)
 
 	// Calculate si_b = y * b (scalar multiplication)
 	siB4D := crypto.PointMul(yInt, b4D)
@@ -273,6 +274,7 @@ func RecoverSecretWithAuthCode(db *database.Database, authCode, uid, did, bid st
 		Z: big.NewInt(1),
 		T: new(big.Int).Mul(b.X, b.Y),
 	}
+	b4D.T.Mod(b4D.T, crypto.P)
 
 	// Calculate si_b = y * b (scalar multiplication)
 	siB4D := crypto.PointMul(yInt, b4D)
@@ -344,6 +346,7 @@ func RecoverSecretByAuthCode(db *database.Database, authCode, did, bid string, b
 		Z: big.NewInt(1),
 		T: new(big.Int).Mul(b.X, b.Y),
 	}
+	b4D.T.Mod(b4D.T, crypto.P)
 
 	// Calculate si_b = y * b (scalar multiplication)
 	siB4D := crypto.PointMul(yInt, b4D)
@@ -427,6 +430,18 @@ func GetServerInfo(version string, noiseNKKey []byte, monitoring *MonitoringTrac
 	}
 
 	return info
+}
+
+// convertPoint2DTo4D safely converts a Point2D to Point4D with correct T coordinate
+func convertPoint2DTo4D(p *crypto.Point2D) *crypto.Point4D {
+	result := &crypto.Point4D{
+		X: new(big.Int).Set(p.X),
+		Y: new(big.Int).Set(p.Y),
+		Z: big.NewInt(1),
+		T: new(big.Int).Mul(p.X, p.Y),
+	}
+	result.T.Mod(result.T, crypto.P)
+	return result
 }
 
 // Echo simply returns the input message (for testing connectivity)

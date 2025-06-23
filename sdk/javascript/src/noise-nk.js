@@ -136,26 +136,12 @@ export class NoiseNK {
      * Mix data into handshake hash
      */
     _mixHash(data) {
-        debugLog('Mixing hash with data', data);
-        debugLog('Current handshake hash before mix', this.h);
-        
+        // Mix data into hash state: h = SHA256(h || data)
         const combined = new Uint8Array(this.h.length + data.length);
         combined.set(this.h);
         combined.set(data, this.h.length);
-        
-        console.log(`🟨 JS DEBUG: mix_hash - current h: ${Array.from(this.h).map(b => b.toString(16).padStart(2, '0')).join('')}`);
-        console.log(`🟨 JS DEBUG: mix_hash - input data type: ${data.constructor.name}`);
-        console.log(`🟨 JS DEBUG: mix_hash - input data length: ${data.length}`);
-        console.log(`🟨 JS DEBUG: mix_hash - input data hex: ${Array.from(data).map(b => b.toString(16).padStart(2, '0')).join('')}`);
-        console.log(`🟨 JS DEBUG: mix_hash - combined length: ${combined.length}`);
-        console.log(`🟨 JS DEBUG: mix_hash - about to call SHA256 on: ${Array.from(combined).map(b => b.toString(16).padStart(2, '0')).join('')}`);
-        
         const hash_result = sha256(combined);
-        console.log(`🟨 JS DEBUG: mix_hash - SHA256 result: ${Array.from(hash_result).map(b => b.toString(16).padStart(2, '0')).join('')}`);
-        
         this.h.set(hash_result);
-        
-        debugLog('Handshake hash after mix', this.h);
     }
 
     /**

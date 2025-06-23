@@ -211,3 +211,82 @@ func BenchmarkPointDecompress(b *testing.B) {
 		PointDecompress(compressed)
 	}
 }
+
+func TestServerFixProductionValues(t *testing.T) {
+	t.Log("🧪 Testing Point4D T coordinate fix changes behavior")
+
+	// Values from our debug output
+	bPoint := &Point2D{
+		X: new(big.Int),
+		Y: new(big.Int),
+	}
+	bPoint.X.SetString("35644252540212755834277131425698747763602219685023877638990596341622414221477", 10)
+	bPoint.Y.SetString("44962653297362858213409581699594858369538377547121025895565970687988390495432", 10)
+
+	// Test scalar for multiplication
+	si := new(big.Int)
+	si.SetString("1759476195616791440814887255098452220095289025314678080712022874099289845256", 10)
+
+	t.Log("Computing si*B with BROKEN Point4D creation (no mod P)...")
+
+	// Create Point4D with BROKEN T coordinate (without mod P)
+	b4D_broken := &Point4D{
+		X: new(big.Int).Set(bPoint.X),
+		Y: new(big.Int).Set(bPoint.Y),
+		Z: big.NewInt(1),
+		T: new(big.Int).Mul(bPoint.X, bPoint.Y), // NO mod P!
+	}
+
+	t.Logf("Broken T coordinate: %s", b4D_broken.T)
+
+	// Compute si * B using broken Point4D
+	broken_siB := PointMul(si, b4D_broken)
+
+	// Convert to affine coordinates
+	zInv := new(big.Int).ModInverse(broken_siB.Z, P)
+	brokenX := new(big.Int).Mul(broken_siB.X, zInv)
+	brokenX.Mod(brokenX, P)
+	brokenY := new(big.Int).Mul(broken_siB.Y, zInv)
+	brokenY.Mod(brokenY, P)
+
+	t.Log("Computing si*B with FIXED Point4D creation (with mod P)...")
+
+	// Create Point4D with FIXED T coordinate (with mod P)
+	b4D_fixed := &Point4D{
+		X: new(big.Int).Set(bPoint.X),
+		Y: new(big.Int).Set(bPoint.Y),
+		Z: big.NewInt(1),
+		T: new(big.Int).Mul(bPoint.X, bPoint.Y),
+	}
+	b4D_fixed.T.Mod(b4D_fixed.T, P) // ← THE FIX!
+
+	t.Logf("Fixed T coordinate: %s", b4D_fixed.T)
+
+	// Show the difference
+	tDiff := new(big.Int).Sub(b4D_broken.T, b4D_fixed.T)
+	t.Logf("T coordinate difference: %s", tDiff)
+
+	// Compute si * B using fixed Point4D
+	fixed_siB := PointMul(si, b4D_fixed)
+
+	// Convert to affine coordinates
+	zInv2 := new(big.Int).ModInverse(fixed_siB.Z, P)
+	fixedX := new(big.Int).Mul(fixed_siB.X, zInv2)
+	fixedX.Mod(fixedX, P)
+	fixedY := new(big.Int).Mul(fixed_siB.Y, zInv2)
+	fixedY.Mod(fixedY, P)
+
+	// Compare the results
+	xSame := brokenX.Cmp(fixedX) == 0
+	ySame := brokenY.Cmp(fixedY) == 0
+
+	if xSame && ySame {
+		t.Log("❌ Point4D T coordinate fix did not change the result")
+		t.Log("This suggests PointMul may not use the T coordinate or recalculates it internally")
+		t.Logf("Both broken and fixed gave: x=%s, y=%s", brokenX, brokenY)
+	} else {
+		t.Log("✅ Point4D T coordinate fix changes the result - fix is working!")
+		t.Logf("Broken result: x=%s, y=%s", brokenX, brokenY)
+		t.Logf("Fixed result:  x=%s, y=%s", fixedX, fixedY)
+	}
+}

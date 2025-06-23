@@ -284,6 +284,37 @@ class OpenADPTestRunner:
         else:
             self.log("❌ Cross-language compatibility: FAIL", Colors.FAILURE)
             return TestResult("Cross-Language Compatibility", False, duration, stdout, stderr)
+
+    def test_cross_language_9x9_matrix(self) -> TestResult:
+        """Run comprehensive 9x9 cross-language matrix test (Go/Python/JavaScript)"""
+        start_time = time.time()
+        self.log("🔄 Running comprehensive 9x9 cross-language matrix test...", Colors.INFO)
+        
+        # Check JavaScript dependencies first
+        if not self.check_javascript_dependencies():
+            duration = time.time() - start_time
+            return TestResult("9x9 Cross-Language Matrix", False, duration, 
+                            "", "JavaScript dependencies not available")
+        
+        # Ensure Go tools are built
+        if not self.ensure_go_tools_built():
+            duration = time.time() - start_time
+            return TestResult("9x9 Cross-Language Matrix", False, duration, 
+                            "", "Go tools not available")
+        
+        # Use the enhanced 9x9 test
+        success, stdout, stderr = self.run_command([
+            "python", "tests/cross-language/test_cross_language_encrypt_decrypt_9x9.py"
+        ], timeout=600)  # Longer timeout for comprehensive test
+        
+        duration = time.time() - start_time
+        
+        if success:
+            self.log("✅ 9x9 Cross-language matrix: PASS", Colors.SUCCESS)
+            return TestResult("9x9 Cross-Language Matrix", True, duration, stdout)
+        else:
+            self.log("❌ 9x9 Cross-language matrix: FAIL", Colors.FAILURE)
+            return TestResult("9x9 Cross-Language Matrix", False, duration, stdout, stderr)
     
     def test_noise_nk_compatibility(self) -> TestResult:
         """Test Noise-NK cross-platform compatibility between Python server and JavaScript client"""
@@ -498,6 +529,7 @@ class OpenADPTestRunner:
             
             if not self.args.fast:
                 tests_to_run.append(("Cross-Language", self.test_cross_language_compatibility))
+                tests_to_run.append(("9x9 Matrix", self.test_cross_language_9x9_matrix))
                 tests_to_run.append(("Noise-NK Compatibility", self.test_noise_nk_compatibility))
         
         # Run tests
