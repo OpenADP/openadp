@@ -1,52 +1,28 @@
 {
-  "name": "openadp-javascript-sdk",
+  "name": "@openadp/ocrypt",
   "version": "1.0.0",
-  "description": "OpenADP JavaScript SDK for distributed secret sharing",
-  "type": "module",
+  "description": "Ocrypt - Nation-state resistant password hashing using OpenADP distributed cryptography",
   "main": "src/index.js",
-  "bin": {
-    "openadp-encrypt": "./openadp-encrypt.js",
-    "openadp-decrypt": "./openadp-decrypt.js"
-  },
+  "type": "module",
   "scripts": {
-    "test": "node test/run_unit_tests.js",
-    "test:crypto": "node test/test_crypto.js",
-    "test:keygen": "node test/test_keygen.js",
-    "test:client": "node test/test_client.js",
-    "test:unit": "node test/run_unit_tests.js",
-    "test:integration": "echo \"Integration tests not yet implemented\" && exit 0",
-    "test:live": "echo \"Live server tests not yet implemented\" && exit 0",
-    "test:performance": "echo \"Performance tests not yet implemented\" && exit 0",
-    "test-noise": "node test/test-noise-nk.js",
-    "test-deterministic": "node test/test-deterministic-noise.js",
-    "test-compatibility": "node test/test-compatibility.js",
-    "test-all": "npm run test && npm run test-noise && npm run test-deterministic && npm run test-compatibility",
-    "encrypt": "node openadp-encrypt.js",
-    "decrypt": "node openadp-decrypt.js"
+    "test": "node --test test/*.test.js",
+    "demo": "node examples/demo.js",
+    "lint": "eslint src/ test/ examples/",
+    "build": "echo 'No build step required for ES modules'"
   },
   "keywords": [
-    "openadp",
-    "encryption",
-    "secret-sharing",
+    "password",
+    "hashing",
+    "cryptography",
     "distributed",
-    "noise-protocol",
-    "privacy"
+    "OPRF",
+    "openadp",
+    "security",
+    "nation-state",
+    "threshold"
   ],
-  "author": "OpenADP Project",
+  "author": "OpenADP Team <contact@openadp.org>",
   "license": "MIT",
-  "dependencies": {
-    "@noble/curves": "^1.2.0",
-    "@noble/ciphers": "^0.4.1", 
-    "@noble/hashes": "^1.3.2",
-    "commander": "^11.1.0",
-    "buffer": "^6.0.3"
-  },
-  "devDependencies": {
-    "node": ">=18.0.0"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
   "repository": {
     "type": "git",
     "url": "https://github.com/openadp/openadp.git",
@@ -55,5 +31,21 @@
   "bugs": {
     "url": "https://github.com/openadp/openadp/issues"
   },
-  "homepage": "https://openadp.org"
+  "homepage": "https://openadp.org",
+  "dependencies": {
+    "node-fetch": "^3.3.2",
+    "@noble/curves": "^1.2.0",
+    "@noble/hashes": "^1.3.3"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "exports": {
+    ".": {
+      "import": "./src/index.js"
+    }
+  }
 }

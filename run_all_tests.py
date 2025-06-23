@@ -266,6 +266,29 @@ class OpenADPTestRunner:
                 self.log("❌ Python tools: FAIL", Colors.FAILURE)
                 return TestResult("Python Tools", False, duration, "", "Version checks failed")
     
+    def test_javascript_unit_tests(self) -> TestResult:
+        """Run JavaScript unit tests including Ocrypt tests"""
+        start_time = time.time()
+        self.log("🟨 Running JavaScript unit tests...", Colors.INFO)
+        
+        # Check JavaScript dependencies first
+        if not self.check_javascript_dependencies():
+            duration = time.time() - start_time
+            return TestResult("JavaScript Unit Tests", False, duration, 
+                            "", "JavaScript dependencies not available")
+        
+        js_sdk_path = self.root_dir / "sdk" / "javascript"
+        success, stdout, stderr = self.run_command(["npm", "test"], cwd=js_sdk_path)
+        
+        duration = time.time() - start_time
+        
+        if success:
+            self.log("✅ JavaScript unit tests: PASS", Colors.SUCCESS)
+            return TestResult("JavaScript Unit Tests", True, duration, stdout)
+        else:
+            self.log("❌ JavaScript unit tests: FAIL", Colors.FAILURE)
+            return TestResult("JavaScript Unit Tests", False, duration, stdout, stderr)
+    
     def test_cross_language_compatibility(self) -> TestResult:
         """Run cross-language compatibility tests"""
         start_time = time.time()
@@ -525,6 +548,7 @@ class OpenADPTestRunner:
                 ("Python Setup", self.test_python_sdk_setup),
                 ("Python Tools", self.test_python_tools),
                 ("Python Unit", self.test_python_unit_tests),
+                ("JavaScript Unit", self.test_javascript_unit_tests),
             ])
             
             if not self.args.fast:

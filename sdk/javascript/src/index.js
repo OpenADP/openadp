@@ -36,4 +36,17 @@ export function createServer(staticKeyPair, prologue = new Uint8Array()) {
     const server = new NoiseNK();
     server.initializeResponder(staticKeyPair, prologue);
     return server;
-} 
+}
+
+/**
+ * @openadp/ocrypt - Nation-state resistant password hashing
+ * 
+ * This package provides a simple 2-function API for distributed password hashing
+ * using OpenADP's Oblivious Pseudo Random Function (OPRF) cryptography.
+ * 
+ * @author OpenADP Team <contact@openadp.org>
+ * @license MIT
+ * @version 1.0.0
+ */
+
+export { register, recover, OcryptError } from './ocrypt.js'; 
