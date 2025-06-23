@@ -47,8 +47,8 @@ The simplest way to use OpenADP is to replace your existing password hashing
 functions with Ocrypt. You may use well known functions such as Bcrypt,
 Scrypt, Argon2, or PBKDF2. Simply replace them with these Ocrypt functions:
 
-* `ocrypt.Register(userID, appID, longTermSecret, pin, backupID, maxGuesses)` → `metadata` or `error`
-* `ocrypt.Recover(metadata, pin)` → `longTermSecret, remainingGuesses, updatedMetadata, error`
+* ocrypt.register(user_id, app_id, long_term_secret, pin, max_guesses=10) -> metadata
+* ocrypt.recover(metadata, pin) -> (long_term_secret, remaining_guesses)
 
 Ocrypt password hashing replaces "salt" with "metadata", which is computed
 by `ocrypt.Register`. Wherever you would normally store the userID, salt,
