@@ -666,4 +666,312 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
+}
+
+/* OpenADP Specific Styles */
+.openadp-status-container {
+    margin: 1rem 0;
+    padding: 1rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    font-size: 0.9rem;
+}
+
+.status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.status-indicator.connected {
+    background: var(--accent-success);
+    box-shadow: 0 0 10px rgba(39, 174, 96, 0.5);
+}
+
+.status-indicator.disconnected {
+    background: var(--accent-warning);
+    box-shadow: 0 0 10px rgba(241, 196, 15, 0.5);
+}
+
+.status-indicator.checking {
+    background: var(--text-muted);
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.openadp-status {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.security-features {
+    margin: 1.5rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.security-feature {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    padding: 0.8rem;
+    background: rgba(39, 174, 96, 0.1);
+    border: 1px solid rgba(39, 174, 96, 0.3);
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.feature-icon {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+.feature-text {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.security-explanation {
+    margin: 2rem 0;
+    padding: 1.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.security-explanation h3 {
+    margin-bottom: 1rem;
+    color: var(--accent-ghost);
+    text-align: center;
+}
+
+.security-comparison {
+    display: flex;
+    justify-content: center;
+}
+
+.before-after {
+    display: flex;
+    gap: 1rem;
+    width: 100%;
+    max-width: 500px;
+}
+
+.security-level {
+    flex: 1;
+    padding: 1rem;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.security-level.before {
+    background: rgba(231, 76, 60, 0.1);
+    border: 1px solid rgba(231, 76, 60, 0.3);
+}
+
+.security-level.after {
+    background: rgba(39, 174, 96, 0.1);
+    border: 1px solid rgba(39, 174, 96, 0.3);
+}
+
+.security-level h4 {
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.security-level p {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.openadp-explanation {
+    margin: 1.5rem 0;
+    padding: 1.5rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.openadp-explanation h3 {
+    margin-bottom: 1rem;
+    color: var(--accent-ghost);
+}
+
+.openadp-explanation p {
+    margin-bottom: 1rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+
+.protection-features {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    margin-top: 1rem;
+}
+
+.protection-item {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    padding: 0.6rem;
+    background: rgba(39, 174, 96, 0.1);
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.protection-icon {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.pin-help {
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--accent-success);
+    font-style: italic;
+}
+
+.setup-subtitle {
+    color: var(--text-secondary) !important;
+    font-size: 1rem !important;
+    margin-bottom: 1.5rem !important;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.openadp-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.8rem;
+    background: rgba(39, 174, 96, 0.2);
+    border: 1px solid rgba(39, 174, 96, 0.4);
+    border-radius: 20px;
+    font-size: 0.8rem;
+    color: var(--accent-success);
+    font-weight: 500;
+}
+
+.badge-icon {
+    font-size: 0.9rem;
+}
+
+.welcome-actions {
+    margin-top: 1rem;
+}
+
+.security-indicator {
+    color: var(--accent-success);
+    font-weight: 500;
+    font-size: 0.8rem;
+}
+
+.loading-details {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+    text-align: center;
+}
+
+.temporary-message {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--accent-success);
+    color: white;
+    padding: 1rem 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    z-index: 3000;
+    transform: translateX(100%);
+    opacity: 0;
+    transition: all 0.3s ease;
+    max-width: 300px;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.temporary-message.show {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.no-notes {
+    padding: 2rem 1rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.note-title, .note-preview, .note-date {
+    /* Ensure consistent styling for note list items */
+}
+
+.note-title {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.note-preview {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.4;
+    margin-bottom: 0.5rem;
+}
+
+.note-date {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.attempts-remaining.warning {
+    color: var(--accent-danger);
+    font-weight: bold;
+}
+
+/* Responsive adjustments for OpenADP elements */
+@media (max-width: 768px) {
+    .before-after {
+        flex-direction: column;
+        gap: 0.8rem;
+    }
+    
+    .header-left {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .openadp-badge {
+        font-size: 0.7rem;
+        padding: 0.3rem 0.6rem;
+    }
+    
+    .security-features {
+        gap: 0.6rem;
+    }
+    
+    .security-feature {
+        padding: 0.6rem;
+        font-size: 0.8rem;
+    }
+    
+    .temporary-message {
+        bottom: 10px;
+        right: 10px;
+        left: 10px;
+        max-width: none;
+    }
 } 

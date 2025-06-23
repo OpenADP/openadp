@@ -1765,4 +1765,318 @@ body {
         flex-direction: column;
         align-items: center;
     }
+}
+
+/* Demo Section Styles */
+.demo-showcase {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.demo-hero {
+    text-align: center;
+    margin-bottom: 3rem;
+}
+
+.demo-hero h3 {
+    font-size: 2.2rem;
+    margin-bottom: 1rem;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.demo-subtitle {
+    font-size: 1.2rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.demo-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    margin-bottom: 3rem;
+    align-items: start;
+}
+
+.demo-description h4 {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.demo-features {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.demo-feature {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1.5rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    transition: all 0.3s ease;
+}
+
+.demo-feature:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+}
+
+.demo-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+    margin-top: 0.2rem;
+}
+
+.demo-text strong {
+    display: block;
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.demo-text p {
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0;
+}
+
+.demo-preview {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.demo-screen {
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 15px;
+    padding: 2rem;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.demo-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.demo-title {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.demo-badge {
+    background: rgba(39, 174, 96, 0.2);
+    border: 1px solid rgba(39, 174, 96, 0.4);
+    padding: 0.3rem 0.8rem;
+    border-radius: 15px;
+    font-size: 0.8rem;
+    color: #27ae60;
+    font-weight: 500;
+}
+
+.demo-status {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: rgba(39, 174, 96, 0.1);
+    border: 1px solid rgba(39, 174, 96, 0.3);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.status-dot.connected {
+    background: #27ae60;
+    box-shadow: 0 0 8px rgba(39, 174, 96, 0.5);
+}
+
+.demo-security {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.security-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.8rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.security-label {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.security-value {
+    font-weight: 600;
+}
+
+.security-value.weak {
+    color: #e74c3c;
+}
+
+.security-value.strong {
+    color: #27ae60;
+}
+
+.demo-cta {
+    text-align: center;
+    background: rgba(255, 255, 255, 0.05);
+    padding: 2.5rem;
+    border-radius: 15px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.demo-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.btn-demo-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 1rem 2rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+
+.btn-demo-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    color: white;
+}
+
+.btn-demo-secondary {
+    background: transparent;
+    color: var(--text-primary);
+    padding: 1rem 2rem;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 8px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.3s ease;
+}
+
+.btn-demo-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+    color: var(--text-primary);
+}
+
+.demo-note {
+    color: var(--text-secondary);
+    line-height: 1.6;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.demo-note strong {
+    color: var(--text-primary);
+}
+
+/* Responsive Demo Section */
+@media (max-width: 768px) {
+    .demo-content {
+        grid-template-columns: 1fr;
+        gap: 2rem;
+    }
+    
+    .demo-hero h3 {
+        font-size: 1.8rem;
+    }
+    
+    .demo-subtitle {
+        font-size: 1.1rem;
+    }
+    
+    .demo-screen {
+        padding: 1.5rem;
+    }
+    
+    .demo-buttons {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .btn-demo-primary,
+    .btn-demo-secondary {
+        width: 100%;
+        max-width: 300px;
+    }
+    
+    .demo-features {
+        gap: 1rem;
+    }
+    
+    .demo-feature {
+        padding: 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .demo-hero h3 {
+        font-size: 1.6rem;
+    }
+    
+    .demo-subtitle {
+        font-size: 1rem;
+    }
+    
+    .demo-header {
+        flex-direction: column;
+        gap: 0.8rem;
+        align-items: flex-start;
+    }
+    
+    .demo-status {
+        font-size: 0.8rem;
+        padding: 0.8rem;
+    }
+    
+    .security-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
 } 
