@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>👻🔐 OpenADP Ghost Notes - Security Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            color: #e0e6ed;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(45deg, #4a90e2, #7b68ee);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .security-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .security-card.vulnerable {
+            border-color: #ff6b6b;
+            background: rgba(255, 107, 107, 0.05);
+        }
+
+        .security-card.secure {
+            border-color: #4ecdc4;
+            background: rgba(78, 205, 196, 0.05);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .card-icon {
+            font-size: 2rem;
+        }
+
+        .card-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .vulnerability {
+            background: rgba(255, 107, 107, 0.1);
+            border: 1px solid #ff6b6b;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .protection {
+            background: rgba(78, 205, 196, 0.1);
+            border: 1px solid #4ecdc4;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .attack-demo {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .demo-title {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: #4a90e2;
+        }
+
+        .brute-force-demo {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        .attack-scenario {
+            background: rgba(255, 107, 107, 0.1);
+            border: 1px solid #ff6b6b;
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+
+        .defense-scenario {
+            background: rgba(78, 205, 196, 0.1);
+            border: 1px solid #4ecdc4;
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+
+        .server-diagram {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            margin: 1rem 0;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+        }
+
+        .server {
+            text-align: center;
+            padding: 0.5rem;
+            background: rgba(78, 205, 196, 0.2);
+            border-radius: 8px;
+            border: 1px solid #4ecdc4;
+        }
+
+        .threshold-line {
+            border-top: 2px dashed #4a90e2;
+            margin: 1rem 0;
+            position: relative;
+        }
+
+        .threshold-line::after {
+            content: "3-of-5 Threshold";
+            position: absolute;
+            top: -0.7rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1a1a2e;
+            padding: 0 1rem;
+            color: #4a90e2;
+            font-size: 0.8rem;
+        }
+
+        .code-demo {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        .highlight {
+            color: #79c0ff;
+        }
+
+        .comment {
+            color: #8b949e;
+        }
+
+        .string {
+            color: #a5d6ff;
+        }
+
+        .number {
+            color: #79c0ff;
+        }
+
+        .implementation-note {
+            background: rgba(123, 104, 238, 0.1);
+            border: 1px solid #7b68ee;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .note-title {
+            color: #7b68ee;
+            font-weight: bold;
+            margin-bottom: 1rem;
+        }
+
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .feature-list li {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .feature-list li:last-child {
+            border-bottom: none;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+
+        .status-vulnerable {
+            background: #ff6b6b;
+        }
+
+        .status-secure {
+            background: #4ecdc4;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>👻🔐 OpenADP Ghost Notes</h1>
+            <p>How distributed cryptography transforms PIN security</p>
+        </div>
+
+        <div class="comparison">
+            <div class="security-card vulnerable">
+                <div class="card-header">
+                    <span class="card-icon">⚠️</span>
+                    <span class="card-title">Traditional PIN Security</span>
+                </div>
+                
+                <div class="vulnerability">
+                    <h3>🔓 Easily Brute-Forced</h3>
+                    <p>A 4-digit PIN has only 10,000 combinations</p>
+                    <ul class="feature-list">
+                        <li><span class="status-indicator status-vulnerable"></span>Cracked in seconds</li>
+                        <li><span class="status-indicator status-vulnerable"></span>PBKDF2 adds minimal protection</li>
+                        <li><span class="status-indicator status-vulnerable"></span>Single point of failure</li>
+                        <li><span class="status-indicator status-vulnerable"></span>Offline attacks possible</li>
+                    </ul>
+                </div>
+
+                <div class="code-demo">
+<span class="comment">// Traditional approach - VULNERABLE</span>
+<span class="highlight">const</span> pin = <span class="string">"1234"</span>;
+<span class="highlight">const</span> salt = <span class="string">"fixed_salt"</span>;
+<span class="highlight">const</span> key = <span class="highlight">pbkdf2</span>(pin, salt, <span class="number">100000</span>);
+
+<span class="comment">// Attacker can brute-force offline:</span>
+<span class="highlight">for</span> (let i = <span class="number">0</span>; i &lt; <span class="number">10000</span>; i++) {
+    <span class="highlight">const</span> guess = i.<span class="highlight">toString</span>().<span class="highlight">padStart</span>(<span class="number">4</span>, <span class="string">'0'</span>);
+    <span class="highlight">if</span> (<span class="highlight">pbkdf2</span>(guess, salt, <span class="number">100000</span>) === key) {
+        <span class="highlight">console</span>.<span class="highlight">log</span>(<span class="string">"PIN cracked:"</span>, guess);
+        <span class="highlight">break</span>; <span class="comment">// Found in ~5000 attempts avg</span>
+    }
+}
+                </div>
+            </div>
+
+            <div class="security-card secure">
+                <div class="card-header">
+                    <span class="card-icon">🛡️</span>
+                    <span class="card-title">OpenADP PIN Security</span>
+                </div>
+                
+                <div class="protection">
+                    <h3>🔐 Distributed Protection</h3>
+                    <p>PIN protected by threshold cryptography across multiple servers</p>
+                    <ul class="feature-list">
+                        <li><span class="status-indicator status-secure"></span>Requires 3-of-5 servers</li>
+                        <li><span class="status-indicator status-secure"></span>No offline attacks</li>
+                        <li><span class="status-indicator status-secure"></span>Rate limiting per server</li>
+                        <li><span class="status-indicator status-secure"></span>Distributed trust model</li>
+                    </ul>
+                </div>
+
+                <div class="code-demo">
+<span class="comment">// OpenADP approach - SECURE</span>
+<span class="highlight">const</span> pin = <span class="string">"1234"</span>; <span class="comment">// Same PIN, but now secure!</span>
+<span class="highlight">const</span> userID = <span class="string">"uuid-here"</span>;
+<span class="highlight">const</span> servers = [<span class="string">"server1"</span>, <span class="string">"server2"</span>, <span class="string">"server3"</span>, <span class="string">"server4"</span>, <span class="string">"server5"</span>];
+
+<span class="comment">// Setup: Split secret across servers</span>
+<span class="highlight">const</span> secret = <span class="highlight">generateSecret</span>();
+<span class="highlight">const</span> shares = <span class="highlight">shamirSplit</span>(secret, <span class="number">3</span>, <span class="number">5</span>);
+<span class="highlight">await</span> <span class="highlight">registerShares</span>(shares, servers, pin, userID);
+
+<span class="comment">// Recovery: Need 3 servers + correct PIN</span>
+<span class="highlight">const</span> recoveredShares = <span class="highlight">await</span> <span class="highlight">requestShares</span>(pin, userID, servers);
+<span class="highlight">const</span> key = <span class="highlight">shamirRecover</span>(recoveredShares); <span class="comment">// Requires 3+ shares</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="attack-demo">
+            <h2 class="demo-title">🎯 Attack Resistance Comparison</h2>
+            
+            <div class="brute-force-demo">
+                <div class="attack-scenario">
+                    <h3>❌ Traditional Attack</h3>
+                    <p><strong>Time to crack:</strong> ~5 seconds</p>
+                    <p><strong>Requirements:</strong> Encrypted data file only</p>
+                    <p><strong>Method:</strong> Offline brute force</p>
+                    
+                    <div style="margin: 1rem 0; padding: 1rem; background: rgba(0,0,0,0.3); border-radius: 4px;">
+                        <div style="font-family: monospace; font-size: 0.8rem;">
+                            Testing PIN: 0000 ❌<br>
+                            Testing PIN: 0001 ❌<br>
+                            Testing PIN: 0002 ❌<br>
+                            ...<br>
+                            Testing PIN: 1234 ✅ <strong>CRACKED!</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="defense-scenario">
+                    <h3>✅ OpenADP Defense</h3>
+                    <p><strong>Time to crack:</strong> Practically impossible</p>
+                    <p><strong>Requirements:</strong> Must compromise 3+ servers</p>
+                    <p><strong>Method:</strong> Rate-limited online attacks only</p>
+                    
+                    <div class="server-diagram">
+                        <div class="server">Server 1<br>🔐 Share 1</div>
+                        <div class="server">Server 2<br>🔐 Share 2</div>
+                        <div class="server">Server 3<br>🔐 Share 3</div>
+                        <div class="server">Server 4<br>🔐 Share 4</div>
+                        <div class="server">Server 5<br>🔐 Share 5</div>
+                    </div>
+                    <div class="threshold-line"></div>
+                    <p style="text-align: center; font-size: 0.9rem; color: #4ecdc4;">
+                        Attacker needs to compromise 3+ servers simultaneously<br>
+                        Each server enforces rate limits and attempt counting
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="implementation-note">
+            <div class="note-title">🚀 Implementation with OpenADP JavaScript SDK</div>
+            <p>The existing OpenADP JavaScript SDK provides all the necessary components:</p>
+            
+            <div class="code-demo">
+<span class="comment">// Import OpenADP functions</span>
+<span class="highlight">import</span> { 
+    generateEncryptionKey, 
+    recoverEncryptionKey 
+} <span class="highlight">from</span> <span class="string">'../sdk/javascript/src/keygen.js'</span>;
+
+<span class="comment">// Setup: Generate OpenADP-protected key</span>
+<span class="highlight">const</span> result = <span class="highlight">await</span> <span class="highlight">generateEncryptionKey</span>(
+    <span class="string">'ghost-notes-vault'</span>,  <span class="comment">// filename</span>
+    pin,                    <span class="comment">// low-entropy PIN</span>
+    userID,                 <span class="comment">// unique user ID</span>
+    <span class="number">10</span>,                     <span class="comment">// max attempts</span>
+    <span class="number">0</span>,                      <span class="comment">// no expiration</span>
+    openadpServers          <span class="comment">// server list</span>
+);
+
+<span class="comment">// Recovery: Get key back from distributed servers</span>
+<span class="highlight">const</span> recovered = <span class="highlight">await</span> <span class="highlight">recoverEncryptionKey</span>(
+    <span class="string">'ghost-notes-vault'</span>,
+    pin,
+    userID,
+    openadpServers,
+    threshold,
+    authCodes
+);
+
+<span class="comment">// Use the recovered key for AES-GCM encryption</span>
+<span class="highlight">const</span> encryptedNotes = <span class="highlight">await</span> <span class="highlight">encrypt</span>(notesData, recovered.encryptionKey);
+            </div>
+
+            <p><strong>Key Benefits:</strong></p>
+            <ul>
+                <li>✅ Same simple PIN experience for users</li>
+                <li>✅ Military-grade security under the hood</li>
+                <li>✅ No single point of failure</li>
+                <li>✅ Resistant to offline attacks</li>
+                <li>✅ Distributed trust across multiple servers</li>
+                <li>✅ Automatic rate limiting and attempt counting</li>
+            </ul>
+        </div>
+
+        <div style="text-align: center; margin-top: 2rem; padding: 2rem; background: rgba(255,255,255,0.05); border-radius: 12px;">
+            <h2 style="color: #4a90e2; margin-bottom: 1rem;">🔐 The Bottom Line</h2>
+            <p style="font-size: 1.2rem; margin-bottom: 1rem;">
+                <strong>OpenADP transforms weak PIN security into military-grade protection</strong>
+            </p>
+            <p>
+                Your 4-digit PIN goes from being crackable in seconds to being protected by<br>
+                distributed cryptography that would take centuries to break.
+            </p>
+            <p style="margin-top: 1rem; color: #4ecdc4;">
+                <strong>Same user experience. Vastly superior security.</strong>
+            </p>
+        </div>
+    </div>
+</body>
+</html> 

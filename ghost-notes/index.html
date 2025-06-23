@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>👻 Ghost Notes</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1a1a1a">
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="login-screen" class="screen active">
+        <div class="ghost-container">
+            <div class="ghost-logo">👻</div>
+            <h1>Ghost Notes</h1>
+            <p class="tagline">Your notes vanish when you leave</p>
+            
+            <div class="pin-entry">
+                <input type="password" id="pin-input" placeholder="Enter your PIN" maxlength="20">
+                <div id="attempts-remaining" class="attempts-remaining">10 attempts remaining</div>
+                <div id="error-message" class="error-message"></div>
+            </div>
+            
+            <button id="unlock-btn" class="unlock-btn">🔓 Unlock Notes</button>
+            
+            <div class="setup-options">
+                <button id="setup-btn" class="setup-btn">⚙️ First Time Setup</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Setup Screen -->
+    <div id="setup-screen" class="screen">
+        <div class="setup-container">
+            <h2>🔐 Setup Ghost Notes</h2>
+            <p>Create your secure PIN and configure your servers</p>
+            
+            <div class="setup-form">
+                <div class="form-group">
+                    <label for="setup-pin">Create PIN:</label>
+                    <input type="password" id="setup-pin" placeholder="Enter a secure PIN">
+                </div>
+                
+                <div class="form-group">
+                    <label for="confirm-pin">Confirm PIN:</label>
+                    <input type="password" id="confirm-pin" placeholder="Confirm your PIN">
+                </div>
+                
+                <div class="form-group">
+                    <label for="max-guesses">Max Failed Attempts:</label>
+                    <select id="max-guesses">
+                        <option value="5">5 attempts</option>
+                        <option value="10" selected>10 attempts</option>
+                        <option value="15">15 attempts</option>
+                        <option value="20">20 attempts</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="auto-lock">Auto-lock after:</label>
+                    <select id="auto-lock">
+                        <option value="60">1 minute</option>
+                        <option value="300" selected>5 minutes</option>
+                        <option value="600">10 minutes</option>
+                        <option value="1800">30 minutes</option>
+                    </select>
+                </div>
+                
+                <button id="create-vault-btn" class="create-btn">🛡️ Create Secure Vault</button>
+                <button id="cancel-setup-btn" class="cancel-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App Screen -->
+    <div id="app-screen" class="screen">
+        <header class="app-header">
+            <h1>👻 Ghost Notes</h1>
+            <div class="session-info">
+                <div id="lock-timer" class="lock-timer">Auto-lock in 5:00</div>
+                <button id="lock-now-btn" class="lock-now-btn">🔒 Lock Now</button>
+            </div>
+        </header>
+        
+        <main class="app-main">
+            <aside class="notes-sidebar">
+                <div class="sidebar-header">
+                    <h2>Notes</h2>
+                    <button id="new-note-btn" class="new-note-btn">➕</button>
+                </div>
+                <div id="notes-list" class="notes-list">
+                    <!-- Notes list will be populated here -->
+                </div>
+            </aside>
+            
+            <section class="note-editor-container">
+                <div id="welcome-message" class="welcome-message">
+                    <div class="welcome-icon">📝</div>
+                    <h3>Welcome to Ghost Notes</h3>
+                    <p>Create your first note or select an existing one from the sidebar.</p>
+                    <p><strong>Remember:</strong> Your notes will disappear when you close the app!</p>
+                </div>
+                
+                <div id="note-editor" class="note-editor" style="display: none;">
+                    <div class="editor-header">
+                        <input type="text" id="note-title" class="note-title" placeholder="Note title...">
+                        <div class="editor-actions">
+                            <button id="save-note-btn" class="save-btn">💾 Save</button>
+                            <button id="delete-note-btn" class="delete-btn">🗑️ Delete</button>
+                        </div>
+                    </div>
+                    <textarea id="note-content" class="note-content" placeholder="Start writing your secret thoughts..."></textarea>
+                    <div class="note-metadata">
+                        <span id="note-created">Created: --</span>
+                        <span id="note-modified">Modified: --</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Session Warning Modal -->
+    <div id="session-warning" class="modal">
+        <div class="modal-content">
+            <div class="warning-icon">⚠️</div>
+            <h2>Session Ending Soon</h2>
+            <p>Your notes will be encrypted and locked in <span id="warning-countdown">30</span> seconds...</p>
+            <div class="modal-actions">
+                <button id="extend-session-btn" class="extend-btn">Stay Active</button>
+                <button id="lock-immediately-btn" class="lock-btn">Lock Now</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-spinner">👻</div>
+        <div class="loading-text">Securing your notes...</div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+    <script>
+        // Register service worker for PWA functionality
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(registration => {
+                        console.log('👻 Service Worker registered:', registration);
+                    })
+                    .catch(error => {
+                        console.log('❌ Service Worker registration failed:', error);
+                    });
+            });
+        }
+    </script>
+</body>
+</html> 

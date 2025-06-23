@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ghost Notes Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #0a0a0a;
+            color: #e0e0e0;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #333;
+            border-radius: 8px;
+        }
+        .success { color: #27ae60; }
+        .error { color: #e74c3c; }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            background: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>👻 Ghost Notes - Local Test</h1>
+    
+    <div class="test-section">
+        <h2>Browser Support Check</h2>
+        <div id="crypto-support"></div>
+        <div id="storage-support"></div>
+        <div id="sw-support"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Encryption Test</h2>
+        <button onclick="testEncryption()">Test Encryption</button>
+        <div id="encryption-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>Storage Test</h2>
+        <button onclick="testStorage()">Test Local Storage</button>
+        <div id="storage-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>App Launch</h2>
+        <button onclick="launchApp()">Launch Ghost Notes</button>
+    </div>
+
+    <script>
+        // Check browser support
+        function checkSupport() {
+            const cryptoEl = document.getElementById('crypto-support');
+            const storageEl = document.getElementById('storage-support');
+            const swEl = document.getElementById('sw-support');
+            
+            if (window.crypto && window.crypto.subtle) {
+                cryptoEl.innerHTML = '<span class="success">✅ Web Crypto API supported</span>';
+            } else {
+                cryptoEl.innerHTML = '<span class="error">❌ Web Crypto API not supported</span>';
+            }
+            
+            if (window.localStorage) {
+                storageEl.innerHTML = '<span class="success">✅ Local Storage supported</span>';
+            } else {
+                storageEl.innerHTML = '<span class="error">❌ Local Storage not supported</span>';
+            }
+            
+            if ('serviceWorker' in navigator) {
+                swEl.innerHTML = '<span class="success">✅ Service Worker supported</span>';
+            } else {
+                swEl.innerHTML = '<span class="error">❌ Service Worker not supported</span>';
+            }
+        }
+        
+        // Test encryption functionality
+        async function testEncryption() {
+            const resultEl = document.getElementById('encryption-result');
+            resultEl.innerHTML = 'Testing encryption...';
+            
+            try {
+                // Generate a test key
+                const key = await crypto.subtle.generateKey(
+                    { name: 'AES-GCM', length: 256 },
+                    true,
+                    ['encrypt', 'decrypt']
+                );
+                
+                // Test data
+                const testData = 'Hello Ghost Notes!';
+                const encoder = new TextEncoder();
+                const data = encoder.encode(testData);
+                const iv = crypto.getRandomValues(new Uint8Array(12));
+                
+                // Encrypt
+                const encrypted = await crypto.subtle.encrypt(
+                    { name: 'AES-GCM', iv: iv },
+                    key,
+                    data
+                );
+                
+                // Decrypt
+                const decrypted = await crypto.subtle.decrypt(
+                    { name: 'AES-GCM', iv: iv },
+                    key,
+                    encrypted
+                );
+                
+                const decoder = new TextDecoder();
+                const decryptedText = decoder.decode(decrypted);
+                
+                if (decryptedText === testData) {
+                    resultEl.innerHTML = '<span class="success">✅ Encryption test passed!</span>';
+                } else {
+                    resultEl.innerHTML = '<span class="error">❌ Encryption test failed - data mismatch</span>';
+                }
+            } catch (error) {
+                resultEl.innerHTML = `<span class="error">❌ Encryption test failed: ${error.message}</span>`;
+            }
+        }
+        
+        // Test local storage
+        function testStorage() {
+            const resultEl = document.getElementById('storage-result');
+            
+            try {
+                const testKey = 'ghost-notes-test';
+                const testValue = { test: 'data', timestamp: Date.now() };
+                
+                // Write
+                localStorage.setItem(testKey, JSON.stringify(testValue));
+                
+                // Read
+                const retrieved = JSON.parse(localStorage.getItem(testKey));
+                
+                // Clean up
+                localStorage.removeItem(testKey);
+                
+                if (retrieved && retrieved.test === 'data') {
+                    resultEl.innerHTML = '<span class="success">✅ Local Storage test passed!</span>';
+                } else {
+                    resultEl.innerHTML = '<span class="error">❌ Local Storage test failed</span>';
+                }
+            } catch (error) {
+                resultEl.innerHTML = `<span class="error">❌ Local Storage test failed: ${error.message}</span>`;
+            }
+        }
+        
+        // Launch main app
+        function launchApp() {
+            window.location.href = './index.html';
+        }
+        
+        // Run support check on load
+        checkSupport();
+    </script>
+</body>
+</html> 

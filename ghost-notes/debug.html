@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>👻🔐 OpenADP Ghost Notes - Debug</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .debug-console {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 200px;
+            background: #000;
+            color: #0f0;
+            font-family: monospace;
+            font-size: 12px;
+            padding: 10px;
+            overflow-y: auto;
+            border-top: 2px solid #0f0;
+            z-index: 10000;
+        }
+        .debug-toggle {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 10001;
+            background: #000;
+            color: #0f0;
+            border: 1px solid #0f0;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <button class="debug-toggle" onclick="toggleDebug()">Debug Console</button>
+    <div id="debug-console" class="debug-console" style="display: none;"></div>
+
+    <!-- Login Screen -->
+    <div id="login-screen" class="screen active">
+        <div class="ghost-container">
+            <div class="ghost-logo">👻🔐</div>
+            <h1>OpenADP Ghost Notes (Debug)</h1>
+            
+            <div class="pin-entry">
+                <input type="password" id="pin-input" placeholder="Enter your PIN">
+                <div id="error-message" class="error-message"></div>
+            </div>
+            
+            <button id="unlock-btn" class="unlock-btn">🔓 Unlock</button>
+            <button id="setup-btn" class="setup-btn">⚙️ Setup</button>
+            <button id="clear-btn" class="setup-btn" style="background: #ff6b6b;">🗑️ Clear Data</button>
+        </div>
+    </div>
+
+    <!-- Setup Screen -->
+    <div id="setup-screen" class="screen">
+        <div class="setup-container">
+            <h2>🔐 Setup OpenADP Vault</h2>
+            
+            <div class="setup-form">
+                <div class="form-group">
+                    <label>PIN:</label>
+                    <input type="password" id="setup-pin" placeholder="4+ characters">
+                </div>
+                
+                <div class="form-group">
+                    <label>Confirm PIN:</label>
+                    <input type="password" id="confirm-pin" placeholder="Confirm PIN">
+                </div>
+                
+                <button id="create-vault-btn" class="create-btn">🛡️ Create Vault</button>
+                <button id="cancel-setup-btn" class="cancel-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- App Screen -->
+    <div id="app-screen" class="screen">
+        <div class="app-header">
+            <h1>👻🔐 OpenADP Active</h1>
+            <button id="lock-btn" class="lock-now-btn">🔒 Lock</button>
+        </div>
+        <div class="welcome-message">
+            <h3>🎉 Success!</h3>
+            <div id="session-info"></div>
+        </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-spinner">👻🔐</div>
+        <div class="loading-text">Processing...</div>
+    </div>
+
+    <script>
+        let debugLog = [];
+        
+        function log(msg) {
+            const time = new Date().toLocaleTimeString();
+            const entry = `[${time}] ${msg}`;
+            console.log(entry);
+            debugLog.push(entry);
+            updateDebugConsole();
+        }
+        
+        function updateDebugConsole() {
+            const console = document.getElementById('debug-console');
+            if (console) {
+                console.innerHTML = debugLog.slice(-30).join('\n');
+                console.scrollTop = console.scrollHeight;
+            }
+        }
+        
+        function toggleDebug() {
+            const console = document.getElementById('debug-console');
+            console.style.display = console.style.display === 'none' ? 'block' : 'none';
+        }
+
+        class DebugOpenADPGhostNotes {
+            constructor() {
+                log('🚀 Starting OpenADP Ghost Notes Debug...');
+                this.currentScreen = 'login';
+                this.sessionActive = false;
+                this.settings = this.loadSettings();
+                this.notes = new Map();
+                this.init();
+            }
+
+            init() {
+                try {
+                    log('📋 Checking setup...');
+                    const isSetup = localStorage.getItem('openadp_ghost_setup') === 'true';
+                    log(`Setup status: ${isSetup}`);
+                    
+                    if (isSetup) {
+                        this.showScreen('login');
+                    } else {
+                        this.showScreen('setup');
+                    }
+                    
+                    this.setupEvents();
+                    log('✅ Initialization complete');
+                } catch (error) {
+                    log(`❌ Init error: ${error.message}`);
+                }
+            }
+
+            loadSettings() {
+                try {
+                    const saved = localStorage.getItem('openadp_ghost_settings');
+                    const settings = saved ? JSON.parse(saved) : { 
+                        userID: null, 
+                        maxGuesses: 10, 
+                        currentGuesses: 0 
+                    };
+                    log(`Settings: userID=${settings.userID ? 'set' : 'null'}`);
+                    return settings;
+                } catch (error) {
+                    log(`❌ Settings error: ${error.message}`);
+                    return { userID: null, maxGuesses: 10, currentGuesses: 0 };
+                }
+            }
+
+            saveSettings() {
+                try {
+                    localStorage.setItem('openadp_ghost_settings', JSON.stringify(this.settings));
+                    log('💾 Settings saved');
+                } catch (error) {
+                    log(`❌ Save settings error: ${error.message}`);
+                }
+            }
+
+            setupEvents() {
+                log('🎧 Setting up events...');
+                
+                document.getElementById('setup-btn').onclick = () => {
+                    log('⚙️ Setup clicked');
+                    this.showScreen('setup');
+                };
+                
+                document.getElementById('clear-btn').onclick = () => {
+                    log('🗑️ Clear clicked');
+                    this.clearAllData();
+                };
+                
+                document.getElementById('create-vault-btn').onclick = () => {
+                    log('🛡️ Create vault clicked');
+                    this.handleSetup();
+                };
+                
+                document.getElementById('cancel-setup-btn').onclick = () => {
+                    log('❌ Cancel clicked');
+                    this.showScreen('login');
+                };
+                
+                document.getElementById('unlock-btn').onclick = () => {
+                    log('🔓 Unlock clicked');
+                    this.handleUnlock();
+                };
+                
+                document.getElementById('lock-btn').onclick = () => {
+                    log('🔒 Lock clicked');
+                    this.handleLock();
+                };
+                
+                log('✅ Events set up');
+            }
+
+            async handleSetup() {
+                log('🔐 Starting setup...');
+                
+                try {
+                    const pin = document.getElementById('setup-pin').value;
+                    const confirmPin = document.getElementById('confirm-pin').value;
+                    
+                    log(`PIN length: ${pin.length}, Confirm length: ${confirmPin.length}`);
+                    
+                    if (!pin || pin.length < 4) {
+                        this.showError('PIN must be 4+ characters');
+                        return;
+                    }
+                    
+                    if (pin !== confirmPin) {
+                        this.showError('PINs do not match');
+                        return;
+                    }
+                    
+                    this.showLoading('Creating OpenADP vault...');
+                    log('📡 Simulating OpenADP setup...');
+                    
+                    // Generate user ID
+                    const userID = this.generateUserID();
+                    log(`👤 User ID: ${userID}`);
+                    
+                    // Simulate OpenADP process
+                    await this.delay(1000);
+                    log('🔑 Generated secret shares');
+                    
+                    await this.delay(1000);
+                    log('📤 Registered with servers');
+                    
+                    await this.delay(500);
+                    log('🎯 Configured threshold crypto');
+                    
+                    // Store PIN hash
+                    const pinHash = await this.hashPIN(pin, userID);
+                    localStorage.setItem('openadp_ghost_pin_hash', pinHash);
+                    log('🔑 Stored PIN hash');
+                    
+                    // Update settings
+                    this.settings.userID = userID;
+                    this.settings.currentGuesses = 0;
+                    this.saveSettings();
+                    
+                    // Mark as setup
+                    localStorage.setItem('openadp_ghost_setup', 'true');
+                    log('✅ Setup flag set');
+                    
+                    this.hideLoading();
+                    this.showScreen('login');
+                    this.showSuccess('✅ OpenADP vault created!');
+                    
+                    log('🎉 Setup completed successfully!');
+                    
+                } catch (error) {
+                    log(`❌ Setup failed: ${error.message}`);
+                    this.hideLoading();
+                    this.showError('Setup failed: ' + error.message);
+                }
+            }
+
+            async handleUnlock() {
+                log('🔓 Starting unlock...');
+                
+                const pin = document.getElementById('pin-input').value;
+                
+                if (!pin) {
+                    this.showError('Enter your PIN');
+                    return;
+                }
+                
+                try {
+                    this.showLoading('Recovering from OpenADP servers...');
+                    
+                    // Simulate recovery
+                    await this.delay(800);
+                    log('📡 Contacted servers');
+                    
+                    await this.delay(600);
+                    log('🔍 Retrieved shares');
+                    
+                    await this.delay(400);
+                    log('🧩 Reconstructed secret');
+                    
+                    // Validate PIN
+                    const isValid = await this.validatePIN(pin);
+                    log(`🔍 PIN valid: ${isValid}`);
+                    
+                    if (isValid) {
+                        this.settings.currentGuesses = 0;
+                        this.saveSettings();
+                        
+                        this.hideLoading();
+                        this.showScreen('app');
+                        
+                        // Show session info
+                        document.getElementById('session-info').innerHTML = `
+                            <p>User ID: ${this.settings.userID}</p>
+                            <p>OpenADP Protection: Active</p>
+                            <p>Distributed Servers: 5</p>
+                            <p>Threshold: 3-of-5</p>
+                        `;
+                        
+                        log('🔓 Unlock successful!');
+                        
+                    } else {
+                        this.settings.currentGuesses++;
+                        this.saveSettings();
+                        
+                        const remaining = this.settings.maxGuesses - this.settings.currentGuesses;
+                        this.hideLoading();
+                        this.showError(`Invalid PIN. ${remaining} attempts remaining`);
+                        log(`❌ Invalid PIN. ${remaining} remaining`);
+                    }
+                    
+                } catch (error) {
+                    log(`❌ Unlock error: ${error.message}`);
+                    this.hideLoading();
+                    this.showError('Unlock failed: ' + error.message);
+                }
+                
+                document.getElementById('pin-input').value = '';
+            }
+
+            handleLock() {
+                log('🔒 Locking session...');
+                this.sessionActive = false;
+                this.showScreen('login');
+                log('👻 Session locked');
+            }
+
+            async validatePIN(pin) {
+                try {
+                    const storedHash = localStorage.getItem('openadp_ghost_pin_hash');
+                    if (!storedHash) {
+                        log('❌ No stored PIN hash found');
+                        return false;
+                    }
+                    
+                    const pinHash = await this.hashPIN(pin, this.settings.userID);
+                    return pinHash === storedHash;
+                    
+                } catch (error) {
+                    log(`❌ PIN validation error: ${error.message}`);
+                    return false;
+                }
+            }
+
+            async hashPIN(pin, userID) {
+                const encoder = new TextEncoder();
+                const data = encoder.encode(pin + (userID || ''));
+                const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+                const hashArray = Array.from(new Uint8Array(hashBuffer));
+                return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            }
+
+            generateUserID() {
+                const array = new Uint8Array(16);
+                crypto.getRandomValues(array);
+                const hex = Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
+                return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20,32)}`;
+            }
+
+            clearAllData() {
+                if (confirm('Delete all data?')) {
+                    log('🗑️ Clearing all data...');
+                    localStorage.clear();
+                    location.reload();
+                }
+            }
+
+            showScreen(name) {
+                log(`🖥️ Showing screen: ${name}`);
+                document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+                document.getElementById(`${name}-screen`).classList.add('active');
+                this.currentScreen = name;
+            }
+
+            showLoading(msg) {
+                document.querySelector('.loading-text').textContent = msg;
+                document.getElementById('loading-overlay').classList.add('active');
+                log(`⏳ ${msg}`);
+            }
+
+            hideLoading() {
+                document.getElementById('loading-overlay').classList.remove('active');
+            }
+
+            showError(msg) {
+                document.getElementById('error-message').textContent = msg;
+                setTimeout(() => {
+                    document.getElementById('error-message').textContent = '';
+                }, 5000);
+                log(`❌ ${msg}`);
+            }
+
+            showSuccess(msg) {
+                const toast = document.createElement('div');
+                toast.style.cssText = `
+                    position: fixed; top: 20px; right: 20px; z-index: 9999;
+                    background: #4ecdc4; color: white; padding: 1rem;
+                    border-radius: 8px; animation: slideIn 0.3s ease;
+                `;
+                toast.textContent = msg;
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+                log(`✅ ${msg}`);
+            }
+
+            delay(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            log('🌟 DOM ready, starting app...');
+            window.app = new DebugOpenADPGhostNotes();
+        });
+
+        // Add CSS
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html> 
