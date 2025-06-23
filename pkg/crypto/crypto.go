@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"math/big"
 
 	"golang.org/x/crypto/curve25519"
@@ -175,6 +176,18 @@ func PointAdd(p1, p2 *Point4D) *Point4D {
 
 // PointMul computes scalar multiplication: Q = s * P using double-and-add
 func PointMul(s *big.Int, p *Point4D) *Point4D {
+	// Debug logging
+	fmt.Printf("🔍 GO POINTMUL DEBUG: Input scalar s = %s\n", s.String())
+	fmt.Printf("🔍 GO POINTMUL DEBUG: Input point P = (%s, %s, %s, %s)\n", p.X.String(), p.Y.String(), p.Z.String(), p.T.String())
+
+	// Convert to affine coordinates for clearer debugging
+	zinv := modpInv(p.Z)
+	affineX := new(big.Int).Mul(p.X, zinv)
+	affineX.Mod(affineX, P)
+	affineY := new(big.Int).Mul(p.Y, zinv)
+	affineY.Mod(affineY, P)
+	fmt.Printf("🔍 GO POINTMUL DEBUG: Input point P (affine) = (%s, %s)\n", affineX.String(), affineY.String())
+
 	q := &Point4D{
 		X: new(big.Int).Set(ZeroPoint.X),
 		Y: new(big.Int).Set(ZeroPoint.Y),
@@ -198,6 +211,15 @@ func PointMul(s *big.Int, p *Point4D) *Point4D {
 		pCopy = PointAdd(pCopy, pCopy)
 		sCopy.Rsh(sCopy, 1)
 	}
+
+	// Debug logging for result
+	resultZinv := modpInv(q.Z)
+	resultX := new(big.Int).Mul(q.X, resultZinv)
+	resultX.Mod(resultX, P)
+	resultY := new(big.Int).Mul(q.Y, resultZinv)
+	resultY.Mod(resultY, P)
+	fmt.Printf("🔍 GO POINTMUL DEBUG: Result Q = (%s, %s, %s, %s)\n", q.X.String(), q.Y.String(), q.Z.String(), q.T.String())
+	fmt.Printf("🔍 GO POINTMUL DEBUG: Result Q (affine) = (%s, %s)\n", resultX.String(), resultY.String())
 
 	return q
 }

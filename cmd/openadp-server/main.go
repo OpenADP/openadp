@@ -395,8 +395,15 @@ func (s *Server) handleRegisterSecret(params []interface{}) (interface{}, error)
 	expiration := int64(expirationFloat)
 
 	// Debug: Print what we're storing
+	// Convert little-endian bytes back to correct decimal value for logging
 	yInt := new(big.Int)
-	yInt.SetBytes(y)
+	yBytes := make([]byte, len(y))
+	copy(yBytes, y)
+	// Reverse bytes to convert from little-endian to big-endian for SetBytes
+	for i, j := 0, len(yBytes)-1; i < j; i, j = i+1, j-1 {
+		yBytes[i], yBytes[j] = yBytes[j], yBytes[i]
+	}
+	yInt.SetBytes(yBytes)
 	fmt.Printf("SERVER %d STORING: uid=%s, did=%s, bid=%s, x=%d, y=%s (hex: %x)\n",
 		s.port, uid, did, bid, x, yInt.String(), y)
 

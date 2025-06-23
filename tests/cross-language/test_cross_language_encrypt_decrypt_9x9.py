@@ -279,10 +279,10 @@ def run_javascript_encrypt(input_file, output_file=None):
     
     cmd = [
         "node", "sdk/javascript/openadp-encrypt.js",
-        "-f", input_file,
-        "-p", TEST_PASSWORD,
-        "-u", TEST_USER_ID,
-        "-s", ",".join(SERVER_URLS)
+        "-file", input_file,
+        "-password", TEST_PASSWORD,
+        "-user-id", TEST_USER_ID,
+        "-servers", ",".join(SERVER_URLS)
     ]
     
     log(f"Running JavaScript encrypt: {' '.join(cmd)}")
@@ -308,10 +308,10 @@ def run_javascript_decrypt(input_file, output_file=None):
     
     cmd = [
         "node", "sdk/javascript/openadp-decrypt.js",
-        "-f", input_file,
-        "-p", TEST_PASSWORD,
-        "-u", TEST_USER_ID,
-        "-s", ",".join(SERVER_URLS)
+        "-file", input_file,
+        "-password", TEST_PASSWORD,
+        "-user-id", TEST_USER_ID,
+        "-servers", ",".join(SERVER_URLS)
     ]
     
     log(f"Running JavaScript decrypt: {' '.join(cmd)}")
