@@ -41,6 +41,42 @@ user data while offering a compromise where lives can be saved.
 
 ## Getting Started
 
+### The Ocrypt Password Hashing Functions
+
+The simplest way to use OpenADP is to replace your existing password hashing
+functions with Ocrypt. You may use well known functions such as Bcrypt,
+Scrypt, Argon2, or PBKDF2. Simply replace them with these Ocrypt functions:
+
+* `ocrypt.Register(userID, appID, longTermSecret, pin, backupID, maxGuesses)` → `metadata` or `error`
+* `ocrypt.Recover(metadata, pin)` → `longTermSecret, remainingGuesses, updatedMetadata, error`
+
+Ocrypt password hashing replaces "salt" with "metadata", which is computed
+by `ocrypt.Register`. Wherever you would normally store the userID, salt,
+and password hash, instead store the userID and metadata.
+
+**Key Features:**
+- **User-controlled secrets**: You provide the `longTermSecret` (e.g., ed25519 private key)
+- **Distributed protection**: Secrets are split across multiple OpenADP servers
+- **Guess limiting**: Built-in brute force protection with configurable attempts
+- **Drop-in replacement**: Minimal changes to existing authentication code
+
+**Example Use Case - Password Manager:**
+```go
+// Generate ed25519 keypair for vault encryption
+privateKey, publicKey := ed25519.GenerateKey()
+
+// Protect private key with user's PIN
+metadata, err := ocrypt.Register(userEmail, "vault", privateKey, userPIN, "v1", 10)
+
+// Later: recover private key to decrypt vault (with automatic backup refresh)
+privateKey, remaining, updatedMetadata, err := ocrypt.Recover(metadata, userPIN)
+// Store updatedMetadata for future recoveries
+```
+
+These APIs are available in Go, Python, and JavaScript in the `sdk` directory, in
+the `ocrypt` module for each language. See `docs/ocrypt_design.md` for detailed
+specifications and additional use cases.
+
 ### Prerequisites
 
 Before working with OpenADP, ensure you have the following installed:

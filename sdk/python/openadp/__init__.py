@@ -69,6 +69,12 @@ from .keygen import (
     generate_auth_codes
 )
 
+# Ocrypt - Drop-in replacement for password hashing functions
+from .ocrypt import (
+    register as ocrypt_register,
+    recover as ocrypt_recover
+)
+
 # Client implementations
 from .client import (
     # Core client classes
@@ -133,6 +139,9 @@ __all__ = [
     # Keygen
     "generate_encryption_key", "recover_encryption_key",
     "derive_identifiers", "password_to_pin", "generate_auth_codes",
+    
+    # Ocrypt
+    "ocrypt_register", "ocrypt_recover",
     
     # Client classes
     "OpenADPClient", "EncryptedOpenADPClient", "MultiServerClient",
