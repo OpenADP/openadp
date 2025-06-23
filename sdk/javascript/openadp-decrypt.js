@@ -309,9 +309,6 @@ async function decryptFile(inputFilename, password, userId, overrideServers) {
     // Recover encryption key using OpenADP
     console.log("🔄 Recovering encryption key from OpenADP servers...");
     const encKey = await recoverEncryptionKeyWithServerInfo(outputFilename, password, finalUserId, baseAuthCode, serverInfos, metadata.threshold);
-    console.log(`🔑 DEBUG: Recovered key: ${encKey.toString('hex')}`);
-    console.log(`🎲 DEBUG: Nonce: ${nonce.toString('hex')}`);
-    console.log(`📋 DEBUG: Metadata AAD: ${metadataJSON.toString('hex')}`);
 
     // Decrypt the file using metadata as additional authenticated data
     const decipher = crypto.createDecipheriv('aes-256-gcm', encKey, nonce);

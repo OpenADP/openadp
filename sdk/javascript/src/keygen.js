@@ -232,14 +232,7 @@ export async function generateEncryptionKey(
         
         console.log(`OpenADP: Registering shares with ${clients.length} servers...`);
         
-        // Debug: Show the U and S points
-        const hPointAffine = unexpand(hPoint);
-        const sPointAffine = unexpand(sPoint);
-        console.log(`🔍 JS ENCRYPTION DEBUG: U point (H(uid,did,bid,pin)) affine = Point(x=${hPointAffine.x}, y=${hPointAffine.y})`);
-        console.log(`🔍 JS ENCRYPTION DEBUG: S point (secret*U) affine = Point(x=${sPointAffine.x}, y=${sPointAffine.y})`);
-        
         // Debug: Compute si*U values that will be sent to servers
-        console.log(`🔍 JS ENCRYPTION DEBUG: Computing si*U values for each server:`);
         for (let i = 0; i < clients.length; i++) {
             const [x, y] = shares[i];
             const si = y; // The Shamir share value

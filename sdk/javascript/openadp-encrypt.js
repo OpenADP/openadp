@@ -119,7 +119,6 @@ async function encryptFile(inputFilename, password, userId, serverInfos, servers
     
     console.log(`🔑 Generated authentication codes for ${Object.keys(authCodes.serverAuthCodes).length} servers`);
     console.log(`🔑 Key generated successfully (UID=${userId}, DID=${getHostname()}, BID=file://${path.basename(inputFilename)})`);
-    console.log(`🔑 DEBUG: Encryption key: ${encKey.toString('hex')}`);
     
     // Show which servers were actually used for key generation
     if (actualServerUrls.length > 0 && actualServerUrls.length !== serverInfos.length) {

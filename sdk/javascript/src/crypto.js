@@ -274,15 +274,10 @@ export function pointAdd(p1, p2) {
  * Multiply point by scalar using double-and-add
  */
 export function pointMul(scalar, point) {
-    // Debug logging to match Go implementation
-    console.log(`🔍 JS POINTMUL DEBUG: Input scalar s = ${scalar.toString()}`);
-    console.log(`🔍 JS POINTMUL DEBUG: Input point P = (${point.x.toString()}, ${point.y.toString()}, ${point.z.toString()}, ${point.t.toString()})`);
-    
     // Convert to affine coordinates for clearer debugging (like Go)
     const zInv = modInverse(point.z, P);
     const affineX = (point.x * zInv) % P;
     const affineY = (point.y * zInv) % P;
-    console.log(`🔍 JS POINTMUL DEBUG: Input point P (affine) = (${affineX.toString()}, ${affineY.toString()})`);
     
     if (scalar === 0n) {
         return new Point4D(0n, 1n, 1n, 0n); // Identity point
@@ -304,8 +299,6 @@ export function pointMul(scalar, point) {
     const resultZinv = modInverse(result.z, P);
     const resultX = (result.x * resultZinv) % P;
     const resultY = (result.y * resultZinv) % P;
-    console.log(`🔍 JS POINTMUL DEBUG: Result Q = (${result.x.toString()}, ${result.y.toString()}, ${result.z.toString()}, ${result.t.toString()})`);
-    console.log(`🔍 JS POINTMUL DEBUG: Result Q (affine) = (${resultX.toString()}, ${resultY.toString()})`);
     
     return result;
 }
