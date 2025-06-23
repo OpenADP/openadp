@@ -8,6 +8,7 @@ SERVER_BINARY_NAME=openadp-server
 ENCRYPT_BINARY_NAME=openadp-encrypt
 DECRYPT_BINARY_NAME=openadp-decrypt
 KEYGEN_BINARY_NAME=openadp-keygen
+SERVERINFO_BINARY_NAME=openadp-serverinfo
 TEST_RUNNER_BINARY_NAME=run-tests
 VERSION=1.0.0
 BUILD_DIR=build
@@ -26,10 +27,10 @@ GOFMT=$(GOCMD) fmt
 # Build flags
 LDFLAGS=-ldflags "-X main.version=$(VERSION)"
 
-.PHONY: all build build-cli build-server build-encrypt build-decrypt build-keygen build-test-runner clean test test-verbose deps fmt lint help install demo server encrypt decrypt keygen run-tests fuzz fuzz-server fuzz-crypto fuzz-api fuzz-all fuzz-quick fuzz-extended fuzz-coverage fuzz-clean fuzz-help
+.PHONY: all build build-cli build-server build-encrypt build-decrypt build-keygen build-serverinfo build-test-runner clean test test-verbose deps fmt lint help install demo server encrypt decrypt keygen serverinfo run-tests fuzz fuzz-server fuzz-crypto fuzz-api fuzz-all fuzz-quick fuzz-extended fuzz-coverage fuzz-clean fuzz-help
 
 # Default target
-all: clean deps fmt test build build-cli build-server build-encrypt build-decrypt build-keygen build-test-runner
+all: clean deps fmt test build build-cli build-server build-encrypt build-decrypt build-keygen build-serverinfo build-test-runner
 
 # Build the demo application
 build:
@@ -60,6 +61,11 @@ build-decrypt:
 build-keygen:
 	@echo "🔨 Building OpenADP key generation tool..."
 	$(GOBUILD) -o $(BUILD_DIR)/$(KEYGEN_BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/openadp-keygen
+
+# Build the server info tool
+build-serverinfo:
+	@echo "🔨 Building OpenADP server info tool..."
+	$(GOBUILD) -o $(BUILD_DIR)/$(SERVERINFO_BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/openadp-serverinfo
 
 # Build the test runner
 build-test-runner:
@@ -136,7 +142,7 @@ lint:
 	fi
 
 # Install binaries to GOPATH/bin
-install: build build-cli build-server build-encrypt build-decrypt build-keygen build-test-runner
+install: build build-cli build-server build-encrypt build-decrypt build-keygen build-serverinfo build-test-runner
 	@echo "📥 Installing binaries..."
 	cp $(BUILD_DIR)/$(BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(CLI_BINARY_NAME) $(GOPATH)/bin/
@@ -144,6 +150,7 @@ install: build build-cli build-server build-encrypt build-decrypt build-keygen b
 	cp $(BUILD_DIR)/$(ENCRYPT_BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(DECRYPT_BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(KEYGEN_BINARY_NAME) $(GOPATH)/bin/
+	cp $(BUILD_DIR)/$(SERVERINFO_BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(TEST_RUNNER_BINARY_NAME) $(GOPATH)/bin/
 	@echo "✅ Installed all binaries to $(GOPATH)/bin/"
 
@@ -171,6 +178,11 @@ encrypt: build-encrypt
 decrypt: build-decrypt
 	@echo "🔓 Running OpenADP decryption tool..."
 	./$(BUILD_DIR)/$(DECRYPT_BINARY_NAME) -help
+
+# Run the server info tool
+serverinfo: build-serverinfo
+	@echo "📋 Running OpenADP server info tool..."
+	./$(BUILD_DIR)/$(SERVERINFO_BINARY_NAME) -help
 
 # Generate authentication code
 auth-code: build-cli

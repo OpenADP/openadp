@@ -39,6 +39,102 @@ are cases where rational folks would agree to hand over that data, and we hope
 we can end the encryption wars and develop sane public policies that protect
 user data while offering a compromise where lives can be saved.
 
+## Getting Started
+
+### Prerequisites
+
+Before working with OpenADP, ensure you have the following installed:
+
+- **Go** (version 1.18 or later) - for the main server implementation
+- **Python 3** (version 3.7 or later) - for SDK and testing tools
+- **Node.js** - for JavaScript SDK components
+- **Make** - for building and running tests
+
+### Environment Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd openadp
+   ```
+
+2. **Set up Python virtual environment:**
+   ```bash
+   # Create a virtual environment
+   python3 -m venv venv
+   
+   # Activate the virtual environment
+   source venv/bin/activate
+   
+   # Install Python SDK dependencies
+   pip install -r sdk/python/requirements.txt
+   
+   # Install the Python SDK in development mode (optional, for development)
+   cd sdk/python && pip install -e . && cd ../..
+   ```
+
+3. **Build the Go components:**
+   ```bash
+   make build
+   ```
+
+4. **Verify your setup:**
+   ```bash
+   # Run all tests to ensure everything is working
+   ./run_all_tests.py
+   ```
+
+### Quick Test
+
+After setup, you should see all tests passing:
+```bash
+(.venv) $ ./run_all_tests.py
+✅ Go build: PASS
+✅ Go unit tests: PASS
+✅ Go integration tests: PASS
+...
+📈 Total: 10 tests
+✅ Passed: 10
+```
+
+### Important Notes for New Contributors
+
+- **Always activate the virtual environment** before working with Python components: `source venv/bin/activate`
+- The `(.venv)` prefix in your terminal prompt indicates the virtual environment is active
+- If you see import errors or test failures, ensure you're in the activated virtual environment
+- Run `./run_all_tests.py` after making changes to verify nothing is broken
+
+### Troubleshooting
+
+**"Virtual environment not found" error:**
+```bash
+# Make sure you created the venv in the project root directory
+python3 -m venv venv
+source venv/bin/activate
+```
+
+**Python import errors:**
+```bash
+# Ensure you're in the activated virtual environment and dependencies are installed
+source venv/bin/activate
+pip install -r sdk/python/requirements.txt
+```
+
+**Test failures after setup:**
+```bash
+# Verify your environment step by step
+source venv/bin/activate        # Activate virtual environment
+make build                      # Build Go components
+./run_all_tests.py --verbose    # Run tests with detailed output
+```
+
+**Node.js/JavaScript related failures:**
+```bash
+# Ensure Node.js is installed and accessible
+node --version
+npm --version
+```
+
 ## High level design
 
 The operator `*` here means scalar multiplication of an elliptic curve point.
@@ -341,9 +437,12 @@ For additional technical documentation, see the [`docs/`](docs/) directory:
 
 ## Testing
 
-OpenADP includes comprehensive tests across all components:
+OpenADP includes comprehensive tests across all components. **Before running tests, ensure you have completed the [environment setup](#environment-setup)** above.
 
 ```bash
+# Activate virtual environment (if not already active)
+source venv/bin/activate
+
 # Run all tests
 ./run_all_tests.py
 
