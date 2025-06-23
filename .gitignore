@@ -49,8 +49,6 @@ yarn-error.log*
 *.test
 fuzz_test_*.db
 fuzz_test_*.db-journal
-test
-test.enc
 test-file.txt
 test-file.txt.enc
 
