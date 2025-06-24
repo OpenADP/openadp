@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/openadp/openadp/pkg/crypto"
+	"github.com/openadp/common/crypto"
 )
 
 const version = "1.0.0"

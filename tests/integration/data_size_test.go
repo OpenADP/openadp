@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openadp/openadp/pkg/client"
-	"github.com/openadp/openadp/pkg/crypto"
+	"github.com/openadp/client/client"
+	"github.com/openadp/common/crypto"
 )
 
 // Test cases for different Y value sizes

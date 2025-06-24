@@ -6,11 +6,11 @@ import (
 	"log"
 	"math/big"
 
-	"github.com/openadp/openadp/pkg/auth"
-	"github.com/openadp/openadp/pkg/client"
-	"github.com/openadp/openadp/pkg/crypto"
-	"github.com/openadp/openadp/pkg/keygen"
-	"github.com/openadp/openadp/pkg/sharing"
+	"github.com/openadp/client/client"
+	"github.com/openadp/client/keygen"
+	"github.com/openadp/common/crypto"
+	"github.com/openadp/common/sharing"
+	"github.com/openadp/server/auth"
 )
 
 func main() {

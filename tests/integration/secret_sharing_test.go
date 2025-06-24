@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openadp/openadp/pkg/client"
-	"github.com/openadp/openadp/pkg/crypto"
-	"github.com/openadp/openadp/pkg/sharing"
+	"github.com/openadp/client/client"
+	"github.com/openadp/common/crypto"
+	"github.com/openadp/common/sharing"
 )
 
 func TestSecretSharingBasic(t *testing.T) {

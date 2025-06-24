@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/openadp/openadp/pkg/database"
+	"github.com/openadp/server/database"
 )
 
 func TestDatabaseLookup(t *testing.T) {

@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openadp/openadp/pkg/auth"
-	"github.com/openadp/openadp/pkg/crypto"
-	"github.com/openadp/openadp/pkg/database"
-	"github.com/openadp/openadp/pkg/server"
+	"github.com/openadp/common/crypto"
+	"github.com/openadp/server/auth"
+	"github.com/openadp/server/database"
+	"github.com/openadp/server/server"
 )
 
 func TestCompleteRegistrationFlow(t *testing.T) {

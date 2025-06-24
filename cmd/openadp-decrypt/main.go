@@ -13,8 +13,8 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/openadp/openadp/pkg/client"
-	"github.com/openadp/openadp/pkg/keygen"
+	"github.com/openadp/client/client"
+	"github.com/openadp/client/keygen"
 )
 
 const (

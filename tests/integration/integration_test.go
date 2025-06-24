@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openadp/openadp/pkg/auth"
-	"github.com/openadp/openadp/pkg/keygen"
+	"github.com/openadp/client/keygen"
+	"github.com/openadp/server/auth"
 )
 
 func TestOpenADPIntegration(t *testing.T) {

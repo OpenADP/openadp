@@ -19,9 +19,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/openadp/openadp/pkg/auth"
-	"github.com/openadp/openadp/pkg/crypto"
-	"github.com/openadp/openadp/pkg/sharing"
+	"github.com/openadp/common/crypto"
+	"github.com/openadp/common/sharing"
+	"github.com/openadp/server/auth"
 )
 
 const version = "1.0.0"

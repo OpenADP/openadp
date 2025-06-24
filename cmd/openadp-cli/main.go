@@ -11,9 +11,9 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/openadp/openadp/pkg/auth"
-	"github.com/openadp/openadp/pkg/client"
-	"github.com/openadp/openadp/pkg/keygen"
+	"github.com/openadp/client/client"
+	"github.com/openadp/client/keygen"
+	"github.com/openadp/server/auth"
 )
 
 const (

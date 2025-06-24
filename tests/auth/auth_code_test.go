@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openadp/openadp/pkg/auth"
+	"github.com/openadp/server/auth"
 )
 
 func TestAuthCodeRandomness(t *testing.T) {

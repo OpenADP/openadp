@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/openadp/openadp/pkg/client"
+	"github.com/openadp/client/client"
 )
 
 // TestServer represents a running test server instance

@@ -16,9 +16,9 @@ import (
 	"github.com/flynn/noise"
 	"github.com/gorilla/mux"
 
-	"github.com/openadp/openadp/pkg/crypto"
-	"github.com/openadp/openadp/pkg/database"
-	"github.com/openadp/openadp/pkg/server"
+	"github.com/openadp/common/crypto"
+	"github.com/openadp/server/database"
+	"github.com/openadp/server/server"
 )
 
 const (

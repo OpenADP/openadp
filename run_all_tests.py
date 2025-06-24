@@ -170,19 +170,38 @@ class OpenADPTestRunner:
             return TestResult("Go Build", False, duration, stdout, stderr)
     
     def test_go_unit_tests(self) -> TestResult:
-        """Run Go unit tests"""
+        """Run Go unit tests for all modules (common, client, server)"""
         start_time = time.time()
         self.log("🧪 Running Go unit tests...", Colors.INFO)
         
-        success, stdout, stderr = self.run_command(["go", "test", "./pkg/...", "-v"])
-        duration = time.time() - start_time
+        # Run tests for each module separately
+        modules = ["common", "client", "server"]
+        all_output = []
+        all_errors = []
+        overall_success = True
         
-        if success:
+        for module in modules:
+            self.log(f"  📦 Testing {module} module...", Colors.INFO)
+            success, stdout, stderr = self.run_command(["go", "test", "./...", "-v"], cwd=self.root_dir / module)
+            all_output.append(f"=== {module.upper()} MODULE TESTS ===\n{stdout}")
+            if stderr:
+                all_errors.append(f"=== {module.upper()} MODULE ERRORS ===\n{stderr}")
+            if not success:
+                overall_success = False
+                self.log(f"  ❌ {module} module tests: FAIL", Colors.FAILURE)
+            else:
+                self.log(f"  ✅ {module} module tests: PASS", Colors.SUCCESS)
+        
+        duration = time.time() - start_time
+        combined_output = "\n\n".join(all_output)
+        combined_errors = "\n\n".join(all_errors) if all_errors else None
+        
+        if overall_success:
             self.log("✅ Go unit tests: PASS", Colors.SUCCESS)
-            return TestResult("Go Unit Tests", True, duration, stdout)
+            return TestResult("Go Unit Tests", True, duration, combined_output)
         else:
             self.log("❌ Go unit tests: FAIL", Colors.FAILURE)
-            return TestResult("Go Unit Tests", False, duration, stdout, stderr)
+            return TestResult("Go Unit Tests", False, duration, combined_output, combined_errors)
     
     def test_go_integration_tests(self) -> TestResult:
         """Run Go integration tests"""

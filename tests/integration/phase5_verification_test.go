@@ -130,8 +130,8 @@ func TestPhase5AuthCodeSystem(t *testing.T) {
 
 	// Verify that the auth code system components exist
 	components := []string{
-		"../../pkg/auth/auth_code_manager.go",
-		"../../pkg/middleware/auth_middleware.go",
+		"../../server/auth/auth_code_manager.go",
+		"../../server/middleware/auth_middleware.go",
 		"../../cmd/openadp-demo/main.go",
 	}
 

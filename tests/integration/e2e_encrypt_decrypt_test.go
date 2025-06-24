@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openadp/openadp/pkg/client"
+	"github.com/openadp/client/client"
 )
 
 type E2ETestSuite struct {
