@@ -4,8 +4,7 @@ go 1.23.0
 
 require (
 	github.com/flynn/noise v1.1.0
-	github.com/openadp/common v0.1.0
-	github.com/openadp/openadp v0.0.0-20250623003851-a0cf9be561e8
+	github.com/openadp/ocrypt v0.1.0
 	modernc.org/sqlite v1.33.1
 )
 
@@ -26,4 +25,4 @@ require (
 	modernc.org/token v1.1.0 // indirect
 )
 
-replace github.com/openadp/common => ../common
+replace github.com/openadp/ocrypt => ../ocrypt

@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/openadp/common/noise"
+	"github.com/openadp/ocrypt/common"
 )
 
 // EncryptedOpenADPClient extends the basic client with Noise-NK encryption support
@@ -98,7 +98,7 @@ func (c *EncryptedOpenADPClient) makeEncryptedRequest(method string, params inte
 	sessionID := fmt.Sprintf("session_%d", time.Now().UnixNano())
 
 	// Step 2: Create Noise client
-	noiseClient, err := noise.NewNoiseNK("initiator", nil, c.serverPublicKey, []byte(""))
+	noiseClient, err := common.NewNoiseNK("initiator", nil, c.serverPublicKey, []byte(""))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Noise client: %v", err)
 	}

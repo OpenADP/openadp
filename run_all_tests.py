@@ -170,12 +170,12 @@ class OpenADPTestRunner:
             return TestResult("Go Build", False, duration, stdout, stderr)
     
     def test_go_unit_tests(self) -> TestResult:
-        """Run Go unit tests for all modules (common, client, server)"""
+        """Run Go unit tests for all modules (ocrypt, server)"""
         start_time = time.time()
         self.log("🧪 Running Go unit tests...", Colors.INFO)
         
         # Run tests for each module separately
-        modules = ["common", "client", "server"]
+        modules = ["ocrypt", "server"]
         all_output = []
         all_errors = []
         overall_success = True

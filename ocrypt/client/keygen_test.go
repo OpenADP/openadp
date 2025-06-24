@@ -1,9 +1,8 @@
-package keygen
+package client
 
 import (
 	"testing"
 
-	"github.com/openadp/client/client"
 )
 
 // Test individual keygen functions without server dependencies
@@ -232,7 +231,7 @@ func TestGenerateEncryptionKeyInputValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := GenerateEncryptionKey(tt.filename, tt.password, tt.userID,
-				tt.maxGuesses, tt.expiration, client.ConvertURLsToServerInfo(tt.serverURLs))
+				tt.maxGuesses, tt.expiration, ConvertURLsToServerInfo(tt.serverURLs))
 
 			if tt.wantError && result.Error == "" {
 				t.Errorf("GenerateEncryptionKey() expected error but got none")
@@ -250,7 +249,7 @@ func TestRecoverEncryptionKeyInputValidation(t *testing.T) {
 		filename    string
 		password    string
 		userID      string
-		serverInfos []client.ServerInfo
+		serverInfos []ServerInfo
 		threshold   int
 		authCodes   *AuthCodes
 		wantError   bool
@@ -260,7 +259,7 @@ func TestRecoverEncryptionKeyInputValidation(t *testing.T) {
 			filename:    "",
 			password:    "test",
 			userID:      "user",
-			serverInfos: []client.ServerInfo{{URL: "http://server1.com"}},
+			serverInfos: []ServerInfo{{URL: "http://server1.com"}},
 			threshold:   1,
 			authCodes:   &AuthCodes{},
 			wantError:   true,
@@ -270,7 +269,7 @@ func TestRecoverEncryptionKeyInputValidation(t *testing.T) {
 			filename:    "test.txt",
 			password:    "test",
 			userID:      "",
-			serverInfos: []client.ServerInfo{{URL: "http://server1.com"}},
+			serverInfos: []ServerInfo{{URL: "http://server1.com"}},
 			threshold:   1,
 			authCodes:   &AuthCodes{},
 			wantError:   true,
@@ -280,7 +279,7 @@ func TestRecoverEncryptionKeyInputValidation(t *testing.T) {
 			filename:    "test.txt",
 			password:    "test",
 			userID:      "user",
-			serverInfos: []client.ServerInfo{{URL: "http://server1.com"}},
+			serverInfos: []ServerInfo{{URL: "http://server1.com"}},
 			threshold:   0,
 			authCodes:   &AuthCodes{},
 			wantError:   true,
@@ -290,7 +289,7 @@ func TestRecoverEncryptionKeyInputValidation(t *testing.T) {
 			filename:    "test.txt",
 			password:    "test",
 			userID:      "user",
-			serverInfos: []client.ServerInfo{{URL: "http://server1.com"}},
+			serverInfos: []ServerInfo{{URL: "http://server1.com"}},
 			threshold:   -1,
 			authCodes:   &AuthCodes{},
 			wantError:   true,
@@ -300,7 +299,7 @@ func TestRecoverEncryptionKeyInputValidation(t *testing.T) {
 			filename:    "test.txt",
 			password:    "test",
 			userID:      "user",
-			serverInfos: []client.ServerInfo{},
+			serverInfos: []ServerInfo{},
 			threshold:   1,
 			authCodes:   &AuthCodes{},
 			wantError:   true,
@@ -310,7 +309,7 @@ func TestRecoverEncryptionKeyInputValidation(t *testing.T) {
 			filename:    "test.txt",
 			password:    "test",
 			userID:      "user",
-			serverInfos: []client.ServerInfo{{URL: "http://server1.com"}},
+			serverInfos: []ServerInfo{{URL: "http://server1.com"}},
 			threshold:   1,
 			authCodes:   nil,
 			wantError:   true,
@@ -402,7 +401,7 @@ func TestKeygenRoundTrip(t *testing.T) {
 
 	// Step 1: Generate encryption key
 	t.Log("🔐 Generating encryption key...")
-	result := GenerateEncryptionKey(filename, password, userID, maxGuesses, expiration, client.ConvertURLsToServerInfo(serverURLs))
+	result := GenerateEncryptionKey(filename, password, userID, maxGuesses, expiration, ConvertURLsToServerInfo(serverURLs))
 	if result.Error != "" {
 		t.Skipf("Key generation failed (servers not available): %s", result.Error)
 	}
@@ -412,7 +411,7 @@ func TestKeygenRoundTrip(t *testing.T) {
 
 	// Step 2: Recover encryption key
 	t.Log("🔓 Recovering encryption key...")
-	serverInfos := client.ConvertURLsToServerInfo(result.ServerURLs)
+	serverInfos := ConvertURLsToServerInfo(result.ServerURLs)
 	recoveryResult := RecoverEncryptionKeyWithServerInfo(filename, password, userID, serverInfos, result.Threshold, result.AuthCodes)
 	if recoveryResult.Error != "" {
 		t.Fatalf("Key recovery failed: %s", recoveryResult.Error)

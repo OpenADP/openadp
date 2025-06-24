@@ -6,14 +6,14 @@
 // - Working with elliptic curve points for OpenADP
 //
 // Based on: https://en.wikipedia.org/wiki/Shamir%27s_secret_sharing
-package sharing
+package client
 
 import (
 	"crypto/rand"
 	"errors"
 	"math/big"
 
-	"github.com/openadp/common/crypto"
+	"github.com/openadp/ocrypt/common"
 )
 
 // Share represents a (x, y) coordinate pair
@@ -24,7 +24,7 @@ type Share struct {
 // PointShare represents a (x, point) pair
 type PointShare struct {
 	X     *big.Int
-	Point *crypto.Point2D
+	Point *common.Point2D
 }
 
 // evalAt evaluates polynomial (coefficient slice) at x
@@ -54,7 +54,7 @@ func MakeRandomShares(secret *big.Int, minimum, shares int) ([]*Share, error) {
 		return nil, errors.New("pool secret would be irrecoverable")
 	}
 
-	prime := crypto.Q
+	prime := common.Q
 
 	// Handle edge case where minimum = 0
 	if minimum == 0 {
@@ -105,12 +105,12 @@ func MakeRandomShares(secret *big.Int, minimum, shares int) ([]*Share, error) {
 //
 //	w[i] = product(j != i, x[j]/(x[j] - x[i]))
 //	s*B = sum(w[i] * s[i]*B)
-func RecoverSB(shares []*PointShare) (*crypto.Point2D, error) {
+func RecoverSB(shares []*PointShare) (*common.Point2D, error) {
 	if len(shares) == 0 {
 		return nil, errors.New("no shares provided")
 	}
 
-	prime := crypto.Q
+	prime := common.Q
 
 	// Compute Lagrange interpolation weights w[i]
 	weights := make([]*big.Int, len(shares))
@@ -145,20 +145,20 @@ func RecoverSB(shares []*PointShare) (*crypto.Point2D, error) {
 	}
 
 	// Compute weighted sum: s*B = sum(w[i] * s[i]*B)
-	sb := crypto.ZeroPoint
+	sb := common.ZeroPoint
 
 	for i, share := range shares {
 		// Convert point to extended coordinates, multiply by weight, and add
-		extendedPoint := crypto.Expand(&crypto.Point2D{
+		extendedPoint := common.Expand(&common.Point2D{
 			X: new(big.Int).Set(share.Point.X),
 			Y: new(big.Int).Set(share.Point.Y),
 		})
 
-		weightedPoint := crypto.PointMul(weights[i], extendedPoint)
-		sb = crypto.PointAdd(sb, weightedPoint)
+		weightedPoint := common.PointMul(weights[i], extendedPoint)
+		sb = common.PointAdd(sb, weightedPoint)
 	}
 
-	result := crypto.Unexpand(sb)
+	result := common.Unexpand(sb)
 	return result, nil
 }
 
@@ -168,7 +168,7 @@ func RecoverSecret(shares []*Share) (*big.Int, error) {
 		return nil, errors.New("no shares provided")
 	}
 
-	prime := crypto.Q
+	prime := common.Q
 
 	// Compute Lagrange interpolation weights w[i]
 	weights := make([]*big.Int, len(shares))
@@ -216,12 +216,12 @@ func RecoverSecret(shares []*Share) (*big.Int, error) {
 
 // RecoverPointSecret recovers s*B from threshold number of point shares using Lagrange interpolation
 // This is used when the shares are points on the elliptic curve (si * B) rather than scalar values
-func RecoverPointSecret(shares []*PointShare) (*crypto.Point2D, error) {
+func RecoverPointSecret(shares []*PointShare) (*common.Point2D, error) {
 	if len(shares) == 0 {
 		return nil, errors.New("no shares provided")
 	}
 
-	prime := crypto.Q
+	prime := common.Q
 
 	// Compute Lagrange interpolation weights w[i]
 	weights := make([]*big.Int, len(shares))
@@ -256,19 +256,19 @@ func RecoverPointSecret(shares []*PointShare) (*crypto.Point2D, error) {
 	}
 
 	// Compute weighted sum: s*B = sum(w[i] * si*B)
-	sb := crypto.ZeroPoint
+	sb := common.ZeroPoint
 
 	for i, share := range shares {
 		// Convert point to extended coordinates, multiply by weight, and add
-		extendedPoint := crypto.Expand(&crypto.Point2D{
+		extendedPoint := common.Expand(&common.Point2D{
 			X: new(big.Int).Set(share.Point.X),
 			Y: new(big.Int).Set(share.Point.Y),
 		})
 
-		weightedPoint := crypto.PointMul(weights[i], extendedPoint)
-		sb = crypto.PointAdd(sb, weightedPoint)
+		weightedPoint := common.PointMul(weights[i], extendedPoint)
+		sb = common.PointAdd(sb, weightedPoint)
 	}
 
-	result := crypto.Unexpand(sb)
+	result := common.Unexpand(sb)
 	return result, nil
 }

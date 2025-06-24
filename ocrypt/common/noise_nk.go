@@ -1,5 +1,5 @@
 // Package noise provides Noise-NK protocol implementation for OpenADP.
-package noise
+package common
 
 import (
 	"crypto/rand"

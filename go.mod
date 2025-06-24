@@ -7,8 +7,7 @@ toolchain go1.23.10
 require (
 	github.com/flynn/noise v1.1.0
 	github.com/gorilla/mux v1.8.1
-	github.com/openadp/client v0.1.0
-	github.com/openadp/common v0.1.0
+	github.com/openadp/ocrypt v0.1.0
 	github.com/openadp/server v0.1.0
 	golang.org/x/term v0.32.0
 )
@@ -31,8 +30,6 @@ require (
 	modernc.org/token v1.1.0 // indirect
 )
 
-replace github.com/openadp/common => ./common
-
-replace github.com/openadp/client => ./client
+replace github.com/openadp/ocrypt => ./ocrypt
 
 replace github.com/openadp/server => ./server

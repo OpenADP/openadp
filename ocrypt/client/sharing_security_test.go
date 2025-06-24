@@ -1,16 +1,16 @@
-package sharing
+package client
 
 import (
 	"crypto/rand"
 	"math/big"
 	"testing"
 
-	"github.com/openadp/common/crypto"
+	"github.com/openadp/ocrypt/common"
 )
 
 // TestEvalAt tests the critical evalAt function that has 0% coverage
 func TestEvalAt(t *testing.T) {
-	prime := crypto.Q // Use the same prime as in the actual implementation
+	prime := common.Q // Use the same prime as in the actual implementation
 
 	// Test polynomial evaluation at various points
 	tests := []struct {
@@ -66,7 +66,7 @@ func TestEvalAt(t *testing.T) {
 
 // TestEvalAtWithLargeNumbers tests evalAt with large numbers and edge cases
 func TestEvalAtWithLargeNumbers(t *testing.T) {
-	prime := crypto.Q
+	prime := common.Q
 
 	// Test with large coefficients
 	largePrime, _ := new(big.Int).SetString("2147483647", 10) // 2^31 - 1
@@ -104,7 +104,7 @@ func TestEvalAtWithLargeNumbers(t *testing.T) {
 
 // TestEvalAtEmptyCoefficients tests evalAt with empty coefficients
 func TestEvalAtEmptyCoefficients(t *testing.T) {
-	prime := crypto.Q
+	prime := common.Q
 	coefficients := []*big.Int{}
 	x := big.NewInt(5)
 
@@ -118,7 +118,7 @@ func TestEvalAtEmptyCoefficients(t *testing.T) {
 
 // TestEvalAtNegativeX tests evalAt with negative x values
 func TestEvalAtNegativeX(t *testing.T) {
-	prime := crypto.Q
+	prime := common.Q
 	coefficients := []*big.Int{big.NewInt(1), big.NewInt(2), big.NewInt(3)}
 	x := big.NewInt(-2)
 
@@ -145,7 +145,7 @@ func TestEvalAtNegativeX(t *testing.T) {
 
 // TestEvalAtSingleCoefficient tests evalAt with single coefficient
 func TestEvalAtSingleCoefficient(t *testing.T) {
-	prime := crypto.Q
+	prime := common.Q
 	coefficient := big.NewInt(123456789)
 	coefficients := []*big.Int{coefficient}
 
@@ -278,7 +278,7 @@ func TestSecretSharingEdgeCases(t *testing.T) {
 
 	// Test secret equal to prime - 1 (maximum value)
 	t.Run("maximum secret", func(t *testing.T) {
-		secret := new(big.Int).Sub(crypto.Q, big.NewInt(1))
+		secret := new(big.Int).Sub(common.Q, big.NewInt(1))
 		shares, err := MakeRandomShares(secret, 2, 3)
 		if err != nil {
 			t.Errorf("MakeRandomShares() with maximum secret failed: %v", err)
@@ -298,7 +298,7 @@ func TestSecretSharingEdgeCases(t *testing.T) {
 
 	// Test with random large secret
 	t.Run("random large secret", func(t *testing.T) {
-		secret, err := rand.Int(rand.Reader, crypto.Q)
+		secret, err := rand.Int(rand.Reader, common.Q)
 		if err != nil {
 			t.Fatalf("Failed to generate random secret: %v", err)
 		}

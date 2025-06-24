@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/openadp/common/crypto"
+	"github.com/openadp/ocrypt/common"
 	"github.com/openadp/server/database"
 )
 
@@ -41,7 +41,7 @@ type RecoverSecretRequest struct {
 	DID      string          `json:"did"`
 	BID      string          `json:"bid"`
 	AuthCode string          `json:"auth_code"`
-	B        *crypto.Point2D `json:"b"`
+	B        *common.Point2D `json:"b"`
 	GuessNum int             `json:"guess_num"`
 }
 
@@ -49,7 +49,7 @@ type RecoverSecretRequest struct {
 type RecoverSecretResponse struct {
 	Version    int             `json:"version"`
 	X          int             `json:"x"`
-	SiB        *crypto.Point2D `json:"si_b"`
+	SiB        *common.Point2D `json:"si_b"`
 	NumGuesses int             `json:"num_guesses"`
 	MaxGuesses int             `json:"max_guesses"`
 	Expiration int64           `json:"expiration"`
@@ -67,14 +67,14 @@ type ListBackupsResponse struct {
 }
 
 // pointValid checks if a point is valid using proper Ed25519 validation
-func pointValid(p *crypto.Point2D) bool {
+func pointValid(p *common.Point2D) bool {
 	if p == nil || p.X == nil || p.Y == nil {
 		return false
 	}
 
 	// Convert to Point4D and use the crypto package's validation
-	point4D := crypto.Expand(p)
-	return crypto.IsValidPoint(point4D)
+	point4D := common.Expand(p)
+	return common.IsValidPoint(point4D)
 }
 
 // ValidateRegisterInputs validates inputs for secret registration
@@ -107,7 +107,7 @@ func ValidateRegisterInputs(uid, did, bid string, x int, y []byte, maxGuesses in
 }
 
 // ValidateRecoverInputs validates inputs for secret recovery
-func ValidateRecoverInputs(uid, did, bid string, b *crypto.Point2D) error {
+func ValidateRecoverInputs(uid, did, bid string, b *common.Point2D) error {
 	if len(uid) > MaxIdentifierLength {
 		return fmt.Errorf("UID too long")
 	}
@@ -141,7 +141,7 @@ func RegisterSecret(db *database.Database, uid, did, bid, authCode string, versi
 }
 
 // RecoverSecret recovers a secret share from the server
-func RecoverSecret(db *database.Database, uid, did, bid string, b *crypto.Point2D, guessNum int) (*RecoverSecretResponse, error) {
+func RecoverSecret(db *database.Database, uid, did, bid string, b *common.Point2D, guessNum int) (*RecoverSecretResponse, error) {
 	// Validate inputs
 	if err := ValidateRecoverInputs(uid, did, bid, b); err != nil {
 		return nil, err
@@ -191,19 +191,19 @@ func RecoverSecret(db *database.Database, uid, did, bid string, b *crypto.Point2
 	yInt.SetBytes(yBytes)
 
 	// Convert Point2D to Point4D for multiplication
-	b4D := &crypto.Point4D{
+	b4D := &common.Point4D{
 		X: new(big.Int).Set(b.X),
 		Y: new(big.Int).Set(b.Y),
 		Z: big.NewInt(1),
 		T: new(big.Int).Mul(b.X, b.Y),
 	}
-	b4D.T.Mod(b4D.T, crypto.P)
+	b4D.T.Mod(b4D.T, common.P)
 
 	// Calculate si_b = y * b (scalar multiplication)
-	siB4D := crypto.PointMul(yInt, b4D)
+	siB4D := common.PointMul(yInt, b4D)
 
 	// Convert back to Point2D
-	siB := crypto.Unexpand(siB4D)
+	siB := common.Unexpand(siB4D)
 
 	response := &RecoverSecretResponse{
 		Version:    record.Version,
@@ -218,7 +218,7 @@ func RecoverSecret(db *database.Database, uid, did, bid string, b *crypto.Point2
 }
 
 // RecoverSecretWithAuthCode recovers a secret share using UID+DID+BID as primary key and verifies auth code
-func RecoverSecretWithAuthCode(db *database.Database, authCode, uid, did, bid string, b *crypto.Point2D, guessNum int) (*RecoverSecretResponse, error) {
+func RecoverSecretWithAuthCode(db *database.Database, authCode, uid, did, bid string, b *common.Point2D, guessNum int) (*RecoverSecretResponse, error) {
 	// Look up the stored share using primary key (UID, DID, BID)
 	record, err := db.Lookup(uid, did, bid)
 	if err != nil {
@@ -268,19 +268,19 @@ func RecoverSecretWithAuthCode(db *database.Database, authCode, uid, did, bid st
 	yInt.SetBytes(yBytes)
 
 	// Convert Point2D to Point4D for multiplication
-	b4D := &crypto.Point4D{
+	b4D := &common.Point4D{
 		X: new(big.Int).Set(b.X),
 		Y: new(big.Int).Set(b.Y),
 		Z: big.NewInt(1),
 		T: new(big.Int).Mul(b.X, b.Y),
 	}
-	b4D.T.Mod(b4D.T, crypto.P)
+	b4D.T.Mod(b4D.T, common.P)
 
 	// Calculate si_b = y * b (scalar multiplication)
-	siB4D := crypto.PointMul(yInt, b4D)
+	siB4D := common.PointMul(yInt, b4D)
 
 	// Convert back to Point2D
-	siB := crypto.Unexpand(siB4D)
+	siB := common.Unexpand(siB4D)
 
 	response := &RecoverSecretResponse{
 		Version:    record.Version,
@@ -295,7 +295,7 @@ func RecoverSecretWithAuthCode(db *database.Database, authCode, uid, did, bid st
 }
 
 // RecoverSecretByAuthCode recovers a secret share using authentication code (legacy method)
-func RecoverSecretByAuthCode(db *database.Database, authCode, did, bid string, b *crypto.Point2D, guessNum int) (*RecoverSecretResponse, error) {
+func RecoverSecretByAuthCode(db *database.Database, authCode, did, bid string, b *common.Point2D, guessNum int) (*RecoverSecretResponse, error) {
 	// Look up the stored share by auth code
 	record, err := db.LookupByAuthCode(authCode, did, bid)
 	if err != nil {
@@ -340,19 +340,19 @@ func RecoverSecretByAuthCode(db *database.Database, authCode, did, bid string, b
 	yInt.SetBytes(yBytes)
 
 	// Convert Point2D to Point4D for multiplication
-	b4D := &crypto.Point4D{
+	b4D := &common.Point4D{
 		X: new(big.Int).Set(b.X),
 		Y: new(big.Int).Set(b.Y),
 		Z: big.NewInt(1),
 		T: new(big.Int).Mul(b.X, b.Y),
 	}
-	b4D.T.Mod(b4D.T, crypto.P)
+	b4D.T.Mod(b4D.T, common.P)
 
 	// Calculate si_b = y * b (scalar multiplication)
-	siB4D := crypto.PointMul(yInt, b4D)
+	siB4D := common.PointMul(yInt, b4D)
 
 	// Convert back to Point2D
-	siB := crypto.Unexpand(siB4D)
+	siB := common.Unexpand(siB4D)
 
 	response := &RecoverSecretResponse{
 		Version:    record.Version,
@@ -433,14 +433,14 @@ func GetServerInfo(version string, noiseNKKey []byte, monitoring *MonitoringTrac
 }
 
 // convertPoint2DTo4D safely converts a Point2D to Point4D with correct T coordinate
-func convertPoint2DTo4D(p *crypto.Point2D) *crypto.Point4D {
-	result := &crypto.Point4D{
+func convertPoint2DTo4D(p *common.Point2D) *common.Point4D {
+	result := &common.Point4D{
 		X: new(big.Int).Set(p.X),
 		Y: new(big.Int).Set(p.Y),
 		Z: big.NewInt(1),
 		T: new(big.Int).Mul(p.X, p.Y),
 	}
-	result.T.Mod(result.T, crypto.P)
+	result.T.Mod(result.T, common.P)
 	return result
 }
 

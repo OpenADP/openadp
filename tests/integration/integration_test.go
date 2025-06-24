@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openadp/client/keygen"
+	"github.com/openadp/ocrypt/client"
 	"github.com/openadp/server/auth"
 )
 
@@ -65,7 +65,7 @@ func TestOpenADPIntegration(t *testing.T) {
 	bid := "file://integration-test-backup.tar.gz"
 
 	// Use current API signature: DeriveIdentifiers(filename, userID, hostname string) (string, string, string)
-	derivedUID, derivedDID, derivedBID := keygen.DeriveIdentifiers(bid, uid, did)
+	derivedUID, derivedDID, derivedBID := client.DeriveIdentifiers(bid, uid, did)
 
 	fmt.Printf("   Original UID: %s\n", uid)
 	fmt.Printf("   Original DID: %s\n", did)
@@ -75,7 +75,7 @@ func TestOpenADPIntegration(t *testing.T) {
 	fmt.Printf("   Derived BID: %s\n", derivedBID)
 
 	// Verify identifiers are deterministic
-	derivedUID2, derivedDID2, derivedBID2 := keygen.DeriveIdentifiers(bid, uid, did)
+	derivedUID2, derivedDID2, derivedBID2 := client.DeriveIdentifiers(bid, uid, did)
 	if derivedUID != derivedUID2 || derivedDID != derivedDID2 || derivedBID != derivedBID2 {
 		t.Fatalf("Identifier derivation is not deterministic!")
 	}
@@ -103,7 +103,7 @@ func TestOpenADPIntegration(t *testing.T) {
 		}
 	}
 
-	keyResult := keygen.GenerateEncryptionKey(bid, password, uid, 10, expiration, serverInfos)
+	keyResult := client.GenerateEncryptionKey(bid, password, uid, 10, expiration, serverInfos)
 	if keyResult.Error != "" {
 		t.Fatalf("Failed to generate encryption key: %s", keyResult.Error)
 	}
@@ -123,7 +123,7 @@ func TestOpenADPIntegration(t *testing.T) {
 	}
 
 	// Use the same server info with public keys for recovery
-	recoveryResult := keygen.RecoverEncryptionKeyWithServerInfo(bid, password, uid, serverInfos, keyResult.Threshold, authCodes)
+	recoveryResult := client.RecoverEncryptionKeyWithServerInfo(bid, password, uid, serverInfos, keyResult.Threshold, authCodes)
 	if recoveryResult.Error != "" {
 		t.Fatalf("Failed to recover encryption key: %s", recoveryResult.Error)
 	}
@@ -145,8 +145,8 @@ func TestOpenADPIntegration(t *testing.T) {
 	// Step 5: Test password to PIN conversion
 	fmt.Println("\n🔢 Step 5: Testing password to PIN conversion...")
 
-	pin1 := keygen.PasswordToPin(password)
-	pin2 := keygen.PasswordToPin(password)
+	pin1 := client.PasswordToPin(password)
+	pin2 := client.PasswordToPin(password)
 
 	fmt.Printf("   Password: %s\n", password)
 	fmt.Printf("   PIN: %x\n", pin1[:8])

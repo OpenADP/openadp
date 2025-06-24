@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/openadp/client/client"
+	"github.com/openadp/ocrypt/client"
 )
 
 const version = "1.0.0"

@@ -9,11 +9,12 @@
 //
 // This replaces traditional password-based key derivation (like Scrypt) with
 // a distributed approach that provides better security and recovery properties.
-package keygen
+package client
 
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"math/big"
 	"os"
@@ -21,11 +22,7 @@ import (
 	"strconv"
 	"strings"
 
-	"encoding/base64"
-
-	"github.com/openadp/client/client"
-	"github.com/openadp/common/crypto"
-	"github.com/openadp/common/sharing"
+	"github.com/openadp/ocrypt/common"
 )
 
 // DeriveIdentifiers derives UID, DID, and BID for OpenADP operations.
@@ -90,7 +87,7 @@ type GenerateEncryptionKeyResult struct {
 // 4. Uses authentication codes for secure server communication
 // 5. Uses threshold cryptography for recovery
 func GenerateEncryptionKey(filename, password, userID string, maxGuesses, expiration int,
-	serverInfos []client.ServerInfo) *GenerateEncryptionKeyResult {
+	serverInfos []ServerInfo) *GenerateEncryptionKeyResult {
 
 	// Input validation
 	if filename == "" {
@@ -126,7 +123,7 @@ func GenerateEncryptionKey(filename, password, userID string, maxGuesses, expira
 	}
 
 	// Step 4: Initialize encrypted clients for each server using public keys from servers.json
-	clients := make([]*client.EncryptedOpenADPClient, 0, len(serverInfos))
+	clients := make([]*EncryptedOpenADPClient, 0, len(serverInfos))
 	liveServerURLs := make([]string, 0, len(serverInfos))
 
 	for _, serverInfo := range serverInfos {
@@ -155,7 +152,7 @@ func GenerateEncryptionKey(filename, password, userID string, maxGuesses, expira
 		}
 
 		// Create encrypted client with public key from servers.json (secure)
-		client := client.NewEncryptedOpenADPClient(serverInfo.URL, publicKey)
+		client := NewEncryptedOpenADPClient(serverInfo.URL, publicKey)
 		if err := client.Ping(); err == nil {
 			clients = append(clients, client)
 			liveServerURLs = append(liveServerURLs, serverInfo.URL)
@@ -182,10 +179,10 @@ func GenerateEncryptionKey(filename, password, userID string, maxGuesses, expira
 
 	// Step 6: Generate deterministic secret and create point
 	// Use deterministic secret derivation for consistent key generation
-	secret := crypto.DeriveSecret([]byte(uid), []byte(did), []byte(bid), pin)
+	secret := common.DeriveSecret([]byte(uid), []byte(did), []byte(bid), pin)
 
-	U := crypto.H([]byte(uid), []byte(did), []byte(bid), pin)
-	S := crypto.PointMul(secret, U)
+	U := common.H([]byte(uid), []byte(did), []byte(bid), pin)
+	S := common.PointMul(secret, U)
 
 	// Step 7: Create shares using secret sharing
 	threshold := max(1, min(2, len(clients))) // At least 1, prefer 2 if available
@@ -197,7 +194,7 @@ func GenerateEncryptionKey(filename, password, userID string, maxGuesses, expira
 		}
 	}
 
-	shares, err := sharing.MakeRandomShares(secret, threshold, numShares)
+	shares, err := MakeRandomShares(secret, threshold, numShares)
 	if err != nil {
 		return &GenerateEncryptionKeyResult{
 			Error: fmt.Sprintf("Failed to create shares: %v", err),
@@ -251,7 +248,7 @@ func GenerateEncryptionKey(filename, password, userID string, maxGuesses, expira
 	}
 
 	// Step 9: Derive encryption key
-	encKey := crypto.DeriveEncKey(S)
+	encKey := common.DeriveEncKey(S)
 	fmt.Println("OpenADP: Successfully generated encryption key")
 
 	return &GenerateEncryptionKeyResult{
@@ -276,7 +273,7 @@ type RecoverEncryptionKeyResult struct {
 // 3. Recovers shares from OpenADP servers via JSON-RPC with Noise-NK encryption
 // 4. Reconstructs the original secret using threshold cryptography
 // 5. Derives the same encryption key
-func RecoverEncryptionKeyWithServerInfo(filename, password, userID string, serverInfos []client.ServerInfo, threshold int, authCodes *AuthCodes) *RecoverEncryptionKeyResult {
+func RecoverEncryptionKeyWithServerInfo(filename, password, userID string, serverInfos []ServerInfo, threshold int, authCodes *AuthCodes) *RecoverEncryptionKeyResult {
 	// Input validation
 	if filename == "" {
 		return &RecoverEncryptionKeyResult{
@@ -317,7 +314,7 @@ func RecoverEncryptionKeyWithServerInfo(filename, password, userID string, serve
 	}
 
 	// Step 4: Initialize clients for the specific servers, using encryption when public keys are available
-	clients := make([]*client.EncryptedOpenADPClient, 0, len(serverInfos))
+	clients := make([]*EncryptedOpenADPClient, 0, len(serverInfos))
 	liveServerURLs := make([]string, 0, len(serverInfos))
 
 	for _, serverInfo := range serverInfos {
@@ -339,7 +336,7 @@ func RecoverEncryptionKeyWithServerInfo(filename, password, userID string, serve
 			}
 		}
 
-		client := client.NewEncryptedOpenADPClient(serverInfo.URL, publicKey)
+		client := NewEncryptedOpenADPClient(serverInfo.URL, publicKey)
 		if err := client.Ping(); err == nil {
 			clients = append(clients, client)
 			liveServerURLs = append(liveServerURLs, serverInfo.URL)
@@ -357,10 +354,10 @@ func RecoverEncryptionKeyWithServerInfo(filename, password, userID string, serve
 	fmt.Printf("OpenADP: Using %d live servers\n", len(clients))
 
 	// Step 5: Create cryptographic context (same as encryption)
-	U := crypto.H([]byte(uid), []byte(did), []byte(bid), pin)
+	U := common.H([]byte(uid), []byte(did), []byte(bid), pin)
 
 	// Generate random r and compute B for recovery protocol
-	r, err := rand.Int(rand.Reader, crypto.Q)
+	r, err := rand.Int(rand.Reader, common.Q)
 	if err != nil {
 		return &RecoverEncryptionKeyResult{
 			Error: fmt.Sprintf("Failed to generate random r: %v", err),
@@ -368,22 +365,22 @@ func RecoverEncryptionKeyWithServerInfo(filename, password, userID string, serve
 	}
 
 	// Compute r^-1 mod q
-	rInv := new(big.Int).ModInverse(r, crypto.Q)
+	rInv := new(big.Int).ModInverse(r, common.Q)
 	if rInv == nil {
 		return &RecoverEncryptionKeyResult{
 			Error: "Failed to compute modular inverse",
 		}
 	}
 
-	B := crypto.PointMul(r, U)
+	B := common.PointMul(r, U)
 
 	// Convert B to compressed point format (base64 string) - standard format for all servers
-	bCompressed := crypto.PointCompress(B)
+	bCompressed := common.PointCompress(B)
 	bBase64Format := base64.StdEncoding.EncodeToString(bCompressed)
 
 	// Step 6: Recover shares from servers using authentication codes
 	fmt.Println("OpenADP: Recovering shares from servers...")
-	recoveredPointShares := make([]*sharing.PointShare, 0, len(clients))
+	recoveredPointShares := make([]*PointShare, 0, len(clients))
 
 	for i, client := range clients {
 		serverURL := liveServerURLs[i]
@@ -455,17 +452,17 @@ func RecoverEncryptionKeyWithServerInfo(filename, password, userID string, serve
 		}
 
 		// Decompress si_b from the result
-		siB4D, err := crypto.PointDecompress(siBBytes)
+		siB4D, err := common.PointDecompress(siBBytes)
 		if err != nil {
 			fmt.Printf("Server %d (%s): Failed to decompress si_b: %v\n", i+1, serverURL, err)
 			continue
 		}
 
-		siB := crypto.Unexpand(siB4D)
+		siB := common.Unexpand(siB4D)
 
 		// Create point share from recovered data (si * B point)
 		// This matches Python's recover_sb which expects (x, Point2D) pairs
-		pointShare := &sharing.PointShare{
+		pointShare := &PointShare{
 			X:     big.NewInt(int64(x)),
 			Point: siB, // This is si*B point returned by server
 		}
@@ -484,7 +481,7 @@ func RecoverEncryptionKeyWithServerInfo(filename, password, userID string, serve
 	fmt.Printf("OpenADP: Reconstructing secret from %d point shares...\n", len(recoveredPointShares))
 
 	// Use point-based Lagrange interpolation to recover s*B (like Python recover_sb)
-	recoveredSB, err := sharing.RecoverPointSecret(recoveredPointShares)
+	recoveredSB, err := RecoverPointSecret(recoveredPointShares)
 	if err != nil {
 		return &RecoverEncryptionKeyResult{
 			Error: fmt.Sprintf("Failed to reconstruct point secret: %v", err),
@@ -493,11 +490,11 @@ func RecoverEncryptionKeyWithServerInfo(filename, password, userID string, serve
 
 	// Apply r^-1 to get the original secret point: s*U = r^-1 * (s*B)
 	// This matches Python: rec_s_point = crypto.point_mul(r_inv, crypto.expand(rec_sb))
-	recoveredSB4D := crypto.Expand(recoveredSB)
-	originalSU := crypto.PointMul(rInv, recoveredSB4D)
+	recoveredSB4D := common.Expand(recoveredSB)
+	originalSU := common.PointMul(rInv, recoveredSB4D)
 
 	// Step 8: Derive same encryption key
-	encKey := crypto.DeriveEncKey(originalSU)
+	encKey := common.DeriveEncKey(originalSU)
 	fmt.Println("OpenADP: Successfully recovered encryption key")
 
 	return &RecoverEncryptionKeyResult{

@@ -11,8 +11,7 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/openadp/client/client"
-	"github.com/openadp/client/keygen"
+	"github.com/openadp/ocrypt/client"
 	"github.com/openadp/server/auth"
 )
 
@@ -170,19 +169,19 @@ func deriveKey(filename, userID, serversStr string) {
 	}
 
 	// Derive identifiers
-	uid, did, bid := keygen.DeriveIdentifiers(filename, userID, "")
+	uid, did, bid := client.DeriveIdentifiers(filename, userID, "")
 	fmt.Printf("📋 Identifiers:\n")
 	fmt.Printf("   UID: %s\n", uid)
 	fmt.Printf("   DID: %s\n", did)
 	fmt.Printf("   BID: %s\n", bid)
 
 	// Convert password to PIN
-	pin := keygen.PasswordToPin(password)
+	pin := client.PasswordToPin(password)
 	fmt.Printf("🔢 PIN: %02x%02x\n", pin[0], pin[1])
 
 	// Generate key
 	fmt.Printf("🔄 Generating encryption key using %d servers...\n", len(serverURLs))
-	result := keygen.GenerateEncryptionKey(filename, password, userID, 10, 0, client.ConvertURLsToServerInfo(serverURLs))
+	result := client.GenerateEncryptionKey(filename, password, userID, 10, 0, client.ConvertURLsToServerInfo(serverURLs))
 
 	if result.Error != "" {
 		fmt.Printf("❌ Key generation failed: %s\n", result.Error)
@@ -212,8 +211,8 @@ func runTests() {
 
 	// Test 2: Key derivation
 	fmt.Print("2. Key Derivation... ")
-	uid, did, bid := keygen.DeriveIdentifiers("test.txt", "test-user", "")
-	pin := keygen.PasswordToPin("test-password")
+	uid, did, bid := client.DeriveIdentifiers("test.txt", "test-user", "")
+	pin := client.PasswordToPin("test-password")
 	if len(pin) != 2 || uid == "" || did == "" || bid == "" {
 		fmt.Println("❌ FAILED")
 		return

@@ -15,8 +15,7 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/openadp/client/client"
-	"github.com/openadp/client/keygen"
+	"github.com/openadp/ocrypt/client"
 )
 
 const (
@@ -289,7 +288,7 @@ func encryptFile(inputFilename, password, userID string, serverInfos []client.Se
 
 	// Generate encryption key using OpenADP with full distributed protocol
 	fmt.Println("🔄 Generating encryption key using OpenADP servers...")
-	result := keygen.GenerateEncryptionKey(inputFilename, password, userID, 10, 0, serverInfos)
+	result := client.GenerateEncryptionKey(inputFilename, password, userID, 10, 0, serverInfos)
 	if result.Error != "" {
 		return fmt.Errorf("failed to generate encryption key: %s", result.Error)
 	}

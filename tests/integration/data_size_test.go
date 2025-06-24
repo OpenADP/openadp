@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openadp/client/client"
-	"github.com/openadp/common/crypto"
+	"github.com/openadp/ocrypt/client"
+	"github.com/openadp/ocrypt/common"
 )
 
 // Test cases for different Y value sizes
@@ -21,7 +21,7 @@ var testCases = []struct {
 	{new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1)), "64-bit max"},
 	{new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1)), "128-bit max"},
 	{new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 200), big.NewInt(1)), "200-bit max"},
-	{new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 252), big.NewInt(1)), "252-bit max (close to crypto.q)"},
+	{new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 252), big.NewInt(1)), "252-bit max (close to common.q)"},
 }
 
 func TestLargeYValues(t *testing.T) {
@@ -90,10 +90,10 @@ func testYSize(t *testing.T, c *client.Client, yInt *big.Int, description string
 	fmt.Printf("Y bits: %d\n", yInt.BitLen())
 	fmt.Printf("Y bytes needed: %d\n", (yInt.BitLen()+7)/8)
 
-	// Check if Y is within valid range (should be < crypto.Q)
-	if yInt.Cmp(crypto.Q) >= 0 {
-		fmt.Printf("⚠️  Y value exceeds crypto.Q, adjusting...\n")
-		yInt = new(big.Int).Mod(yInt, crypto.Q)
+	// Check if Y is within valid range (should be < common.Q)
+	if yInt.Cmp(common.Q) >= 0 {
+		fmt.Printf("⚠️  Y value exceeds common.Q, adjusting...\n")
+		yInt = new(big.Int).Mod(yInt, common.Q)
 		fmt.Printf("Adjusted Y: %s\n", yInt.String())
 	}
 
@@ -217,9 +217,9 @@ func TestEdgeCaseValues(t *testing.T) {
 	}{
 		{big.NewInt(0), "zero value", true},
 		{big.NewInt(1), "minimum positive", true},
-		{new(big.Int).Sub(crypto.P, big.NewInt(1)), "maximum valid (P-1)", true},
-		{crypto.P, "exactly P (should fail)", false},
-		{new(big.Int).Add(crypto.P, big.NewInt(1)), "P+1 (should fail)", false},
+		{new(big.Int).Sub(common.P, big.NewInt(1)), "maximum valid (P-1)", true},
+		{common.P, "exactly P (should fail)", false},
+		{new(big.Int).Add(common.P, big.NewInt(1)), "P+1 (should fail)", false},
 	}
 
 	for i, tc := range edgeCases {

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/openadp/client/ocrypt"
+	"github.com/openadp/ocrypt/ocrypt"
 )
 
 func main() {

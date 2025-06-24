@@ -1,16 +1,16 @@
-package sharing
+package client
 
 import (
 	"crypto/rand"
 	"math/big"
 	"testing"
 
-	"github.com/openadp/common/crypto"
+	"github.com/openadp/ocrypt/common"
 )
 
 // TestMakeRandomSharesBasic tests basic secret sharing functionality
 func TestMakeRandomSharesBasic(t *testing.T) {
-	secret, _ := rand.Int(rand.Reader, crypto.Q)
+	secret, _ := rand.Int(rand.Reader, common.Q)
 	threshold := 2
 	numShares := 3
 
@@ -62,7 +62,7 @@ func TestMakeRandomSharesEdgeCases(t *testing.T) {
 
 // TestMakeRandomSharesInvalidParams tests secret sharing with invalid parameters
 func TestMakeRandomSharesInvalidParams(t *testing.T) {
-	secret, _ := rand.Int(rand.Reader, crypto.Q)
+	secret, _ := rand.Int(rand.Reader, common.Q)
 
 	// Test threshold > num_shares - should return error
 	_, err := MakeRandomShares(secret, 4, 3)
@@ -103,7 +103,7 @@ func TestMakeRandomSharesInvalidParams(t *testing.T) {
 
 // TestPointShareRecoveryBasic tests basic secret recovery using elliptic curve points
 func TestPointShareRecoveryBasic(t *testing.T) {
-	secret, _ := rand.Int(rand.Reader, crypto.Q)
+	secret, _ := rand.Int(rand.Reader, common.Q)
 	threshold := 3
 	numShares := 5
 
@@ -116,10 +116,10 @@ func TestPointShareRecoveryBasic(t *testing.T) {
 	// Convert to point shares: (x, y*G) where G is the base point
 	pointShares := make([]*PointShare, len(shares))
 	for i, share := range shares {
-		yPoint := crypto.PointMul(share.Y, crypto.G)
+		yPoint := common.PointMul(share.Y, common.G)
 		pointShares[i] = &PointShare{
 			X:     new(big.Int).Set(share.X),
-			Point: crypto.Unexpand(yPoint),
+			Point: common.Unexpand(yPoint),
 		}
 	}
 
@@ -130,8 +130,8 @@ func TestPointShareRecoveryBasic(t *testing.T) {
 	}
 
 	// Verify against expected result
-	expectedPoint4D := crypto.PointMul(secret, crypto.G)
-	expectedPoint := crypto.Unexpand(expectedPoint4D)
+	expectedPoint4D := common.PointMul(secret, common.G)
+	expectedPoint := common.Unexpand(expectedPoint4D)
 
 	if recoveredPoint.X.Cmp(expectedPoint.X) != 0 || recoveredPoint.Y.Cmp(expectedPoint.Y) != 0 {
 		t.Errorf("Recovered point doesn't match expected point")
@@ -140,7 +140,7 @@ func TestPointShareRecoveryBasic(t *testing.T) {
 
 // TestPointShareRecoveryDifferentCombinations tests recovery with different share combinations
 func TestPointShareRecoveryDifferentCombinations(t *testing.T) {
-	secret, _ := rand.Int(rand.Reader, crypto.Q)
+	secret, _ := rand.Int(rand.Reader, common.Q)
 	threshold := 3
 	numShares := 6
 
@@ -152,15 +152,15 @@ func TestPointShareRecoveryDifferentCombinations(t *testing.T) {
 	// Convert to point shares
 	pointShares := make([]*PointShare, len(shares))
 	for i, share := range shares {
-		yPoint := crypto.PointMul(share.Y, crypto.G)
+		yPoint := common.PointMul(share.Y, common.G)
 		pointShares[i] = &PointShare{
 			X:     new(big.Int).Set(share.X),
-			Point: crypto.Unexpand(yPoint),
+			Point: common.Unexpand(yPoint),
 		}
 	}
 
-	expectedPoint4D := crypto.PointMul(secret, crypto.G)
-	expectedPoint := crypto.Unexpand(expectedPoint4D)
+	expectedPoint4D := common.PointMul(secret, common.G)
+	expectedPoint := common.Unexpand(expectedPoint4D)
 
 	// Test different combinations of threshold shares
 	// Test first 3, middle 3, last 3
@@ -191,7 +191,7 @@ func TestPointShareRecoveryDifferentCombinations(t *testing.T) {
 
 // TestPointShareRecoveryInsufficientShares tests recovery with insufficient shares
 func TestPointShareRecoveryInsufficientShares(t *testing.T) {
-	secret, _ := rand.Int(rand.Reader, crypto.Q)
+	secret, _ := rand.Int(rand.Reader, common.Q)
 	threshold := 4
 	numShares := 6
 
@@ -203,10 +203,10 @@ func TestPointShareRecoveryInsufficientShares(t *testing.T) {
 	// Convert to point shares
 	pointShares := make([]*PointShare, len(shares))
 	for i, share := range shares {
-		yPoint := crypto.PointMul(share.Y, crypto.G)
+		yPoint := common.PointMul(share.Y, common.G)
 		pointShares[i] = &PointShare{
 			X:     new(big.Int).Set(share.X),
-			Point: crypto.Unexpand(yPoint),
+			Point: common.Unexpand(yPoint),
 		}
 	}
 
@@ -231,7 +231,7 @@ func TestPointShareRecoveryInsufficientShares(t *testing.T) {
 
 // TestPointShareRecoveryDuplicateShares tests recovery with duplicate shares
 func TestPointShareRecoveryDuplicateShares(t *testing.T) {
-	secret, _ := rand.Int(rand.Reader, crypto.Q)
+	secret, _ := rand.Int(rand.Reader, common.Q)
 	threshold := 3
 	numShares := 5
 
@@ -243,10 +243,10 @@ func TestPointShareRecoveryDuplicateShares(t *testing.T) {
 	// Convert to point shares
 	pointShares := make([]*PointShare, len(shares))
 	for i, share := range shares {
-		yPoint := crypto.PointMul(share.Y, crypto.G)
+		yPoint := common.PointMul(share.Y, common.G)
 		pointShares[i] = &PointShare{
 			X:     new(big.Int).Set(share.X),
-			Point: crypto.Unexpand(yPoint),
+			Point: common.Unexpand(yPoint),
 		}
 	}
 
@@ -296,7 +296,7 @@ func TestBinaryDataHandling(t *testing.T) {
 		t.Run("pattern_"+string(rune(i+'0')), func(t *testing.T) {
 			// Convert bytes to integer mod q
 			secretInt := new(big.Int).SetBytes(pattern)
-			secretInt.Mod(secretInt, crypto.Q)
+			secretInt.Mod(secretInt, common.Q)
 
 			shares, err := MakeRandomShares(secretInt, threshold, numShares)
 			if err != nil {
@@ -309,10 +309,10 @@ func TestBinaryDataHandling(t *testing.T) {
 			// Convert to point shares and test recovery
 			pointShares := make([]*PointShare, len(shares))
 			for j, share := range shares {
-				yPoint := crypto.PointMul(share.Y, crypto.G)
+				yPoint := common.PointMul(share.Y, common.G)
 				pointShares[j] = &PointShare{
 					X:     new(big.Int).Set(share.X),
-					Point: crypto.Unexpand(yPoint),
+					Point: common.Unexpand(yPoint),
 				}
 			}
 
@@ -321,8 +321,8 @@ func TestBinaryDataHandling(t *testing.T) {
 				t.Fatalf("RecoverSB failed: %v", err)
 			}
 
-			expectedPoint4D := crypto.PointMul(secretInt, crypto.G)
-			expectedPoint := crypto.Unexpand(expectedPoint4D)
+			expectedPoint4D := common.PointMul(secretInt, common.G)
+			expectedPoint := common.Unexpand(expectedPoint4D)
 
 			if recoveredPoint.X.Cmp(expectedPoint.X) != 0 || recoveredPoint.Y.Cmp(expectedPoint.Y) != 0 {
 				t.Errorf("Recovered point doesn't match expected point")
@@ -335,13 +335,13 @@ func TestBinaryDataHandling(t *testing.T) {
 func TestShareReconstructRoundtripVariousSizes(t *testing.T) {
 	testCases := []*big.Int{
 		big.NewInt(1), // Minimum
-		new(big.Int).Div(crypto.Q, big.NewInt(2)), // Half of field
-		new(big.Int).Sub(crypto.Q, big.NewInt(1)), // Maximum valid
+		new(big.Int).Div(common.Q, big.NewInt(2)), // Half of field
+		new(big.Int).Sub(common.Q, big.NewInt(1)), // Maximum valid
 	}
 
 	// Add random secrets
 	for i := 0; i < 2; i++ {
-		randomSecret, _ := rand.Int(rand.Reader, crypto.Q)
+		randomSecret, _ := rand.Int(rand.Reader, common.Q)
 		testCases = append(testCases, randomSecret)
 	}
 
@@ -358,10 +358,10 @@ func TestShareReconstructRoundtripVariousSizes(t *testing.T) {
 			// Convert to point shares
 			pointShares := make([]*PointShare, len(shares))
 			for j, share := range shares {
-				yPoint := crypto.PointMul(share.Y, crypto.G)
+				yPoint := common.PointMul(share.Y, common.G)
 				pointShares[j] = &PointShare{
 					X:     new(big.Int).Set(share.X),
-					Point: crypto.Unexpand(yPoint),
+					Point: common.Unexpand(yPoint),
 				}
 			}
 
@@ -370,8 +370,8 @@ func TestShareReconstructRoundtripVariousSizes(t *testing.T) {
 				t.Fatalf("RecoverSB failed: %v", err)
 			}
 
-			expectedPoint4D := crypto.PointMul(secret, crypto.G)
-			expectedPoint := crypto.Unexpand(expectedPoint4D)
+			expectedPoint4D := common.PointMul(secret, common.G)
+			expectedPoint := common.Unexpand(expectedPoint4D)
 
 			if recoveredPoint.X.Cmp(expectedPoint.X) != 0 || recoveredPoint.Y.Cmp(expectedPoint.Y) != 0 {
 				t.Errorf("Recovered point doesn't match expected point")
@@ -382,7 +382,7 @@ func TestShareReconstructRoundtripVariousSizes(t *testing.T) {
 
 // TestShareReconstructVariousThresholds tests with various threshold and share count combinations
 func TestShareReconstructVariousThresholds(t *testing.T) {
-	secret, _ := rand.Int(rand.Reader, crypto.Q)
+	secret, _ := rand.Int(rand.Reader, common.Q)
 
 	testCases := []struct {
 		threshold int
@@ -409,10 +409,10 @@ func TestShareReconstructVariousThresholds(t *testing.T) {
 			// Convert to point shares
 			pointShares := make([]*PointShare, len(shares))
 			for i, share := range shares {
-				yPoint := crypto.PointMul(share.Y, crypto.G)
+				yPoint := common.PointMul(share.Y, common.G)
 				pointShares[i] = &PointShare{
 					X:     new(big.Int).Set(share.X),
-					Point: crypto.Unexpand(yPoint),
+					Point: common.Unexpand(yPoint),
 				}
 			}
 
@@ -421,8 +421,8 @@ func TestShareReconstructVariousThresholds(t *testing.T) {
 				t.Fatalf("RecoverSB failed: %v", err)
 			}
 
-			expectedPoint4D := crypto.PointMul(secret, crypto.G)
-			expectedPoint := crypto.Unexpand(expectedPoint4D)
+			expectedPoint4D := common.PointMul(secret, common.G)
+			expectedPoint := common.Unexpand(expectedPoint4D)
 
 			if recoveredPoint.X.Cmp(expectedPoint.X) != 0 || recoveredPoint.Y.Cmp(expectedPoint.Y) != 0 {
 				t.Errorf("Recovered point doesn't match expected point")
@@ -433,7 +433,7 @@ func TestShareReconstructVariousThresholds(t *testing.T) {
 
 // TestShareIndicesAreCorrect tests that share indices are correctly assigned
 func TestShareIndicesAreCorrect(t *testing.T) {
-	secret, _ := rand.Int(rand.Reader, crypto.Q)
+	secret, _ := rand.Int(rand.Reader, common.Q)
 	threshold := 2
 	numShares := 5
 
@@ -453,7 +453,7 @@ func TestShareIndicesAreCorrect(t *testing.T) {
 
 // TestSharesAreDifferent tests that all shares are different
 func TestSharesAreDifferent(t *testing.T) {
-	secret, _ := rand.Int(rand.Reader, crypto.Q)
+	secret, _ := rand.Int(rand.Reader, common.Q)
 	threshold := 2
 	numShares := 10
 
@@ -475,7 +475,7 @@ func TestSharesAreDifferent(t *testing.T) {
 
 // TestDeterministicBehavior tests that sharing with same secret gives different results (due to randomness)
 func TestDeterministicBehavior(t *testing.T) {
-	secret, _ := rand.Int(rand.Reader, crypto.Q)
+	secret, _ := rand.Int(rand.Reader, common.Q)
 	threshold := 3
 	numShares := 5
 
@@ -505,12 +505,12 @@ func TestDeterministicBehavior(t *testing.T) {
 
 // TestCrossReconstruction tests that shares from different secrets don't cross-reconstruct
 func TestCrossReconstruction(t *testing.T) {
-	secret1, _ := rand.Int(rand.Reader, crypto.Q)
-	secret2, _ := rand.Int(rand.Reader, crypto.Q)
+	secret1, _ := rand.Int(rand.Reader, common.Q)
+	secret2, _ := rand.Int(rand.Reader, common.Q)
 
 	// Ensure secrets are different
 	for secret2.Cmp(secret1) == 0 {
-		secret2, _ = rand.Int(rand.Reader, crypto.Q)
+		secret2, _ = rand.Int(rand.Reader, common.Q)
 	}
 
 	threshold := 3
@@ -528,19 +528,19 @@ func TestCrossReconstruction(t *testing.T) {
 	// Convert to point shares
 	pointShares1 := make([]*PointShare, len(shares1))
 	for i, share := range shares1 {
-		yPoint := crypto.PointMul(share.Y, crypto.G)
+		yPoint := common.PointMul(share.Y, common.G)
 		pointShares1[i] = &PointShare{
 			X:     new(big.Int).Set(share.X),
-			Point: crypto.Unexpand(yPoint),
+			Point: common.Unexpand(yPoint),
 		}
 	}
 
 	pointShares2 := make([]*PointShare, len(shares2))
 	for i, share := range shares2 {
-		yPoint := crypto.PointMul(share.Y, crypto.G)
+		yPoint := common.PointMul(share.Y, common.G)
 		pointShares2[i] = &PointShare{
 			X:     new(big.Int).Set(share.X),
-			Point: crypto.Unexpand(yPoint),
+			Point: common.Unexpand(yPoint),
 		}
 	}
 
@@ -560,10 +560,10 @@ func TestCrossReconstruction(t *testing.T) {
 	}
 
 	// And should match their respective expected values
-	expectedPoint1_4D := crypto.PointMul(secret1, crypto.G)
-	expectedPoint1 := crypto.Unexpand(expectedPoint1_4D)
-	expectedPoint2_4D := crypto.PointMul(secret2, crypto.G)
-	expectedPoint2 := crypto.Unexpand(expectedPoint2_4D)
+	expectedPoint1_4D := common.PointMul(secret1, common.G)
+	expectedPoint1 := common.Unexpand(expectedPoint1_4D)
+	expectedPoint2_4D := common.PointMul(secret2, common.G)
+	expectedPoint2 := common.Unexpand(expectedPoint2_4D)
 
 	if recoveredPoint1.X.Cmp(expectedPoint1.X) != 0 || recoveredPoint1.Y.Cmp(expectedPoint1.Y) != 0 {
 		t.Error("Recovered point1 doesn't match expected point1")
@@ -575,7 +575,7 @@ func TestCrossReconstruction(t *testing.T) {
 
 // TestLargeThresholdAndShares tests with large threshold and share counts
 func TestLargeThresholdAndShares(t *testing.T) {
-	secret, _ := rand.Int(rand.Reader, crypto.Q)
+	secret, _ := rand.Int(rand.Reader, common.Q)
 	threshold := 20
 	numShares := 50
 
@@ -590,10 +590,10 @@ func TestLargeThresholdAndShares(t *testing.T) {
 	// Convert to point shares (just first threshold shares to save time)
 	pointShares := make([]*PointShare, threshold)
 	for i, share := range shares[:threshold] {
-		yPoint := crypto.PointMul(share.Y, crypto.G)
+		yPoint := common.PointMul(share.Y, common.G)
 		pointShares[i] = &PointShare{
 			X:     new(big.Int).Set(share.X),
-			Point: crypto.Unexpand(yPoint),
+			Point: common.Unexpand(yPoint),
 		}
 	}
 
@@ -602,8 +602,8 @@ func TestLargeThresholdAndShares(t *testing.T) {
 		t.Fatalf("RecoverSB failed: %v", err)
 	}
 
-	expectedPoint4D := crypto.PointMul(secret, crypto.G)
-	expectedPoint := crypto.Unexpand(expectedPoint4D)
+	expectedPoint4D := common.PointMul(secret, common.G)
+	expectedPoint := common.Unexpand(expectedPoint4D)
 
 	if recoveredPoint.X.Cmp(expectedPoint.X) != 0 || recoveredPoint.Y.Cmp(expectedPoint.Y) != 0 {
 		t.Errorf("Recovered point doesn't match expected point")
@@ -614,8 +614,8 @@ func TestLargeThresholdAndShares(t *testing.T) {
 func TestShareStructureConsistency(t *testing.T) {
 	secretsToTest := []*big.Int{
 		big.NewInt(1),
-		new(big.Int).Div(crypto.Q, big.NewInt(2)),
-		new(big.Int).Sub(crypto.Q, big.NewInt(1)),
+		new(big.Int).Div(common.Q, big.NewInt(2)),
+		new(big.Int).Sub(common.Q, big.NewInt(1)),
 	}
 
 	threshold := 3
@@ -668,10 +668,10 @@ func TestRecoverSBEdgeCases(t *testing.T) {
 	// Convert to point shares (use only first 2 shares)
 	pointShares := make([]*PointShare, 2)
 	for i, share := range shares[:2] {
-		yPoint := crypto.PointMul(share.Y, crypto.G)
+		yPoint := common.PointMul(share.Y, common.G)
 		pointShares[i] = &PointShare{
 			X:     new(big.Int).Set(share.X),
-			Point: crypto.Unexpand(yPoint),
+			Point: common.Unexpand(yPoint),
 		}
 	}
 
@@ -681,8 +681,8 @@ func TestRecoverSBEdgeCases(t *testing.T) {
 		t.Fatalf("RecoverSB failed: %v", err)
 	}
 
-	expectedPoint4D := crypto.PointMul(secret, crypto.G)
-	expectedPoint := crypto.Unexpand(expectedPoint4D)
+	expectedPoint4D := common.PointMul(secret, common.G)
+	expectedPoint := common.Unexpand(expectedPoint4D)
 
 	if recoveredPoint.X.Cmp(expectedPoint.X) != 0 || recoveredPoint.Y.Cmp(expectedPoint.Y) != 0 {
 		t.Errorf("Recovered point doesn't match expected point")
@@ -700,10 +700,10 @@ func TestSharingWithZeroSecret(t *testing.T) {
 	// Convert to point shares
 	pointShares := make([]*PointShare, 2)
 	for i, share := range shares[:2] {
-		yPoint := crypto.PointMul(share.Y, crypto.G)
+		yPoint := common.PointMul(share.Y, common.G)
 		pointShares[i] = &PointShare{
 			X:     new(big.Int).Set(share.X),
-			Point: crypto.Unexpand(yPoint),
+			Point: common.Unexpand(yPoint),
 		}
 	}
 
@@ -713,8 +713,8 @@ func TestSharingWithZeroSecret(t *testing.T) {
 		t.Fatalf("RecoverSB failed: %v", err)
 	}
 
-	expectedPoint4D := crypto.PointMul(big.NewInt(0), crypto.G)
-	expectedPoint := crypto.Unexpand(expectedPoint4D)
+	expectedPoint4D := common.PointMul(big.NewInt(0), common.G)
+	expectedPoint := common.Unexpand(expectedPoint4D)
 
 	if recoveredPoint.X.Cmp(expectedPoint.X) != 0 || recoveredPoint.Y.Cmp(expectedPoint.Y) != 0 {
 		t.Errorf("Recovered point doesn't match expected zero point")
@@ -724,7 +724,7 @@ func TestSharingWithZeroSecret(t *testing.T) {
 // TestSharingWithLargeSecret tests sharing with large secret values
 func TestSharingWithLargeSecret(t *testing.T) {
 	// Test with secret close to prime modulus
-	largeSecret := new(big.Int).Sub(crypto.Q, big.NewInt(1))
+	largeSecret := new(big.Int).Sub(common.Q, big.NewInt(1))
 	shares, err := MakeRandomShares(largeSecret, 3, 5)
 	if err != nil {
 		t.Fatalf("MakeRandomShares failed: %v", err)
@@ -733,10 +733,10 @@ func TestSharingWithLargeSecret(t *testing.T) {
 	// Convert to point shares
 	pointShares := make([]*PointShare, 3)
 	for i, share := range shares[:3] {
-		yPoint := crypto.PointMul(share.Y, crypto.G)
+		yPoint := common.PointMul(share.Y, common.G)
 		pointShares[i] = &PointShare{
 			X:     new(big.Int).Set(share.X),
-			Point: crypto.Unexpand(yPoint),
+			Point: common.Unexpand(yPoint),
 		}
 	}
 
@@ -746,8 +746,8 @@ func TestSharingWithLargeSecret(t *testing.T) {
 		t.Fatalf("RecoverSB failed: %v", err)
 	}
 
-	expectedPoint4D := crypto.PointMul(largeSecret, crypto.G)
-	expectedPoint := crypto.Unexpand(expectedPoint4D)
+	expectedPoint4D := common.PointMul(largeSecret, common.G)
+	expectedPoint := common.Unexpand(expectedPoint4D)
 
 	if recoveredPoint.X.Cmp(expectedPoint.X) != 0 || recoveredPoint.Y.Cmp(expectedPoint.Y) != 0 {
 		t.Errorf("Recovered point doesn't match expected point")
@@ -756,7 +756,7 @@ func TestSharingWithLargeSecret(t *testing.T) {
 
 // TestRecoverSecretBasic tests basic secret recovery functionality
 func TestRecoverSecretBasic(t *testing.T) {
-	secret, _ := rand.Int(rand.Reader, crypto.Q)
+	secret, _ := rand.Int(rand.Reader, common.Q)
 	threshold := 3
 	numShares := 5
 
@@ -778,7 +778,7 @@ func TestRecoverSecretBasic(t *testing.T) {
 
 // TestRecoverSecretDifferentCombinations tests secret recovery with different share combinations
 func TestRecoverSecretDifferentCombinations(t *testing.T) {
-	secret, _ := rand.Int(rand.Reader, crypto.Q)
+	secret, _ := rand.Int(rand.Reader, common.Q)
 	threshold := 3
 	numShares := 6
 
@@ -815,7 +815,7 @@ func TestRecoverSecretDifferentCombinations(t *testing.T) {
 
 // TestRecoverSecretInsufficientShares tests secret recovery with insufficient shares
 func TestRecoverSecretInsufficientShares(t *testing.T) {
-	secret, _ := rand.Int(rand.Reader, crypto.Q)
+	secret, _ := rand.Int(rand.Reader, common.Q)
 	threshold := 4
 	numShares := 6
 
@@ -851,19 +851,19 @@ func TestPolynomialEvaluationProperties(t *testing.T) {
 	} // 5 + 3x + 2x^2
 
 	// At x=0: should be 5
-	result := evalAt(poly, big.NewInt(0), crypto.Q)
+	result := evalAt(poly, big.NewInt(0), common.Q)
 	if result.Int64() != 5 {
 		t.Errorf("evalAt(poly, 0) = %d, expected 5", result.Int64())
 	}
 
 	// At x=1: should be 5 + 3 + 2 = 10
-	result = evalAt(poly, big.NewInt(1), crypto.Q)
+	result = evalAt(poly, big.NewInt(1), common.Q)
 	if result.Int64() != 10 {
 		t.Errorf("evalAt(poly, 1) = %d, expected 10", result.Int64())
 	}
 
 	// At x=2: should be 5 + 6 + 8 = 19
-	result = evalAt(poly, big.NewInt(2), crypto.Q)
+	result = evalAt(poly, big.NewInt(2), common.Q)
 	if result.Int64() != 19 {
 		t.Errorf("evalAt(poly, 2) = %d, expected 19", result.Int64())
 	}
@@ -872,20 +872,20 @@ func TestPolynomialEvaluationProperties(t *testing.T) {
 // TestEvalAtEdgeCases tests evalAt function with edge cases
 func TestEvalAtEdgeCases(t *testing.T) {
 	// Test with empty polynomial (should be 0)
-	result := evalAt([]*big.Int{}, big.NewInt(5), crypto.Q)
+	result := evalAt([]*big.Int{}, big.NewInt(5), common.Q)
 	if result.Int64() != 0 {
 		t.Errorf("evalAt([], 5) = %d, expected 0", result.Int64())
 	}
 
 	// Test with single coefficient (constant polynomial)
-	result = evalAt([]*big.Int{big.NewInt(42)}, big.NewInt(100), crypto.Q)
+	result = evalAt([]*big.Int{big.NewInt(42)}, big.NewInt(100), common.Q)
 	if result.Int64() != 42 {
 		t.Errorf("evalAt([42], 100) = %d, expected 42", result.Int64())
 	}
 
 	// Test with x = 0 (should return constant term)
 	poly := []*big.Int{big.NewInt(123), big.NewInt(456), big.NewInt(789)}
-	result = evalAt(poly, big.NewInt(0), crypto.Q)
+	result = evalAt(poly, big.NewInt(0), common.Q)
 	if result.Int64() != 123 {
 		t.Errorf("evalAt(poly, 0) = %d, expected 123", result.Int64())
 	}

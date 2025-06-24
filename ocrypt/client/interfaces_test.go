@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/openadp/common/crypto"
+	"github.com/openadp/ocrypt/common"
 )
 
 // TestOpenADPClientInterface verifies that OpenADPClient implements the standardized interface
@@ -296,7 +296,7 @@ func TestOpenADPError(t *testing.T) {
 func TestPointDataConversion(t *testing.T) {
 	t.Run("Point2DToBase64", func(t *testing.T) {
 		// Create a test point
-		point := &crypto.Point2D{
+		point := &common.Point2D{
 			X: big.NewInt(123),
 			Y: big.NewInt(456),
 		}

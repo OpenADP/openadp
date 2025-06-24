@@ -6,22 +6,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openadp/client/client"
-	"github.com/openadp/common/crypto"
-	"github.com/openadp/common/sharing"
+	"github.com/openadp/ocrypt/client"
+	"github.com/openadp/ocrypt/common"
 )
 
 func TestSecretSharingBasic(t *testing.T) {
-	fmt.Println("Testing basic secret sharing...")
+	fmt.Println("Testing basic secret client...")
 
 	// Create a test secret
-	secret, err := rand.Int(rand.Reader, crypto.Q)
+	secret, err := rand.Int(rand.Reader, common.Q)
 	if err != nil {
 		t.Fatalf("Failed to generate random secret: %v", err)
 	}
 
 	// Create shares
-	shares, err := sharing.MakeRandomShares(secret, 2, 3)
+	shares, err := client.MakeRandomShares(secret, 2, 3)
 	if err != nil {
 		t.Fatalf("Failed to create shares: %v", err)
 	}
@@ -29,7 +28,7 @@ func TestSecretSharingBasic(t *testing.T) {
 	fmt.Printf("Created %d shares with threshold 2\n", len(shares))
 
 	// Recover secret from shares
-	recoveredSecret, err := sharing.RecoverSecret(shares[:2])
+	recoveredSecret, err := client.RecoverSecret(shares[:2])
 	if err != nil {
 		t.Fatalf("Failed to recover secret: %v", err)
 	}
@@ -85,12 +84,12 @@ func TestSecretSharingWithServer(t *testing.T) {
 	expiration := 0
 
 	// Create a test secret and shares
-	secret, err := rand.Int(rand.Reader, crypto.Q)
+	secret, err := rand.Int(rand.Reader, common.Q)
 	if err != nil {
 		t.Fatalf("Failed to generate random secret: %v", err)
 	}
 
-	shares, err := sharing.MakeRandomShares(secret, 2, 3) // minimum=2, shares=3
+	shares, err := client.MakeRandomShares(secret, 2, 3) // minimum=2, shares=3
 	if err != nil {
 		t.Fatalf("Failed to create shares: %v", err)
 	}
@@ -157,12 +156,12 @@ func TestSecretSharingRecovery(t *testing.T) {
 	expiration := 0
 
 	// Create a test secret and shares
-	secret, err := rand.Int(rand.Reader, crypto.Q)
+	secret, err := rand.Int(rand.Reader, common.Q)
 	if err != nil {
 		t.Fatalf("Failed to generate random secret: %v", err)
 	}
 
-	shares, err := sharing.MakeRandomShares(secret, 2, 3) // minimum=2, shares=3
+	shares, err := client.MakeRandomShares(secret, 2, 3) // minimum=2, shares=3
 	if err != nil {
 		t.Fatalf("Failed to create shares: %v", err)
 	}
@@ -185,7 +184,7 @@ func TestSecretSharingRecovery(t *testing.T) {
 	}
 
 	// Simulate recovery by reconstructing from first 2 shares
-	recoveredSecret, err := sharing.RecoverSecret(shares[:2])
+	recoveredSecret, err := client.RecoverSecret(shares[:2])
 	if err != nil {
 		t.Fatalf("Failed to recover secret: %v", err)
 	}
@@ -218,19 +217,19 @@ func TestSecretSharingThresholds(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("%d_of_%d", tc.threshold, tc.numShares), func(t *testing.T) {
 			// Create a test secret
-			secret, err := rand.Int(rand.Reader, crypto.Q)
+			secret, err := rand.Int(rand.Reader, common.Q)
 			if err != nil {
 				t.Fatalf("Failed to generate random secret: %v", err)
 			}
 
 			// Create shares - correct parameter order: minimum, shares
-			shares, err := sharing.MakeRandomShares(secret, tc.threshold, tc.numShares)
+			shares, err := client.MakeRandomShares(secret, tc.threshold, tc.numShares)
 			if err != nil {
 				t.Fatalf("Failed to create shares: %v", err)
 			}
 
 			// Test with exactly threshold shares
-			recoveredSecret, err := sharing.RecoverSecret(shares[:tc.threshold])
+			recoveredSecret, err := client.RecoverSecret(shares[:tc.threshold])
 			if err != nil {
 				t.Fatalf("Failed to recover secret with threshold shares: %v", err)
 			}
@@ -242,7 +241,7 @@ func TestSecretSharingThresholds(t *testing.T) {
 			// Test with insufficient shares - Lagrange interpolation will produce a result,
 			// but it won't be the correct secret (mathematical property, not an error)
 			if tc.threshold > 1 {
-				insufficientRecovered, err := sharing.RecoverSecret(shares[:tc.threshold-1])
+				insufficientRecovered, err := client.RecoverSecret(shares[:tc.threshold-1])
 				if err != nil {
 					t.Errorf("Unexpected error with insufficient shares: %v", err)
 				}

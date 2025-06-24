@@ -13,8 +13,7 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/openadp/client/client"
-	"github.com/openadp/client/keygen"
+	"github.com/openadp/ocrypt/client"
 )
 
 const (
@@ -407,7 +406,7 @@ func decryptFile(inputFilename, password, userID string, overrideServers []strin
 
 func recoverEncryptionKeyWithServerInfo(filename, password, userID string, baseAuthCode string, serverInfos []client.ServerInfo, threshold int) ([]byte, error) {
 	// Derive identifiers (same as during encryption)
-	uid, did, bid := keygen.DeriveIdentifiers(filename, userID, "")
+	uid, did, bid := client.DeriveIdentifiers(filename, userID, "")
 	fmt.Printf("🔑 Recovering with UID=%s, DID=%s, BID=%s\n", uid, did, bid)
 
 	// Regenerate server auth codes from base auth code
@@ -420,14 +419,14 @@ func recoverEncryptionKeyWithServerInfo(filename, password, userID string, baseA
 	}
 
 	// Create AuthCodes structure from metadata
-	authCodes := &keygen.AuthCodes{
+	authCodes := &client.AuthCodes{
 		BaseAuthCode:    baseAuthCode,
 		ServerAuthCodes: serverAuthCodes,
 		UserID:          userID,
 	}
 
 	// Recover encryption key using the full distributed protocol
-	result := keygen.RecoverEncryptionKeyWithServerInfo(filename, password, userID, serverInfos, threshold, authCodes)
+	result := client.RecoverEncryptionKeyWithServerInfo(filename, password, userID, serverInfos, threshold, authCodes)
 	if result.Error != "" {
 		return nil, fmt.Errorf("key recovery failed: %s", result.Error)
 	}

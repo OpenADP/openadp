@@ -6,10 +6,8 @@ import (
 	"log"
 	"math/big"
 
-	"github.com/openadp/client/client"
-	"github.com/openadp/client/keygen"
-	"github.com/openadp/common/crypto"
-	"github.com/openadp/common/sharing"
+	"github.com/openadp/ocrypt/client"
+	"github.com/openadp/ocrypt/common"
 	"github.com/openadp/server/auth"
 )
 
@@ -75,7 +73,7 @@ func testAuthCodeManager() {
 
 func testCrypto() {
 	// Test key generation
-	privateKey, publicKey, err := crypto.X25519GenerateKeypair()
+	privateKey, publicKey, err := common.X25519GenerateKeypair()
 	if err != nil {
 		log.Fatalf("Failed to generate X25519 keypair: %v", err)
 	}
@@ -85,18 +83,18 @@ func testCrypto() {
 
 	// Test point operations
 	secret := big.NewInt(12345)
-	point := crypto.PointMul(secret, crypto.G)
-	compressed := crypto.PointCompress(point)
+	point := common.PointMul(secret, common.G)
+	compressed := common.PointCompress(point)
 
 	fmt.Printf("   Point compression: %d bytes\n", len(compressed))
 
 	// Test decompression
-	decompressed, err := crypto.PointDecompress(compressed)
+	decompressed, err := common.PointDecompress(compressed)
 	if err != nil {
 		log.Fatalf("Failed to decompress point: %v", err)
 	}
 
-	if !crypto.PointEqual(point, decompressed) {
+	if !common.PointEqual(point, decompressed) {
 		log.Fatal("Point compression/decompression failed")
 	}
 	fmt.Println("   ✅ Point compression/decompression working")
@@ -107,13 +105,13 @@ func testCrypto() {
 	bid := []byte("test-backup")
 	pin := []byte{0x12, 0x34}
 
-	hashPoint := crypto.H(uid, did, bid, pin)
+	hashPoint := common.H(uid, did, bid, pin)
 	fmt.Printf("   H function generated point: (%s, %s)\n",
-		crypto.Unexpand(hashPoint).X.String()[:10]+"...",
-		crypto.Unexpand(hashPoint).Y.String()[:10]+"...")
+		common.Unexpand(hashPoint).X.String()[:10]+"...",
+		common.Unexpand(hashPoint).Y.String()[:10]+"...")
 
 	// Test key derivation
-	encKey := crypto.DeriveEncKey(hashPoint)
+	encKey := common.DeriveEncKey(hashPoint)
 	fmt.Printf("   Derived encryption key: %d bytes\n", len(encKey))
 	fmt.Println("   ✅ Cryptographic operations working")
 }
@@ -128,7 +126,7 @@ func testSecretSharing() {
 	fmt.Printf("   Threshold: %d, Total shares: %d\n", threshold, numShares)
 
 	// Create shares
-	shares, err := sharing.MakeRandomShares(secret, threshold, numShares)
+	shares, err := client.MakeRandomShares(secret, threshold, numShares)
 	if err != nil {
 		log.Fatalf("Failed to create shares: %v", err)
 	}
@@ -137,7 +135,7 @@ func testSecretSharing() {
 
 	// Test recovery with threshold shares
 	testShares := shares[:threshold]
-	recoveredSecret, err := sharing.RecoverSecret(testShares)
+	recoveredSecret, err := client.RecoverSecret(testShares)
 	if err != nil {
 		log.Fatalf("Failed to recover secret: %v", err)
 	}
@@ -164,15 +162,15 @@ func testKeyGeneration() {
 	fmt.Printf("   Servers: %d\n", len(serverURLs))
 
 	// Test identifier derivation
-	uid, did, bid := keygen.DeriveIdentifiers(filename, userID, "")
+	uid, did, bid := client.DeriveIdentifiers(filename, userID, "")
 	fmt.Printf("   Derived identifiers: UID=%s, DID=%s, BID=%s\n", uid, did, bid)
 
 	// Test password to PIN conversion
-	pin := keygen.PasswordToPin(password)
+	pin := client.PasswordToPin(password)
 	fmt.Printf("   PIN from password: %02x%02x\n", pin[0], pin[1])
 
 	// Test key generation (simplified)
-	result := keygen.GenerateEncryptionKey(filename, password, userID, 10, 0, client.ConvertURLsToServerInfo(serverURLs))
+	result := client.GenerateEncryptionKey(filename, password, userID, 10, 0, client.ConvertURLsToServerInfo(serverURLs))
 	if result.Error != "" {
 		// This is expected since we don't have real servers
 		fmt.Printf("   Key generation (simulated): %s\n", result.Error)

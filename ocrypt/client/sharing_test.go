@@ -1,18 +1,18 @@
-package sharing
+package client
 
 import (
 	"crypto/rand"
 	"math/big"
 	"testing"
 
-	"github.com/openadp/common/crypto"
+	"github.com/openadp/ocrypt/common"
 )
 
 func TestRecoverPointSecret(t *testing.T) {
 	// Test point-based secret reconstruction
 
 	// Step 1: Create a random secret
-	secret, err := rand.Int(rand.Reader, crypto.Q)
+	secret, err := rand.Int(rand.Reader, common.Q)
 	if err != nil {
 		t.Fatalf("Failed to generate random secret: %v", err)
 	}
@@ -27,13 +27,13 @@ func TestRecoverPointSecret(t *testing.T) {
 
 	// Step 3: Convert scalar shares to point shares (simulate server behavior)
 	// Each server would compute si * B where B is the input point
-	B := crypto.G // Use generator point as B
+	B := common.G // Use generator point as B
 	pointShares := make([]*PointShare, len(shares))
 
 	for i, share := range shares {
 		// Compute si * B (this is what the server returns)
-		siB := crypto.PointMul(share.Y, B)
-		siB2D := crypto.Unexpand(siB)
+		siB := common.PointMul(share.Y, B)
+		siB2D := common.Unexpand(siB)
 
 		pointShares[i] = &PointShare{
 			X:     share.X,
@@ -48,8 +48,8 @@ func TestRecoverPointSecret(t *testing.T) {
 	}
 
 	// Step 5: Verify that we recovered s*B correctly
-	expectedSB := crypto.PointMul(secret, B)
-	expectedSB2D := crypto.Unexpand(expectedSB)
+	expectedSB := common.PointMul(secret, B)
+	expectedSB2D := common.Unexpand(expectedSB)
 
 	if recoveredSB.X.Cmp(expectedSB2D.X) != 0 || recoveredSB.Y.Cmp(expectedSB2D.Y) != 0 {
 		t.Errorf("Point reconstruction failed")
@@ -67,7 +67,7 @@ func TestRecoverScalarSecret(t *testing.T) {
 	// Test scalar-based secret reconstruction
 
 	// Step 1: Create a random secret
-	secret, err := rand.Int(rand.Reader, crypto.Q)
+	secret, err := rand.Int(rand.Reader, common.Q)
 	if err != nil {
 		t.Fatalf("Failed to generate random secret: %v", err)
 	}
@@ -107,17 +107,17 @@ func TestOpenADPWorkflow(t *testing.T) {
 	pin := []byte{0x12, 0x34}
 
 	// Step 1: Generate secret and create point (encryption)
-	secret, err := rand.Int(rand.Reader, crypto.Q)
+	secret, err := rand.Int(rand.Reader, common.Q)
 	if err != nil {
 		t.Fatalf("Failed to generate random secret: %v", err)
 	}
 
-	U := crypto.H([]byte(uid), []byte(did), []byte(bid), pin)
-	S := crypto.PointMul(secret, U) // S = secret * U (encryption key point)
+	U := common.H([]byte(uid), []byte(did), []byte(bid), pin)
+	S := common.PointMul(secret, U) // S = secret * U (encryption key point)
 
 	t.Logf("Secret: %s", secret.String())
-	t.Logf("U: (%s, %s)", crypto.Unexpand(U).X.String(), crypto.Unexpand(U).Y.String())
-	t.Logf("S = secret * U: (%s, %s)", crypto.Unexpand(S).X.String(), crypto.Unexpand(S).Y.String())
+	t.Logf("U: (%s, %s)", common.Unexpand(U).X.String(), common.Unexpand(U).Y.String())
+	t.Logf("S = secret * U: (%s, %s)", common.Unexpand(S).X.String(), common.Unexpand(S).Y.String())
 
 	// Step 2: Create scalar shares (what gets stored on servers)
 	threshold := 2
@@ -130,38 +130,38 @@ func TestOpenADPWorkflow(t *testing.T) {
 	t.Logf("Shares: %v", shares)
 
 	// Step 3: Derive encryption key from S
-	encKeyOriginal := crypto.DeriveEncKey(S)
+	encKeyOriginal := common.DeriveEncKey(S)
 
 	// Simulate recovery phase
 	// Step 4: Generate random r and compute B (recovery)
-	r, err := rand.Int(rand.Reader, crypto.Q)
+	r, err := rand.Int(rand.Reader, common.Q)
 	if err != nil {
 		t.Fatalf("Failed to generate random r: %v", err)
 	}
 
-	rInv := new(big.Int).ModInverse(r, crypto.Q)
+	rInv := new(big.Int).ModInverse(r, common.Q)
 	if rInv == nil {
 		t.Fatalf("Failed to compute modular inverse")
 	}
 
 	// Verify r * r_inv = 1 mod q
 	check := new(big.Int).Mul(r, rInv)
-	check.Mod(check, crypto.Q)
+	check.Mod(check, common.Q)
 	if check.Cmp(big.NewInt(1)) != 0 {
 		t.Errorf("r * r_inv != 1 mod q: got %s", check.String())
 	}
 
-	B := crypto.PointMul(r, U) // B = r * U
+	B := common.PointMul(r, U) // B = r * U
 
 	t.Logf("r: %s", r.String())
 	t.Logf("r_inv: %s", rInv.String())
-	t.Logf("B = r * U: (%s, %s)", crypto.Unexpand(B).X.String(), crypto.Unexpand(B).Y.String())
+	t.Logf("B = r * U: (%s, %s)", common.Unexpand(B).X.String(), common.Unexpand(B).Y.String())
 
 	// Step 5: Simulate server responses (si * B for each share)
 	pointShares := make([]*PointShare, len(shares))
 	for i, share := range shares {
-		siB := crypto.PointMul(share.Y, B) // si * B
-		siB2D := crypto.Unexpand(siB)
+		siB := common.PointMul(share.Y, B) // si * B
+		siB2D := common.Unexpand(siB)
 
 		pointShares[i] = &PointShare{
 			X:     share.X,
@@ -180,8 +180,8 @@ func TestOpenADPWorkflow(t *testing.T) {
 	t.Logf("Recovered s*B: (%s, %s)", recoveredSB.X.String(), recoveredSB.Y.String())
 
 	// Verify s*B is correct by computing it directly
-	expectedSB := crypto.PointMul(secret, B)
-	expectedSB2D := crypto.Unexpand(expectedSB)
+	expectedSB := common.PointMul(secret, B)
+	expectedSB2D := common.Unexpand(expectedSB)
 	t.Logf("Expected s*B: (%s, %s)", expectedSB2D.X.String(), expectedSB2D.Y.String())
 
 	if recoveredSB.X.Cmp(expectedSB2D.X) != 0 || recoveredSB.Y.Cmp(expectedSB2D.Y) != 0 {
@@ -190,13 +190,13 @@ func TestOpenADPWorkflow(t *testing.T) {
 	}
 
 	// Step 7: Compute s*U = r_inv * (s*B)
-	recoveredSB4D := crypto.Expand(recoveredSB)
-	recoveredSU := crypto.PointMul(rInv, recoveredSB4D)
+	recoveredSB4D := common.Expand(recoveredSB)
+	recoveredSU := common.PointMul(rInv, recoveredSB4D)
 
-	t.Logf("Recovered s*U: (%s, %s)", crypto.Unexpand(recoveredSU).X.String(), crypto.Unexpand(recoveredSU).Y.String())
+	t.Logf("Recovered s*U: (%s, %s)", common.Unexpand(recoveredSU).X.String(), common.Unexpand(recoveredSU).Y.String())
 
 	// Step 8: Derive encryption key from recovered point
-	encKeyRecovered := crypto.DeriveEncKey(recoveredSU)
+	encKeyRecovered := common.DeriveEncKey(recoveredSU)
 
 	// Step 9: Verify keys match
 	if len(encKeyOriginal) != len(encKeyRecovered) {
@@ -211,8 +211,8 @@ func TestOpenADPWorkflow(t *testing.T) {
 	}
 
 	// Verify the points are the same
-	S2D := crypto.Unexpand(S)
-	recoveredSU2D := crypto.Unexpand(recoveredSU)
+	S2D := common.Unexpand(S)
+	recoveredSU2D := common.Unexpand(recoveredSU)
 
 	if S2D.X.Cmp(recoveredSU2D.X) != 0 || S2D.Y.Cmp(recoveredSU2D.Y) != 0 {
 		t.Errorf("Secret points don't match")

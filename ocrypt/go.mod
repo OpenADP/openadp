@@ -1,4 +1,4 @@
-module github.com/openadp/common
+module github.com/openadp/ocrypt
 
 go 1.23.0
 

@@ -19,7 +19,7 @@ import (
 	"sync"
 
 	"github.com/flynn/noise"
-	openadpNoise "github.com/openadp/common/noise"
+	openadpNoise "github.com/openadp/ocrypt/common"
 )
 
 // NoiseSessionManager manages Noise-NK encryption sessions for the JSON-RPC server

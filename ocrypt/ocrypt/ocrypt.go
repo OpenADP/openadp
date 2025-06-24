@@ -38,8 +38,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openadp/client/client"
-	"github.com/openadp/client/keygen"
+	"github.com/openadp/ocrypt/client"
 )
 
 // OcryptError represents an error in Ocrypt operations
@@ -140,7 +139,7 @@ func registerWithBID(userID, appID string, longTermSecret []byte, pin string, ma
 	// Create unique filename for this secret
 	filename := fmt.Sprintf("file://%s#%s#%s", userID, appID, backupID)
 
-	result := keygen.GenerateEncryptionKey(filename, pin, userID, maxGuesses, 0, serverInfos)
+	result := client.GenerateEncryptionKey(filename, pin, userID, maxGuesses, 0, serverInfos)
 	if result.Error != "" {
 		return nil, &OcryptError{Message: fmt.Sprintf("OpenADP registration failed: %s", result.Error), Code: "OPENADP_FAILED"}
 	}
@@ -279,7 +278,7 @@ func recoverWithoutRefresh(metadataBytes []byte, pin string) ([]byte, int, error
 	filename := fmt.Sprintf("file://%s#%s#%s", metadata.UserID, metadata.AppID, metadata.BackupID)
 
 	// Reconstruct auth codes
-	authCodes := &keygen.AuthCodes{
+	authCodes := &client.AuthCodes{
 		BaseAuthCode:    metadata.AuthCode,
 		ServerAuthCodes: make(map[string]string),
 		UserID:          metadata.UserID,
@@ -292,7 +291,7 @@ func recoverWithoutRefresh(metadataBytes []byte, pin string) ([]byte, int, error
 		authCodes.ServerAuthCodes[serverURL] = fmt.Sprintf("%x", hash[:])
 	}
 
-	result := keygen.RecoverEncryptionKeyWithServerInfo(filename, pin, metadata.UserID, serverInfos, metadata.Threshold, authCodes)
+	result := client.RecoverEncryptionKeyWithServerInfo(filename, pin, metadata.UserID, serverInfos, metadata.Threshold, authCodes)
 	if result.Error != "" {
 		return nil, 0, &OcryptError{Message: fmt.Sprintf("OpenADP recovery failed: %s", result.Error), Code: "OPENADP_RECOVERY_FAILED"}
 	}

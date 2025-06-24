@@ -19,8 +19,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/openadp/common/crypto"
-	"github.com/openadp/common/sharing"
+	"github.com/openadp/ocrypt/client"
+	"github.com/openadp/ocrypt/common"
 	"github.com/openadp/server/auth"
 )
 
@@ -151,20 +151,20 @@ func (demo *AuthCodeDemo) CreateBackup(fileData []byte, userPin, deviceID, backu
 	uuid := fmt.Sprintf("%x", hash[:8]) // Use first 16 hex chars
 
 	// Compute user identity point: U = H(UUID, DID, BID, pin)
-	U := crypto.H([]byte(uuid), []byte(deviceID), []byte(backupID), []byte(userPin))
+	U := common.H([]byte(uuid), []byte(deviceID), []byte(backupID), []byte(userPin))
 	fmt.Printf("👤 User identity point U computed\n")
 
 	// Generate random secret and compute S = s * U
-	secret, err := rand.Int(rand.Reader, crypto.Q)
+	secret, err := rand.Int(rand.Reader, common.Q)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to generate random secret: %v", err)
 	}
 
-	S := crypto.PointMul(secret, U)
+	S := common.PointMul(secret, U)
 	fmt.Printf("🔒 Secret point S = s * U computed\n")
 
 	// Derive encryption key: enc_key = HKDF(S.x || S.y)
-	encKey := crypto.DeriveEncKey(S)
+	encKey := common.DeriveEncKey(S)
 	fmt.Printf("🗝️  Encryption key derived from S (length: %d bytes)\n", len(encKey))
 
 	// 3. Create Shamir secret shares
@@ -207,17 +207,17 @@ func (demo *AuthCodeDemo) DemonstrateRecovery(baseAuthCode, userPin, deviceID, b
 	// 2. OpenADP Protocol: Compute user identity point
 	hash := sha256.Sum256([]byte(baseAuthCode))
 	uuid := fmt.Sprintf("%x", hash[:8])
-	U := crypto.H([]byte(uuid), []byte(deviceID), []byte(backupID), []byte(userPin))
+	U := common.H([]byte(uuid), []byte(deviceID), []byte(backupID), []byte(userPin))
 	fmt.Printf("👤 User identity point U computed\n")
 
 	// 3. Generate blinding factor and compute B = r * U
-	r, err := rand.Int(rand.Reader, crypto.Q)
+	r, err := rand.Int(rand.Reader, common.Q)
 	if err != nil {
 		return fmt.Errorf("failed to generate blinding factor: %v", err)
 	}
 
-	B := crypto.PointMul(r, U)
-	fmt.Printf("🎭 Blinding factor r generated, B = r * U computed (point length: %d)\n", len(crypto.PointCompress(B)))
+	B := common.PointMul(r, U)
+	fmt.Printf("🎭 Blinding factor r generated, B = r * U computed (point length: %d)\n", len(common.PointCompress(B)))
 
 	// 4. Simulate share collection from servers
 	fmt.Printf("📡 Simulating share collection from servers...\n")

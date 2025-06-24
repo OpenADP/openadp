@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openadp/common/crypto"
+	"github.com/openadp/ocrypt/common"
 	"github.com/openadp/server/auth"
 	"github.com/openadp/server/database"
 	"github.com/openadp/server/server"
@@ -118,12 +118,12 @@ func TestCompleteRecoveryFlow(t *testing.T) {
 	serverCode := manager.DeriveServerCode(baseCode, serverURL)
 
 	// Generate cryptographic data for registration
-	secret, err := rand.Int(rand.Reader, crypto.Q)
+	secret, err := rand.Int(rand.Reader, common.Q)
 	if err != nil {
 		t.Fatalf("Failed to generate secret: %v", err)
 	}
 
-	u := crypto.PointMul(secret, crypto.G)
+	u := common.PointMul(secret, common.G)
 	x := 1 // Share index
 	y := make([]byte, 32)
 	rand.Read(y)
@@ -135,15 +135,15 @@ func TestCompleteRecoveryFlow(t *testing.T) {
 	}
 
 	// Recovery: Generate blinded point
-	r, err := rand.Int(rand.Reader, new(big.Int).Sub(crypto.Q, big.NewInt(1)))
+	r, err := rand.Int(rand.Reader, new(big.Int).Sub(common.Q, big.NewInt(1)))
 	if err != nil {
 		t.Fatalf("Failed to generate r: %v", err)
 	}
 	r.Add(r, big.NewInt(1))
-	b := crypto.PointMul(r, u)
+	b := common.PointMul(r, u)
 
 	// Attempt recovery using server package function with auth code
-	b2D := crypto.Unexpand(b)
+	b2D := common.Unexpand(b)
 	_, err = server.RecoverSecretByAuthCode(db, serverCode, did, bid, b2D, 0)
 
 	// Note: This may fail cryptographically since we're not using the proper
@@ -348,12 +348,12 @@ func TestGuessCountTracking(t *testing.T) {
 	}
 
 	// Test guess count increments with valid recovery attempts
-	testBCompressed := crypto.PointCompress(crypto.G)
-	testB4D, err := crypto.PointDecompress(testBCompressed)
+	testBCompressed := common.PointCompress(common.G)
+	testB4D, err := common.PointDecompress(testBCompressed)
 	if err != nil {
 		t.Fatalf("Failed to decompress test point: %v", err)
 	}
-	testB := crypto.Unexpand(testB4D)
+	testB := common.Unexpand(testB4D)
 
 	for i := 0; i < maxGuesses; i++ {
 		// Attempt recovery (will succeed but increment guess count)

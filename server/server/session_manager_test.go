@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	openadpNoise "github.com/openadp/common/noise"
+	openadpNoise "github.com/openadp/ocrypt/common"
 )
 
 func TestNewNoiseSessionManager(t *testing.T) {

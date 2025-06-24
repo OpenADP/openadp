@@ -16,7 +16,7 @@ import (
 	"github.com/flynn/noise"
 	"github.com/gorilla/mux"
 
-	"github.com/openadp/common/crypto"
+	"github.com/openadp/ocrypt/common"
 	"github.com/openadp/server/database"
 	"github.com/openadp/server/server"
 )
@@ -135,7 +135,7 @@ func loadOrGenerateServerKeyPair(db *database.Database) ([]byte, []byte, error) 
 
 	// Generate new key pair
 	log.Println("Generating new server key pair...")
-	privateKey, publicKey, err := crypto.X25519GenerateKeypair()
+	privateKey, publicKey, err := common.X25519GenerateKeypair()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate keypair: %v", err)
 	}
@@ -345,7 +345,7 @@ func (s *Server) handleRegisterSecret(params []interface{}) (interface{}, error)
 		yInt, ok := yInt.SetString(yStr, 10)
 		if ok {
 			// Validate that Y is within valid range (< P, the prime modulus)
-			if yInt.Cmp(crypto.P) >= 0 {
+			if yInt.Cmp(common.P) >= 0 {
 				return nil, fmt.Errorf("invalid y coordinate: value must be less than prime modulus P")
 			}
 
@@ -377,7 +377,7 @@ func (s *Server) handleRegisterSecret(params []interface{}) (interface{}, error)
 
 		// Also validate base64 decoded values
 		yInt := new(big.Int).SetBytes(y)
-		if yInt.Cmp(crypto.P) >= 0 {
+		if yInt.Cmp(common.P) >= 0 {
 			return nil, fmt.Errorf("invalid y coordinate: value must be less than prime modulus P")
 		}
 	}
@@ -455,11 +455,11 @@ func (s *Server) handleRecoverSecret(params []interface{}) (interface{}, error) 
 	}
 
 	// Decompress point
-	b4D, err := crypto.PointDecompress(bBytes)
+	b4D, err := common.PointDecompress(bBytes)
 	if err != nil {
 		return nil, fmt.Errorf("invalid compressed point b: %v", err)
 	}
-	b := crypto.Unexpand(b4D)
+	b := common.Unexpand(b4D)
 
 	guessNumFloat, ok := params[5].(float64)
 	if !ok {
@@ -483,18 +483,18 @@ func (s *Server) handleRecoverSecret(params []interface{}) (interface{}, error) 
 
 	// Convert response to JSON-compatible format
 	// Create Point4D from Point2D for compression
-	siB4D := &crypto.Point4D{
+	siB4D := &common.Point4D{
 		X: new(big.Int).Set(response.SiB.X),
 		Y: new(big.Int).Set(response.SiB.Y),
 		Z: big.NewInt(1),
 		T: new(big.Int).Mul(response.SiB.X, response.SiB.Y),
 	}
-	siB4D.T.Mod(siB4D.T, crypto.P)
+	siB4D.T.Mod(siB4D.T, common.P)
 
 	return map[string]interface{}{
 		"version":     response.Version,
 		"x":           response.X,
-		"si_b":        base64.StdEncoding.EncodeToString(crypto.PointCompress(siB4D)),
+		"si_b":        base64.StdEncoding.EncodeToString(common.PointCompress(siB4D)),
 		"num_guesses": response.NumGuesses,
 		"max_guesses": response.MaxGuesses,
 		"expiration":  response.Expiration,

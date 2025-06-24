@@ -1,8 +1,5 @@
-// Package crypto implements Ed25519-based cryptographic operations for the OpenADP system.
-//
-// This module provides point arithmetic, compression/decompression, and key derivation
-// based on RFC 8032: https://datatracker.ietf.org/doc/html/rfc8032
-package crypto
+// Package common provides shared cryptographic primitives and utilities for OpenADP.
+package common
 
 import (
 	"crypto/rand"
