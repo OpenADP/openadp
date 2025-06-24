@@ -30,6 +30,4 @@ require (
 	modernc.org/token v1.1.0 // indirect
 )
 
-replace github.com/openadp/ocrypt => ./ocrypt
-
 replace github.com/openadp/server => ./server

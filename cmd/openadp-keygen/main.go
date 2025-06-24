@@ -24,7 +24,7 @@ func main() {
 	}
 
 	// Generate keypair
-	privateKey, publicKey, err := common.X25519GenerateKeypair()
+	privateKey, publicKey, err := crypto.X25519GenerateKeypair()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating keypair: %v\n", err)
 		os.Exit(1)

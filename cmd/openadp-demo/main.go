@@ -168,7 +168,7 @@ func (demo *AuthCodeDemo) CreateBackup(fileData []byte, userPin, deviceID, backu
 	fmt.Printf("🗝️  Encryption key derived from S (length: %d bytes)\n", len(encKey))
 
 	// 3. Create Shamir secret shares
-	shares, err := sharing.MakeRandomShares(secret, demo.threshold, demo.totalShares)
+	shares, err := client.MakeRandomShares(secret, demo.threshold, demo.totalShares)
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to create shares: %v", err)
 	}
