@@ -2,7 +2,7 @@
 // Local-only version with encrypted storage
 
 // Import ocrypt functions for distributed password hashing
-import { register, recover } from './ocrypt.js';
+import { register, recover } from '../sdk/browser-javascript/ocrypt.js';
 
 // Helper functions for base64 encoding/decoding in browser
 function uint8ArrayToBase64(uint8Array) {

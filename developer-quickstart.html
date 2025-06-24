@@ -163,19 +163,25 @@
 
                 <!-- JavaScript Tab -->
                 <div id="javascript" class="tab-content active">
-                    <div class="integration-step">
-                        <span class="step-number">1</span>
-                        <h3>Setup OpenADP JavaScript SDK</h3>
-                        <p>Clone the OpenADP repository and navigate to the JavaScript SDK:</p>
-                        <div class="code-block">git clone https://github.com/waywardgeek/openadp.git
-cd openadp/sdk/javascript
+                                    <div class="integration-step">
+                    <span class="step-number">1</span>
+                    <h3>Setup OpenADP Browser JavaScript SDK</h3>
+                    <p>Clone the OpenADP repository and navigate to the browser JavaScript SDK:</p>
+                    <div class="code-block">git clone https://github.com/waywardgeek/openadp.git
+cd openadp/sdk/browser-javascript
 npm install</div>
-                    </div>
+                </div>
+
+                <div class="warning-box">
+                    <h4>⚠️ Important: HTTP Server Required</h4>
+                    <p><strong>Never open HTML files directly in the browser</strong> (file:// protocol). Modern browsers block ES6 module imports and Service Workers for security reasons.</p>
+                    <p><strong>Always use an HTTP server</strong> for development and testing.</p>
+                </div>
 
                     <div class="integration-step">
                         <span class="step-number">2</span>
                         <h3>Import Ocrypt</h3>
-                        <div class="code-block">import { register, recover } from './path/to/openadp/sdk/javascript/src/ocrypt.js';</div>
+                        <div class="code-block">import { register, recover } from './path/to/openadp/sdk/browser-javascript/ocrypt.js';</div>
                     </div>
 
                     <div class="integration-step">
@@ -642,6 +648,41 @@ func main() {
 
                 <div class="integration-step">
                     <span class="step-number">1</span>
+                    <h3>Set Up HTTP Server</h3>
+                    <p>Create a simple HTTP server to serve your application. <strong>Do not open HTML files directly</strong> - browsers block ES6 modules from file:// URLs.</p>
+                    
+                    <h4>Option A: Python HTTP Server (Recommended)</h4>
+                    <div class="code-block"># Navigate to your project directory
+cd your-project-directory
+
+# Python 3
+python3 -m http.server 8000
+
+# Your app will be available at: http://localhost:8000</div>
+
+                    <h4>Option B: Node.js HTTP Server</h4>
+                    <div class="code-block"># Install a simple HTTP server
+npm install -g http-server
+
+# Navigate to your project directory
+cd your-project-directory
+
+# Start server
+http-server -p 8000
+
+# Your app will be available at: http://localhost:8000</div>
+
+                    <h4>Option C: Use OpenADP's Ready-Made Server</h4>
+                    <div class="code-block"># Copy the server script from OpenADP
+cp path/to/openadp/scripts/serve_homepage.py ./serve_app.py
+
+# Edit the script to point to your app directory
+# Then run:
+python3 serve_app.py</div>
+                </div>
+
+                <div class="integration-step">
+                    <span class="step-number">2</span>
                     <h3>Verify Network Connectivity</h3>
                     <p>Check that your application can reach OpenADP servers:</p>
                     <div class="code-block"># Check network health
@@ -652,7 +693,7 @@ curl https://servers.openadp.org/servers</div>
                 </div>
 
                 <div class="integration-step">
-                    <span class="step-number">2</span>
+                    <span class="step-number">3</span>
                     <h3>Test Registration and Recovery</h3>
                     <p>Test the complete flow with a simple example:</p>
                     <div class="code-block">// Test with simple data
@@ -674,7 +715,7 @@ console.log('Success:', JSON.stringify(testData) === JSON.stringify(recoveredDat
                 </div>
 
                 <div class="integration-step">
-                    <span class="step-number">3</span>
+                    <span class="step-number">4</span>
                     <h3>Test Error Handling</h3>
                     <p>Verify that wrong PINs are properly rejected:</p>
                     <div class="code-block">// Test wrong PIN
@@ -684,6 +725,21 @@ try {
 } catch (error) {
     console.log("✅ Wrong PIN correctly rejected:", error.message);
 }</div>
+                </div>
+
+                <div class="warning-box">
+                    <h4>🚨 Common Issues & Solutions</h4>
+                    <h5>❌ "Cross-Origin Request Blocked" or "Module source URI is not allowed"</h5>
+                    <p><strong>Problem:</strong> You're opening the HTML file directly in the browser (file:// URL)</p>
+                    <p><strong>Solution:</strong> Use an HTTP server as described in Step 1 above</p>
+                    
+                    <h5>❌ "Failed to fetch" or Network errors</h5>
+                    <p><strong>Problem:</strong> Can't reach OpenADP servers</p>
+                    <p><strong>Solution:</strong> Check internet connection and firewall settings</p>
+                    
+                    <h5>❌ Import errors</h5>
+                    <p><strong>Problem:</strong> Wrong file paths or missing dependencies</p>
+                    <p><strong>Solution:</strong> Verify SDK file paths and ensure @noble/hashes is available</p>
                 </div>
 
                 <div class="success-box">

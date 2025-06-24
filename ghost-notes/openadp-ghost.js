@@ -1,8 +1,8 @@
 // Ghost Notes with OpenADP Integration
 // Properly secures low-entropy PINs using distributed secret sharing
 
-import { generateEncryptionKey, recoverEncryptionKey, deriveIdentifiers, passwordToPin } from '../sdk/javascript/src/keygen.js';
-import { getServers, getFallbackServerInfo } from '../sdk/javascript/src/client.js';
+import { generateEncryptionKey, recoverEncryptionKey, deriveIdentifiers, passwordToPin } from '../sdk/browser-javascript/keygen.js';
+import { getServers, getFallbackServerInfo } from '../sdk/browser-javascript/client.js';
 
 class OpenADPGhostNotes {
     constructor() {
