@@ -254,8 +254,8 @@ class OpenADPTestRunner:
             test_file.write_text(test_content)
             
             # Test version flags
-            success1, _, _ = self.run_command(["python", "tools/openadp-encrypt.py", "-version"])
-            success2, _, _ = self.run_command(["python", "tools/openadp-decrypt.py", "-version"])
+            success1, _, _ = self.run_command(["python", "tools/openadp-encrypt.py", "--version"])
+            success2, _, _ = self.run_command(["python", "tools/openadp-decrypt.py", "--version"])
             
             duration = time.time() - start_time
             

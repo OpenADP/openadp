@@ -39,19 +39,19 @@ def show_help():
     print("""OpenADP File Decryption Tool
 
 USAGE:
-    openadp-decrypt.py -file <filename> [OPTIONS]
+    openadp-decrypt.py --file <filename> [OPTIONS]
 
 OPTIONS:
-    -file <path>          File to decrypt (required)
-    -password <password>  Password for key derivation (will prompt if not provided)
-    -user-id <id>         User ID override (will use metadata or prompt if not provided)
-    -servers <urls>       Comma-separated list of server URLs to override metadata servers
-    -version              Show version information
-    -help                 Show this help message
+    --file <path>          File to decrypt (required)
+    --password <password>  Password for key derivation (will prompt if not provided)
+    --user-id <id>         User ID override (will use metadata or prompt if not provided)
+    --servers <urls>       Comma-separated list of server URLs to override metadata servers
+    --version              Show version information
+    --help                 Show this help message
 
 USER ID HANDLING:
     The tool will use the User ID in this priority order:
-    1. Command line flag (-user-id)
+    1. Command line flag (--user-id)
     2. User ID stored in the encrypted file metadata
     3. OPENADP_USER_ID environment variable
     4. Interactive prompt
@@ -61,18 +61,18 @@ USER ID HANDLING:
 
 EXAMPLES:
     # Decrypt a file using servers from metadata
-    openadp-decrypt.py -file document.txt.enc
+    openadp-decrypt.py --file document.txt.enc
 
     # Decrypt using override servers
-    openadp-decrypt.py -file document.txt.enc -servers "https://server1.com,https://server2.com"
+    openadp-decrypt.py --file document.txt.enc --servers "https://server1.com,https://server2.com"
 
     # Override user ID (useful for corrupted metadata)
-    openadp-decrypt.py -file document.txt.enc -user-id "myuserid"
+    openadp-decrypt.py --file document.txt.enc --user-id "myuserid"
 
     # Use environment variables
     export OPENADP_PASSWORD="mypassword"
     export OPENADP_USER_ID="myuserid"
-    openadp-decrypt.py -file document.txt.enc
+    openadp-decrypt.py --file document.txt.enc
 
 The decrypted file will be saved without the .enc extension
 """)
@@ -334,12 +334,12 @@ def decrypt_file(input_filename, password, user_id, override_servers):
 
 def main():
     parser = argparse.ArgumentParser(description="OpenADP File Decryption Tool", add_help=False)
-    parser.add_argument("-file", dest="filename", help="File to decrypt (required)")
-    parser.add_argument("-password", help="Password for key derivation (will prompt if not provided)")
-    parser.add_argument("-user-id", dest="user_id", help="User ID override (will use metadata or prompt if not provided)")
-    parser.add_argument("-servers", help="Comma-separated list of server URLs to override metadata servers")
-    parser.add_argument("-version", action="store_true", help="Show version information")
-    parser.add_argument("-help", action="store_true", help="Show help information")
+    parser.add_argument("--file", dest="filename", help="File to decrypt (required)")
+    parser.add_argument("--password", help="Password for key derivation (will prompt if not provided)")
+    parser.add_argument("--user-id", dest="user_id", help="User ID override (will use metadata or prompt if not provided)")
+    parser.add_argument("--servers", help="Comma-separated list of server URLs to override metadata servers")
+    parser.add_argument("--version", action="store_true", help="Show version information")
+    parser.add_argument("--help", action="store_true", help="Show help information")
     
     args = parser.parse_args()
     
@@ -352,7 +352,7 @@ def main():
         return
     
     if not args.filename:
-        print("Error: -file is required")
+        print("Error: --file is required")
         show_help()
         sys.exit(1)
     

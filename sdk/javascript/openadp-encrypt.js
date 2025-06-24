@@ -45,16 +45,16 @@ function showHelp() {
     console.log(`OpenADP File Encryption Tool
 
 USAGE:
-    openadp-encrypt -file <filename> [OPTIONS]
+    openadp-encrypt --file <filename> [OPTIONS]
 
 OPTIONS:
-    -file <path>          File to encrypt (required)
-    -password <password>  Password for key derivation (will prompt if not provided)
-    -user-id <id>         User ID for secret ownership (will prompt if not provided)
-    -servers <urls>       Comma-separated list of server URLs (optional)
-    -servers-url <url>    URL to scrape for server list (default: https://servers.openadp.org/api/servers.json)
-    -version              Show version information
-    -help                 Show this help message
+    --file <path>          File to encrypt (required)
+    --password <password>  Password for key derivation (will prompt if not provided)
+    --user-id <id>         User ID for secret ownership (will prompt if not provided)
+    --servers <urls>       Comma-separated list of server URLs (optional)
+    --servers-url <url>    URL to scrape for server list (default: https://servers.openadp.org/api/servers.json)
+    --version              Show version information
+    --help                 Show this help message
 
 USER ID SECURITY:
     Your User ID uniquely identifies your secrets on the servers. It is critical that:
@@ -72,18 +72,18 @@ SERVER DISCOVERY:
 
 EXAMPLES:
     # Encrypt a file using discovered servers (fetches from servers.openadp.org/api/servers.json)
-    openadp-encrypt -file document.txt
+    openadp-encrypt --file document.txt
 
     # Encrypt using specific servers (skip discovery)
-    openadp-encrypt -file document.txt -servers "https://server1.com,https://server2.com"
+    openadp-encrypt --file document.txt --servers "https://server1.com,https://server2.com"
 
     # Use a different server registry
-    openadp-encrypt -file document.txt -servers-url "https://my-registry.com"
+    openadp-encrypt --file document.txt --servers-url "https://my-registry.com"
 
     # Use environment variables to avoid prompts
     export OPENADP_PASSWORD="mypassword"
     export OPENADP_USER_ID="myuserid"
-    openadp-encrypt -file document.txt
+    openadp-encrypt --file document.txt
 
 The encrypted file will be saved as <filename>.enc`);
 }
@@ -206,65 +206,53 @@ async function main() {
         .version(VERSION);
     
     program
-        .option('-file <path>', 'File to encrypt (required)')
-        .option('-password <password>', 'Password for key derivation (will prompt if not provided)')
-        .option('-user-id <id>', 'User ID for secret ownership (will prompt if not provided)')
-        .option('-servers <urls>', 'Comma-separated list of server URLs (optional)')
-        .option('-servers-url <url>', 'URL to scrape for server list', 'https://servers.openadp.org/api/servers.json')
-        .option('-version', 'Show version information')
-        .option('-help', 'Show help information')
+        .option('--file <path>', 'File to encrypt (required)')
+        .option('--password <password>', 'Password for key derivation (will prompt if not provided)')
+        .option('--user-id <id>', 'User ID for secret ownership (will prompt if not provided)')
+        .option('--servers <urls>', 'Comma-separated list of server URLs (optional)')
+        .option('--servers-url <url>', 'URL to scrape for server list', 'https://servers.openadp.org/api/servers.json')
         .allowUnknownOption()
         .parse();
     
     const options = program.opts();
     
-    if (options.version) {
-        console.log(`OpenADP File Encryption Tool v${VERSION}`);
-        return;
-    }
-    
-    if (options.help) {
-        showHelp();
-        return;
-    }
-    
-    if (!options.File) {
-        console.log("Error: -file is required");
+    if (!options.file) {
+        console.log("Error: --file is required");
         showHelp();
         process.exit(1);
     }
     
     // Check if input file exists
-    if (!fs.existsSync(options.File)) {
-        console.log(`Error: Input file '${options.File}' not found.`);
+    if (!fs.existsSync(options.file)) {
+        console.log(`Error: Input file '${options.file}' not found.`);
         process.exit(1);
     }
     
     // Get password (priority: flag > environment > prompt)
     let passwordStr = "";
-    if (options.Password) {
-        passwordStr = options.Password;
+    if (options.password) {
+        passwordStr = options.password;
         console.log("⚠️  Warning: Password provided via command line (visible in process list)");
     } else if (process.env.OPENADP_PASSWORD) {
         passwordStr = process.env.OPENADP_PASSWORD;
         console.log("Using password from environment variable");
     } else {
         // TODO: Implement secure password prompt for Node.js
-        console.log("Error: Password required. Use -password flag or OPENADP_PASSWORD environment variable");
+        console.log("Error: Password required. Use --password flag or OPENADP_PASSWORD environment variable");
         process.exit(1);
     }
     
     // Get user ID (priority: flag > environment > prompt)
     let userIdStr = "";
-    if (options.UserId) {
-        userIdStr = options.UserId;
+    if (options.userId) {
+        userIdStr = options.userId;
         console.log("⚠️  Warning: User ID provided via command line (visible in process list)");
     } else if (process.env.OPENADP_USER_ID) {
         userIdStr = process.env.OPENADP_USER_ID;
         console.log("Using user ID from environment variable");
     } else {
         // TODO: Implement user input prompt for Node.js
-        console.log("Error: User ID required. Use -user-id flag or OPENADP_USER_ID environment variable");
+        console.log("Error: User ID required. Use --user-id flag or OPENADP_USER_ID environment variable");
         process.exit(1);
     }
     
@@ -281,9 +269,9 @@ async function main() {
     
     // Get server list
     let serverInfos = [];
-    if (options.Servers) {
+    if (options.servers) {
         console.log("📋 Using manually specified servers...");
-        const serverUrls = options.Servers.split(',').map(url => url.trim());
+        const serverUrls = options.servers.split(',').map(url => url.trim());
         console.log(`   Servers specified: ${serverUrls.length}`);
         for (let i = 0; i < serverUrls.length; i++) {
             console.log(`   ${i + 1}. ${serverUrls[i]}`);
@@ -315,11 +303,11 @@ async function main() {
             }
         }
     } else {
-        console.log(`🌐 Discovering servers from registry: ${options.ServersUrl}`);
+        console.log(`🌐 Discovering servers from registry: ${options.serversUrl}`);
         
         // Try to get full server information including public keys
         try {
-            serverInfos = await getServers(options.ServersUrl);
+            serverInfos = await getServers(options.serversUrl);
             if (!serverInfos || serverInfos.length === 0) {
                 throw new Error("No servers returned from registry");
             }
@@ -346,7 +334,7 @@ async function main() {
     
     // Encrypt the file
     try {
-        await encryptFile(options.File, passwordStr, userIdStr, serverInfos, options.ServersUrl);
+        await encryptFile(options.file, passwordStr, userIdStr, serverInfos, options.serversUrl);
         console.log("✅ File encrypted successfully!");
     } catch (error) {
         console.log(`❌ Encryption failed: ${error.message}`);

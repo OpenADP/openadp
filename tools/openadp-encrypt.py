@@ -49,16 +49,16 @@ def show_help():
     print("""OpenADP File Encryption Tool
 
 USAGE:
-    openadp-encrypt.py -file <filename> [OPTIONS]
+    openadp-encrypt.py --file <filename> [OPTIONS]
 
 OPTIONS:
-    -file <path>          File to encrypt (required)
-    -password <password>  Password for key derivation (will prompt if not provided)
-    -user-id <id>         User ID for secret ownership (will prompt if not provided)
-    -servers <urls>       Comma-separated list of server URLs (optional)
-    -servers-url <url>    URL to scrape for server list (default: https://servers.openadp.org)
-    -version              Show version information
-    -help                 Show this help message
+    --file <path>          File to encrypt (required)
+    --password <password>  Password for key derivation (will prompt if not provided)
+    --user-id <id>         User ID for secret ownership (will prompt if not provided)
+    --servers <urls>       Comma-separated list of server URLs (optional)
+    --servers-url <url>    URL to scrape for server list (default: https://servers.openadp.org)
+    --version              Show version information
+    --help                 Show this help message
 
 USER ID SECURITY:
     Your User ID uniquely identifies your secrets on the servers. It is critical that:
@@ -76,18 +76,18 @@ SERVER DISCOVERY:
 
 EXAMPLES:
     # Encrypt a file using discovered servers (fetches from servers.openadp.org)
-    openadp-encrypt.py -file document.txt
+    openadp-encrypt.py --file document.txt
 
     # Encrypt using specific servers (skip discovery)
-    openadp-encrypt.py -file document.txt -servers "https://server1.com,https://server2.com"
+    openadp-encrypt.py --file document.txt --servers "https://server1.com,https://server2.com"
 
     # Use a different server registry
-    openadp-encrypt.py -file document.txt -servers-url "https://my-registry.com"
+    openadp-encrypt.py --file document.txt --servers-url "https://my-registry.com"
 
     # Use environment variables to avoid prompts
     export OPENADP_PASSWORD="mypassword"
     export OPENADP_USER_ID="myuserid"
-    openadp-encrypt.py -file document.txt
+    openadp-encrypt.py --file document.txt
 
 The encrypted file will be saved as <filename>.enc
 """)
@@ -192,14 +192,14 @@ def encrypt_file(input_filename, password, user_id, server_infos, servers_url):
 
 def main():
     parser = argparse.ArgumentParser(description="OpenADP File Encryption Tool", add_help=False)
-    parser.add_argument("-file", dest="filename", help="File to encrypt (required)")
-    parser.add_argument("-password", help="Password for key derivation (will prompt if not provided)")
-    parser.add_argument("-user-id", dest="user_id", help="User ID for secret ownership (will prompt if not provided)")
-    parser.add_argument("-servers", help="Comma-separated list of server URLs (optional)")
-    parser.add_argument("-servers-url", dest="servers_url", default="https://servers.openadp.org", 
+    parser.add_argument("--file", dest="filename", help="File to encrypt (required)")
+    parser.add_argument("--password", help="Password for key derivation (will prompt if not provided)")
+    parser.add_argument("--user-id", dest="user_id", help="User ID for secret ownership (will prompt if not provided)")
+    parser.add_argument("--servers", help="Comma-separated list of server URLs (optional)")
+    parser.add_argument("--servers-url", dest="servers_url", default="https://servers.openadp.org", 
                        help="URL to scrape for server list (default: https://servers.openadp.org)")
-    parser.add_argument("-version", action="store_true", help="Show version information")
-    parser.add_argument("-help", action="store_true", help="Show help information")
+    parser.add_argument("--version", action="store_true", help="Show version information")
+    parser.add_argument("--help", action="store_true", help="Show help information")
     
     args = parser.parse_args()
     
@@ -212,7 +212,7 @@ def main():
         return
     
     if not args.filename:
-        print("Error: -file is required")
+        print("Error: --file is required")
         show_help()
         sys.exit(1)
     

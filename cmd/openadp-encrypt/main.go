@@ -50,6 +50,27 @@ func main() {
 		showVersion = flag.Bool("version", false, "Show version information")
 	)
 
+	// Custom flag parsing to support double-dash arguments
+	flag.Usage = func() {
+		showHelp()
+	}
+
+	// Parse arguments manually to support double-dash
+	args := os.Args[1:]
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		// Convert --arg to -arg for flag package
+		if strings.HasPrefix(arg, "--") {
+			args[i] = "-" + arg[2:]
+		}
+	}
+
+	// Replace os.Args with modified args
+	oldArgs := os.Args
+	os.Args = append([]string{os.Args[0]}, args...)
+	defer func() { os.Args = oldArgs }()
+
 	flag.Parse()
 
 	if *showVersion {
@@ -63,7 +84,7 @@ func main() {
 	}
 
 	if *filename == "" {
-		fmt.Println("Error: -file is required")
+		fmt.Println("Error: --file is required")
 		showHelp()
 		os.Exit(1)
 	}
@@ -219,16 +240,16 @@ func showHelp() {
 	fmt.Print(`OpenADP File Encryption Tool
 
 USAGE:
-    openadp-encrypt -file <filename> [OPTIONS]
+    openadp-encrypt --file <filename> [OPTIONS]
 
 OPTIONS:
-    -file <path>          File to encrypt (required)
-    -password <password>  Password for key derivation (will prompt if not provided)
-    -user-id <id>         User ID for secret ownership (will prompt if not provided)
-    -servers <urls>       Comma-separated list of server URLs (optional)
-    -servers-url <url>    URL to scrape for server list (default: https://servers.openadp.org)
-    -version              Show version information
-    -help                 Show this help message
+    --file <path>          File to encrypt (required)
+    --password <password>  Password for key derivation (will prompt if not provided)
+    --user-id <id>         User ID for secret ownership (will prompt if not provided)
+    --servers <urls>       Comma-separated list of server URLs (optional)
+    --servers-url <url>    URL to scrape for server list (default: https://servers.openadp.org)
+    --version              Show version information
+    --help                 Show this help message
 
 USER ID SECURITY:
     Your User ID uniquely identifies your secrets on the servers. It is critical that:
@@ -246,18 +267,18 @@ SERVER DISCOVERY:
 
 EXAMPLES:
     # Encrypt a file using discovered servers (fetches from servers.openadp.org)
-    openadp-encrypt -file document.txt
+    openadp-encrypt --file document.txt
 
     # Encrypt using specific servers (skip discovery)
-    openadp-encrypt -file document.txt -servers "https://server1.com,https://server2.com"
+    openadp-encrypt --file document.txt --servers "https://server1.com,https://server2.com"
 
     # Use a different server registry
-    openadp-encrypt -file document.txt -servers-url "https://my-registry.com"
+    openadp-encrypt --file document.txt --servers-url "https://my-registry.com"
 
     # Use environment variables to avoid prompts
     export OPENADP_PASSWORD="mypassword"
     export OPENADP_USER_ID="myuserid"
-    openadp-encrypt -file document.txt
+    openadp-encrypt --file document.txt
 
 The encrypted file will be saved as <filename>.enc
 `)

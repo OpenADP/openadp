@@ -144,10 +144,10 @@ def run_python_encrypt(input_file, output_file=None):
     
     cmd = [
         "python3", "tools/openadp-encrypt.py",
-        "-file", input_file,
-        "-password", TEST_PASSWORD,
-        "-user-id", TEST_USER_ID,
-        "-servers", ",".join(SERVER_URLS)
+        "--file", input_file,
+        "--password", TEST_PASSWORD,
+        "--user-id", TEST_USER_ID,
+        "--servers", ",".join(SERVER_URLS)
     ]
     
     log(f"Running Python encrypt: {' '.join(cmd)}")
@@ -173,10 +173,10 @@ def run_python_decrypt(input_file, output_file=None):
     
     cmd = [
         "python3", "tools/openadp-decrypt.py",
-        "-file", input_file,
-        "-password", TEST_PASSWORD,
-        "-user-id", TEST_USER_ID,
-        "-servers", ",".join(SERVER_URLS)
+        "--file", input_file,
+        "--password", TEST_PASSWORD,
+        "--user-id", TEST_USER_ID,
+        "--servers", ",".join(SERVER_URLS)
     ]
     
     log(f"Running Python decrypt: {' '.join(cmd)}")
@@ -203,10 +203,10 @@ def run_go_encrypt(input_file, output_file=None):
     
     cmd = [
         "./build/openadp-encrypt",
-        "-file", input_file,
-        "-password", TEST_PASSWORD,
-        "-user-id", TEST_USER_ID,
-        "-servers", ",".join(SERVER_URLS)
+        "--file", input_file,
+        "--password", TEST_PASSWORD,
+        "--user-id", TEST_USER_ID,
+        "--servers", ",".join(SERVER_URLS)
     ]
     
     log(f"Running Go encrypt: {' '.join(cmd)}")
@@ -232,10 +232,10 @@ def run_go_decrypt(input_file, output_file=None):
     
     cmd = [
         "./build/openadp-decrypt",
-        "-file", input_file,
-        "-password", TEST_PASSWORD,
-        "-user-id", TEST_USER_ID,
-        "-servers", ",".join(SERVER_URLS)
+        "--file", input_file,
+        "--password", TEST_PASSWORD,
+        "--user-id", TEST_USER_ID,
+        "--servers", ",".join(SERVER_URLS)
     ]
     
     log(f"Running Go decrypt: {' '.join(cmd)}")

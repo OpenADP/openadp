@@ -151,10 +151,10 @@ def run_go_encrypt(input_file, output_file=None):
     
     cmd = [
         "./build/openadp-encrypt",
-        "-file", input_file,
-        "-password", TEST_PASSWORD,
-        "-user-id", TEST_USER_ID,
-        "-servers", ",".join(SERVER_URLS)
+        "--file", input_file,
+        "--password", TEST_PASSWORD,
+        "--user-id", TEST_USER_ID,
+        "--servers", ",".join(SERVER_URLS)
     ]
     
     log(f"Running Go encrypt: {' '.join(cmd)}")
@@ -181,10 +181,10 @@ def run_go_decrypt(input_file, output_file=None):
     
     cmd = [
         "./build/openadp-decrypt",
-        "-file", input_file,
-        "-password", TEST_PASSWORD,
-        "-user-id", TEST_USER_ID,
-        "-servers", ",".join(SERVER_URLS)
+        "--file", input_file,
+        "--password", TEST_PASSWORD,
+        "--user-id", TEST_USER_ID,
+        "--servers", ",".join(SERVER_URLS)
     ]
     
     log(f"Running Go decrypt: {' '.join(cmd)}")
@@ -211,10 +211,10 @@ def run_python_encrypt(input_file, output_file=None):
     
     cmd = [
         "python3", "sdk/python/openadp-encrypt.py",
-        "-file", input_file,
-        "-password", TEST_PASSWORD,
-        "-user-id", TEST_USER_ID,
-        "-servers", ",".join(SERVER_URLS)
+        "--file", input_file,
+        "--password", TEST_PASSWORD,
+        "--user-id", TEST_USER_ID,
+        "--servers", ",".join(SERVER_URLS)
     ]
     
     # Set PYTHONPATH to find the openadp module
@@ -245,10 +245,10 @@ def run_python_decrypt(input_file, output_file=None):
     
     cmd = [
         "python3", "sdk/python/openadp-decrypt.py",
-        "-file", input_file,
-        "-password", TEST_PASSWORD,
-        "-user-id", TEST_USER_ID,
-        "-servers", ",".join(SERVER_URLS)
+        "--file", input_file,
+        "--password", TEST_PASSWORD,
+        "--user-id", TEST_USER_ID,
+        "--servers", ",".join(SERVER_URLS)
     ]
     
     # Set PYTHONPATH to find the openadp module
@@ -279,10 +279,10 @@ def run_javascript_encrypt(input_file, output_file=None):
     
     cmd = [
         "node", "sdk/javascript/openadp-encrypt.js",
-        "-file", input_file,
-        "-password", TEST_PASSWORD,
-        "-user-id", TEST_USER_ID,
-        "-servers", ",".join(SERVER_URLS)
+        "--file", input_file,
+        "--password", TEST_PASSWORD,
+        "--user-id", TEST_USER_ID,
+        "--servers", ",".join(SERVER_URLS)
     ]
     
     log(f"Running JavaScript encrypt: {' '.join(cmd)}")
@@ -308,10 +308,10 @@ def run_javascript_decrypt(input_file, output_file=None):
     
     cmd = [
         "node", "sdk/javascript/openadp-decrypt.js",
-        "-file", input_file,
-        "-password", TEST_PASSWORD,
-        "-user-id", TEST_USER_ID,
-        "-servers", ",".join(SERVER_URLS)
+        "--file", input_file,
+        "--password", TEST_PASSWORD,
+        "--user-id", TEST_USER_ID,
+        "--servers", ",".join(SERVER_URLS)
     ]
     
     log(f"Running JavaScript decrypt: {' '.join(cmd)}")

@@ -47,6 +47,27 @@ func main() {
 		showVersion     = flag.Bool("version", false, "Show version information")
 	)
 
+	// Custom flag parsing to support double-dash arguments
+	flag.Usage = func() {
+		showHelp()
+	}
+
+	// Parse arguments manually to support double-dash
+	args := os.Args[1:]
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+
+		// Convert --arg to -arg for flag package
+		if strings.HasPrefix(arg, "--") {
+			args[i] = "-" + arg[2:]
+		}
+	}
+
+	// Replace os.Args with modified args
+	oldArgs := os.Args
+	os.Args = append([]string{os.Args[0]}, args...)
+	defer func() { os.Args = oldArgs }()
+
 	flag.Parse()
 
 	if *showVersion {
@@ -60,7 +81,7 @@ func main() {
 	}
 
 	if *filename == "" {
-		fmt.Println("Error: -file is required")
+		fmt.Println("Error: --file is required")
 		showHelp()
 		os.Exit(1)
 	}
@@ -112,19 +133,19 @@ func showHelp() {
 	fmt.Print(`OpenADP File Decryption Tool
 
 USAGE:
-    openadp-decrypt -file <filename> [OPTIONS]
+    openadp-decrypt --file <filename> [OPTIONS]
 
 OPTIONS:
-    -file <path>          File to decrypt (required)
-    -password <password>  Password for key derivation (will prompt if not provided)
-    -user-id <id>         User ID override (will use metadata or prompt if not provided)
-    -servers <urls>       Comma-separated list of server URLs to override metadata servers
-    -version              Show version information
-    -help                 Show this help message
+    --file <path>          File to decrypt (required)
+    --password <password>  Password for key derivation (will prompt if not provided)
+    --user-id <id>         User ID override (will use metadata or prompt if not provided)
+    --servers <urls>       Comma-separated list of server URLs to override metadata servers
+    --version              Show version information
+    --help                 Show this help message
 
 USER ID HANDLING:
     The tool will use the User ID in this priority order:
-    1. Command line flag (-user-id)
+    1. Command line flag (--user-id)
     2. User ID stored in the encrypted file metadata
     3. OPENADP_USER_ID environment variable
     4. Interactive prompt
@@ -134,18 +155,18 @@ USER ID HANDLING:
 
 EXAMPLES:
     # Decrypt a file using servers from metadata
-    openadp-decrypt -file document.txt.enc
+    openadp-decrypt --file document.txt.enc
 
     # Decrypt using override servers
-    openadp-decrypt -file document.txt.enc -servers "https://server1.com,https://server2.com"
+    openadp-decrypt --file document.txt.enc --servers "https://server1.com,https://server2.com"
 
     # Override user ID (useful for corrupted metadata)
-    openadp-decrypt -file document.txt.enc -user-id "myuserid"
+    openadp-decrypt --file document.txt.enc --user-id "myuserid"
 
     # Use environment variables
     export OPENADP_PASSWORD="mypassword"
     export OPENADP_USER_ID="myuserid"
-    openadp-decrypt -file document.txt.enc
+    openadp-decrypt --file document.txt.enc
 
 The decrypted file will be saved without the .enc extension
 `)
