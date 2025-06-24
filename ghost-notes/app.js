@@ -1,7 +1,9 @@
-// Ghost Notes - OpenADP Integrated Version
-// Uses real distributed cryptography for PIN protection
+// Ghost Notes - Main Application Logic
+// Local-only version with encrypted storage
 
+// Import ocrypt functions for distributed password hashing
 import { register, recover } from '../sdk/javascript/src/ocrypt.js';
+import { Buffer } from 'buffer';
 
 class GhostNotesApp {
     constructor() {
@@ -13,21 +15,13 @@ class GhostNotesApp {
         this.autoLockTimer = null;
         this.sessionWarningTimer = null;
         this.settings = this.loadSettings();
-        this.openadpStatus = {
-            isConnected: false,
-            lastCheck: null,
-            serversReachable: 0
-        };
         
         // Initialize the app
         this.init();
     }
 
     async init() {
-        console.log('🎭 Initializing Ghost Notes with OpenADP...');
-        
-        // Check OpenADP network status
-        await this.checkOpenADPStatus();
+        console.log('🎭 Initializing Ghost Notes...');
         
         // Check if app is already set up
         const isSetup = this.checkIfSetup();
@@ -44,49 +38,11 @@ class GhostNotesApp {
         // Set up PWA features
         this.setupPWA();
         
-        console.log('👻 Ghost Notes ready with OpenADP protection!');
-    }
-
-    async checkOpenADPStatus() {
-        try {
-            // Simple connectivity check - try to reach health endpoint
-            const response = await fetch('https://health.openadp.org/health', {
-                method: 'GET',
-                timeout: 5000
-            });
-            
-            if (response.ok) {
-                this.openadpStatus.isConnected = true;
-                this.openadpStatus.serversReachable = 3; // Assume 3+ servers available
-            } else {
-                this.openadpStatus.isConnected = false;
-            }
-        } catch (error) {
-            console.warn('OpenADP network check failed:', error);
-            this.openadpStatus.isConnected = false;
-        }
-        
-        this.openadpStatus.lastCheck = new Date();
-        this.updateOpenADPStatusUI();
-    }
-
-    updateOpenADPStatusUI() {
-        const statusElement = document.getElementById('openadp-status');
-        const statusIndicator = document.getElementById('openadp-indicator');
-        
-        if (statusElement && statusIndicator) {
-            if (this.openadpStatus.isConnected) {
-                statusElement.textContent = `✅ OpenADP Network Connected (${this.openadpStatus.serversReachable}+ servers)`;
-                statusIndicator.className = 'status-indicator connected';
-            } else {
-                statusElement.textContent = '⚠️ OpenADP Network Unreachable - Using Cached Data';
-                statusIndicator.className = 'status-indicator disconnected';
-            }
-        }
+        console.log('👻 Ghost Notes ready!');
     }
 
     checkIfSetup() {
-        return localStorage.getItem('ghost_notes_openadp_setup') === 'true';
+        return localStorage.getItem('ghost_notes_setup') === 'true';
     }
 
     loadSettings() {
@@ -96,7 +52,7 @@ class GhostNotesApp {
             sessionWarningTime: 30000, // 30 seconds
             currentGuesses: 0,
             userID: null,
-            openadpMetadata: null
+            encryptionSalt: null
         };
         
         const saved = localStorage.getItem('ghost_notes_settings');
@@ -189,88 +145,56 @@ class GhostNotesApp {
         }
         
         try {
-            this.showLoading('Setting up OpenADP protection...');
+            this.showLoading('Setting up your secure vault with OpenADP...');
             
-            // Generate unique user ID
-            const userID = 'ghost-notes-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            // Generate a unique user ID for this installation
+            const userID = this.generateUserID();
             
-            // Create initial notes data structure
-            const initialNotes = {
-                notes: new Map(),
-                metadata: {
-                    created: new Date().toISOString(),
-                    version: '2.0-openadp'
-                }
-            };
+            // Generate a long-term secret for encryption
+            const longTermSecret = crypto.getRandomValues(new Uint8Array(32));
             
-            // Add welcome note
-            const welcomeNoteId = 'welcome-' + Date.now();
-            initialNotes.notes.set(welcomeNoteId, {
-                id: welcomeNoteId,
-                title: 'Welcome to Ghost Notes with OpenADP! 🛡️',
-                content: `🎉 Welcome to Ghost Notes with OpenADP Protection!
-
-Your notes are now protected by distributed trust cryptography:
-
-🔒 **Enhanced Security**: Your PIN is protected across multiple servers in different countries
-🌍 **Distributed Trust**: No single server can access your data
-🚫 **Government Resistant**: Even simple PINs become unbreakable
-⚡ **Same Experience**: Everything works exactly the same for you
-
-## How it works:
-1. Your notes are encrypted locally with AES-256-GCM
-2. The encryption key is protected by OpenADP's distributed network
-3. Even if someone captures this device, your PIN is safe from cracking
-
-## Your Security Level:
-- **Before**: PIN could be cracked in seconds
-- **After**: PIN protected by threshold cryptography across multiple servers
-
-Start writing your secure notes! They'll auto-save and remain protected even if you lose this device.
-
----
-*This welcome note will disappear when you delete it.*`,
-                created: new Date().toISOString(),
-                modified: new Date().toISOString()
-            });
-            
-            // Convert Map to serializable format for OpenADP
-            const notesData = {
-                notes: Object.fromEntries(initialNotes.notes),
-                metadata: initialNotes.metadata
-            };
-            
-            // Register with OpenADP
-            const masterSecret = new TextEncoder().encode(JSON.stringify(notesData));
-            const metadata = await register(
-                userID,
-                'ghost-notes',
-                masterSecret,
-                pin,
-                'current',
-                maxGuesses
+            // Use ocrypt to protect the long-term secret with the PIN
+            console.log('🔐 Protecting long-term secret with OpenADP distributed cryptography...');
+            const ocryptMetadata = await register(
+                userID,                    // user ID
+                'ghost-notes',             // app ID
+                longTermSecret,            // secret to protect
+                pin,                       // PIN
+                maxGuesses                 // max guess attempts
             );
             
             // Update settings
             this.settings.maxGuesses = maxGuesses;
             this.settings.autoLockTimeout = autoLockTimeout;
-            this.settings.currentGuesses = 0;
             this.settings.userID = userID;
-            this.settings.openadpMetadata = metadata;
+            this.settings.currentGuesses = 0;
             
             this.saveSettings();
             
+            // Store the ocrypt metadata
+            localStorage.setItem('ghost_notes_ocrypt_metadata', 
+                Buffer.from(ocryptMetadata).toString('base64'));
+            
+            // Derive session key from the long-term secret
+            this.sessionKey = await this.deriveSessionKeyFromSecret(longTermSecret);
+            
+            // Create verification data
+            await this.createVerificationData(this.sessionKey);
+            
             // Mark as set up
-            localStorage.setItem('ghost_notes_openadp_setup', 'true');
+            localStorage.setItem('ghost_notes_setup', 'true');
+            
+            // Create welcome note
+            await this.createWelcomeNote();
+            await this.saveEncryptedNotes();
             
             this.hideLoading();
             this.showScreen('login');
-            this.showTemporaryMessage('🛡️ OpenADP vault created successfully! Your notes are now protected by distributed cryptography.');
+            this.showTemporaryMessage('Vault created successfully with OpenADP protection!');
             
         } catch (error) {
             this.hideLoading();
-            console.error('Setup failed:', error);
-            this.showError('Failed to create OpenADP vault: ' + error.message);
+            this.showError('Failed to create vault: ' + error.message);
         }
     }
 
@@ -288,120 +212,262 @@ Start writing your secure notes! They'll auto-save and remain protected even if 
         }
         
         try {
-            this.showLoading('Unlocking with OpenADP...');
+            this.showLoading('Recovering encryption key from OpenADP servers...');
             
-            // Recover data from OpenADP network
-            const recoveredBytes = await recover(this.settings.openadpMetadata, pin);
-            const notesData = JSON.parse(new TextDecoder().decode(recoveredBytes));
+            // Get the stored ocrypt metadata
+            const storedMetadata = localStorage.getItem('ghost_notes_ocrypt_metadata');
+            if (!storedMetadata) {
+                this.hideLoading();
+                this.showError('No vault found - please set up first');
+                return;
+            }
             
-            // Convert back to Map format
-            this.decryptedNotes = new Map(Object.entries(notesData.notes));
+            const metadataBytes = Buffer.from(storedMetadata, 'base64');
             
-            // Reset failed attempts
+            // Use ocrypt to recover the long-term secret
+            console.log('🔐 Recovering long-term secret using OpenADP...');
+            const result = await recover(metadataBytes, pin);
+            const longTermSecret = result.secret;
+            const updatedMetadata = result.updatedMetadata;
+            
+            // Update stored metadata if it was refreshed
+            if (updatedMetadata !== metadataBytes) {
+                localStorage.setItem('ghost_notes_ocrypt_metadata', 
+                    Buffer.from(updatedMetadata).toString('base64'));
+                console.log('📦 Updated backup metadata after automatic refresh');
+            }
+            
+            // Reset guess count on successful recovery
             this.settings.currentGuesses = 0;
             this.saveSettings();
             
+            // Derive session key from the long-term secret
+            this.sessionKey = await this.deriveSessionKeyFromSecret(longTermSecret);
+            
+            // Validate session key
+            const isValid = await this.validateSessionKey(this.sessionKey);
+            if (!isValid) {
+                this.hideLoading();
+                this.showError('Session validation failed');
+                return;
+            }
+            
             // Start session
-            await this.startSession();
+            await this.startSession(this.sessionKey);
             
             this.hideLoading();
             this.showScreen('app');
-            this.showTemporaryMessage('🔓 Notes unlocked successfully!');
+            
+            console.log('🔓 OpenADP unlock successful');
             
         } catch (error) {
-            this.hideLoading();
-            console.error('Unlock failed:', error);
-            
+            // PIN was wrong or other error occurred
             this.settings.currentGuesses++;
             this.saveSettings();
+            
+            const remaining = this.settings.maxGuesses - this.settings.currentGuesses;
+            this.hideLoading();
+            this.showError(`Invalid PIN. ${remaining} attempts remaining.`);
             this.updateAttemptsDisplay();
             
-            if (error.message.includes('Invalid PIN') || error.message.includes('wrong PIN')) {
-                const remaining = this.settings.maxGuesses - this.settings.currentGuesses;
-                this.showError(`Incorrect PIN. ${remaining} attempts remaining.`);
-            } else {
-                this.showError('Failed to unlock: ' + error.message);
-            }
+            console.log(`❌ Unlock failed: ${error.message}`);
+        }
+        
+        document.getElementById('pin-input').value = '';
+    }
+
+    async deriveSessionKeyFromSecret(longTermSecret) {
+        // Convert the long-term secret into a WebCrypto key for AES-GCM
+        return await crypto.subtle.importKey(
+            'raw',
+            longTermSecret,
+            { name: 'AES-GCM', length: 256 },
+            true,
+            ['encrypt', 'decrypt']
+        );
+    }
+
+    generateUserID() {
+        // Generate a cryptographically secure UUID for this user
+        const array = new Uint8Array(16);
+        crypto.getRandomValues(array);
+        
+        // Convert to UUID format
+        const hex = Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
+        return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20,32)}`;
+    }
+
+    async validateSessionKey(sessionKey) {
+        try {
+            const testData = localStorage.getItem('ghost_notes_verify');
+            if (!testData) return false;
+            
+            const encrypted = JSON.parse(testData);
+            const decrypted = await this.decryptData(encrypted, sessionKey);
+            
+            return decrypted === 'ghost_notes_verification';
+        } catch (error) {
+            return false;
         }
     }
 
-    async startSession() {
+    async createVerificationData(sessionKey) {
+        const encrypted = await this.encryptData('ghost_notes_verification', sessionKey);
+        localStorage.setItem('ghost_notes_verify', JSON.stringify(encrypted));
+    }
+
+    async startSession(sessionKey) {
+        this.sessionKey = sessionKey;
         this.sessionActive = true;
-        this.updateNotesListUI();
-        this.resetActivityTimer();
         
-        // Show welcome message if no notes (shouldn't happen with OpenADP setup)
-        if (this.decryptedNotes.size === 0) {
-            document.getElementById('welcome-message').style.display = 'block';
-            document.getElementById('note-editor').style.display = 'none';
-        }
+        await this.loadDecryptedNotes();
+        this.updateNotesListUI();
+        
+        console.log('🔓 Session started successfully');
     }
 
     async endSession() {
-        this.cancelAutoLock();
-        this.cancelSessionWarning();
+        console.log('🔒 Ending session...');
+        
+        this.showLoading('Securing your notes...');
         
         if (this.currentNoteId) {
             await this.saveCurrentNote();
         }
         
-        // Save all notes back to OpenADP
-        await this.saveNotesToOpenADP();
+        await this.saveEncryptedNotes();
         
-        // Clear session data
-        this.sessionActive = false;
+        this.sessionKey = null;
         this.decryptedNotes.clear();
+        this.sessionActive = false;
         this.currentNoteId = null;
         
-        // Clear UI
         this.clearNotesUI();
-        document.getElementById('pin-input').value = '';
         
+        this.hideLoading();
         this.showScreen('login');
-        this.showTemporaryMessage('🔒 Session ended. Notes saved to OpenADP network.');
+        
+        console.log('👻 Session ended - notes are now ghosts');
     }
 
-    async saveNotesToOpenADP() {
-        if (!this.sessionActive || this.decryptedNotes.size === 0) {
+    async loadDecryptedNotes() {
+        const encryptedData = localStorage.getItem('ghost_notes_data');
+        if (!encryptedData) {
+            console.log('No notes found');
             return;
         }
         
         try {
-            // Convert Map to serializable format
-            const notesData = {
-                notes: Object.fromEntries(this.decryptedNotes),
-                metadata: {
-                    modified: new Date().toISOString(),
-                    version: '2.0-openadp',
-                    noteCount: this.decryptedNotes.size
-                }
-            };
+            const encrypted = JSON.parse(encryptedData);
+            const decryptedText = await this.decryptData(encrypted, this.sessionKey);
+            const notesData = JSON.parse(decryptedText);
             
-            // For now, we'll use a simple approach - in a full implementation,
-            // you'd want to use OpenADP's update mechanism
-            console.log('📝 Notes saved to session:', notesData.metadata);
+            this.decryptedNotes.clear();
+            for (const [id, note] of Object.entries(notesData)) {
+                this.decryptedNotes.set(id, note);
+            }
+            
+            console.log(`📝 Loaded ${this.decryptedNotes.size} notes`);
             
         } catch (error) {
-            console.error('Failed to save notes to OpenADP:', error);
-            this.showError('Warning: Failed to backup notes to OpenADP');
+            console.error('Failed to load notes:', error);
         }
     }
 
-    createNewNote() {
-        const noteId = 'note-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-        const newNote = {
-            id: noteId,
-            title: 'Untitled Note',
-            content: '',
-            created: new Date().toISOString(),
-            modified: new Date().toISOString()
+    async saveEncryptedNotes() {
+        try {
+            const notesData = {};
+            for (const [id, note] of this.decryptedNotes) {
+                notesData[id] = note;
+            }
+            
+            const notesJson = JSON.stringify(notesData);
+            const encrypted = await this.encryptData(notesJson, this.sessionKey);
+            
+            localStorage.setItem('ghost_notes_data', JSON.stringify(encrypted));
+            
+            console.log(`💾 Saved ${this.decryptedNotes.size} encrypted notes`);
+            
+        } catch (error) {
+            console.error('Failed to save notes:', error);
+        }
+    }
+
+    async encryptData(text, key) {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(text);
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        
+        const encrypted = await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv: iv },
+            key,
+            data
+        );
+        
+        return {
+            encrypted: Array.from(new Uint8Array(encrypted)),
+            iv: Array.from(iv)
+        };
+    }
+
+    async decryptData(encryptedData, key) {
+        const encrypted = new Uint8Array(encryptedData.encrypted);
+        const iv = new Uint8Array(encryptedData.iv);
+        
+        const decrypted = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: iv },
+            key,
+            encrypted
+        );
+        
+        const decoder = new TextDecoder();
+        return decoder.decode(decrypted);
+    }
+
+    async createWelcomeNote() {
+        const note = {
+            id: crypto.randomUUID(),
+            title: '👻 Welcome to Ghost Notes with OpenADP',
+            content: `Welcome to Ghost Notes with OpenADP protection! 
+
+Your notes are now protected by nation-state resistant distributed cryptography. Here's what makes them special:
+
+🔐 **OpenADP Protection**: Your PIN is protected by distributed servers worldwide
+🌐 **Nation-State Resistant**: Cannot be cracked even by powerful adversaries
+👻 **Ghost Mode**: Notes vanish from memory when you're away  
+📱 **Auto-Lock**: Automatic protection after inactivity
+🔒 **Distributed Guess Limiting**: Protection against brute force across all servers
+🔄 **Automatic Backup Refresh**: Your protection gets stronger over time
+
+**Important:**
+- Remember your PIN - recovery requires threshold of distributed servers
+- Your notes are protected by cutting-edge cryptography
+- Even a 4-digit PIN is now nation-state resistant
+- Close the app to make your notes disappear
+
+Start writing your secret thoughts! They're protected by the future of cryptography.`,
+            tags: ['welcome', 'openadp', 'info'],
+            created: Date.now(),
+            modified: Date.now()
         };
         
-        this.decryptedNotes.set(noteId, newNote);
-        this.updateNotesListUI();
-        this.selectNote(noteId);
+        this.decryptedNotes.set(note.id, note);
+    }
+
+    createNewNote() {
+        const note = {
+            id: crypto.randomUUID(),
+            title: 'New Note',
+            content: '',
+            tags: [],
+            created: Date.now(),
+            modified: Date.now()
+        };
         
-        // Focus on title for immediate editing
+        this.decryptedNotes.set(note.id, note);
+        this.selectNote(note.id);
+        this.updateNotesListUI();
+        
         setTimeout(() => {
             document.getElementById('note-title').focus();
             document.getElementById('note-title').select();
@@ -409,29 +475,20 @@ Start writing your secure notes! They'll auto-save and remain protected even if 
     }
 
     selectNote(noteId) {
-        if (this.currentNoteId) {
-            this.saveCurrentNote();
-        }
-        
-        const note = this.decryptedNotes.get(noteId);
-        if (!note) return;
-        
         this.currentNoteId = noteId;
+        const note = this.decryptedNotes.get(noteId);
         
-        // Update UI
-        document.getElementById('welcome-message').style.display = 'none';
-        document.getElementById('note-editor').style.display = 'block';
-        
-        document.getElementById('note-title').value = note.title;
-        document.getElementById('note-content').value = note.content;
-        document.getElementById('note-created').textContent = `Created: ${new Date(note.created).toLocaleString()}`;
-        document.getElementById('note-modified').textContent = `Modified: ${new Date(note.modified).toLocaleString()}`;
-        
-        // Update active state in sidebar
-        document.querySelectorAll('.note-item').forEach(item => {
-            item.classList.remove('active');
-        });
-        document.querySelector(`[data-note-id="${noteId}"]`)?.classList.add('active');
+        if (note) {
+            document.getElementById('note-title').value = note.title;
+            document.getElementById('note-content').value = note.content;
+            document.getElementById('note-created').textContent = `Created: ${new Date(note.created).toLocaleString()}`;
+            document.getElementById('note-modified').textContent = `Modified: ${new Date(note.modified).toLocaleString()}`;
+            
+            document.getElementById('welcome-message').style.display = 'none';
+            document.getElementById('note-editor').style.display = 'flex';
+            
+            this.updateNotesListUI();
+        }
     }
 
     async saveCurrentNote() {
@@ -440,54 +497,39 @@ Start writing your secure notes! They'll auto-save and remain protected even if 
         const note = this.decryptedNotes.get(this.currentNoteId);
         if (!note) return;
         
-        const title = document.getElementById('note-title').value || 'Untitled Note';
-        const content = document.getElementById('note-content').value;
+        note.title = document.getElementById('note-title').value || 'Untitled';
+        note.content = document.getElementById('note-content').value;
+        note.modified = Date.now();
         
-        // Only update if changed
-        if (note.title !== title || note.content !== content) {
-            note.title = title;
-            note.content = content;
-            note.modified = new Date().toISOString();
-            
-            this.decryptedNotes.set(this.currentNoteId, note);
-            this.updateNotesListUI();
-            
-            // Update modified time display
-            document.getElementById('note-modified').textContent = `Modified: ${new Date(note.modified).toLocaleString()}`;
-        }
+        document.getElementById('note-modified').textContent = `Modified: ${new Date(note.modified).toLocaleString()}`;
+        this.updateNotesListUI();
+        
+        await this.saveEncryptedNotes();
+        
+        this.showTemporaryMessage('Note saved');
     }
 
     autoSaveNote() {
-        if (this.autoSaveTimer) {
-            clearTimeout(this.autoSaveTimer);
-        }
-        
+        clearTimeout(this.autoSaveTimer);
         this.autoSaveTimer = setTimeout(() => {
             this.saveCurrentNote();
-        }, 1000); // Auto-save after 1 second of inactivity
+        }, 2000);
     }
 
     async deleteCurrentNote() {
         if (!this.currentNoteId) return;
         
-        const note = this.decryptedNotes.get(this.currentNoteId);
-        if (!note) return;
-        
-        if (confirm(`Delete "${note.title}"? This cannot be undone.`)) {
+        if (confirm('Are you sure you want to delete this note?')) {
             this.decryptedNotes.delete(this.currentNoteId);
             this.currentNoteId = null;
             
-            this.updateNotesListUI();
+            document.getElementById('note-editor').style.display = 'none';
+            document.getElementById('welcome-message').style.display = 'flex';
             
-            // Show welcome message if no notes left
-            if (this.decryptedNotes.size === 0) {
-                document.getElementById('welcome-message').style.display = 'block';
-                document.getElementById('note-editor').style.display = 'none';
-            } else {
-                // Select first available note
-                const firstNoteId = this.decryptedNotes.keys().next().value;
-                this.selectNote(firstNoteId);
-            }
+            this.updateNotesListUI();
+            await this.saveEncryptedNotes();
+            
+            this.showTemporaryMessage('Note deleted');
         }
     }
 
@@ -496,30 +538,24 @@ Start writing your secure notes! They'll auto-save and remain protected even if 
         notesList.innerHTML = '';
         
         if (this.decryptedNotes.size === 0) {
-            notesList.innerHTML = '<div class="no-notes">No notes yet. Create your first note!</div>';
+            notesList.innerHTML = '<div style="padding: 1rem; text-align: center; color: var(--text-muted);">No notes yet. Create your first note!</div>';
             return;
         }
         
-        // Sort notes by modified date (newest first)
         const sortedNotes = Array.from(this.decryptedNotes.values())
-            .sort((a, b) => new Date(b.modified) - new Date(a.modified));
+            .sort((a, b) => b.modified - a.modified);
         
         sortedNotes.forEach(note => {
             const noteElement = document.createElement('div');
             noteElement.className = 'note-item';
-            noteElement.dataset.noteId = note.id;
-            
             if (note.id === this.currentNoteId) {
                 noteElement.classList.add('active');
             }
             
-            const preview = note.content.substring(0, 100) + (note.content.length > 100 ? '...' : '');
-            const modifiedDate = new Date(note.modified).toLocaleDateString();
-            
             noteElement.innerHTML = `
-                <div class="note-title">${note.title}</div>
-                <div class="note-preview">${preview || 'Empty note'}</div>
-                <div class="note-date">${modifiedDate}</div>
+                <div class="note-item-title">${note.title}</div>
+                <div class="note-item-preview">${note.content.substring(0, 50)}${note.content.length > 50 ? '...' : ''}</div>
+                <div class="note-item-date">${new Date(note.modified).toLocaleDateString()}</div>
             `;
             
             noteElement.addEventListener('click', () => this.selectNote(note.id));
@@ -531,43 +567,49 @@ Start writing your secure notes! They'll auto-save and remain protected even if 
         document.getElementById('notes-list').innerHTML = '';
         document.getElementById('note-title').value = '';
         document.getElementById('note-content').value = '';
-        document.getElementById('welcome-message').style.display = 'block';
+        document.getElementById('note-created').textContent = 'Created: --';
+        document.getElementById('note-modified').textContent = 'Modified: --';
+        
         document.getElementById('note-editor').style.display = 'none';
+        document.getElementById('welcome-message').style.display = 'flex';
     }
 
     resetActivityTimer() {
-        this.cancelAutoLock();
-        this.cancelSessionWarning();
+        clearTimeout(this.autoLockTimer);
+        clearTimeout(this.sessionWarningTimer);
         
         if (!this.sessionActive) return;
         
-        // Schedule session warning
+        // Schedule warning before auto-lock
+        const warningTime = this.settings.autoLockTimeout - this.settings.sessionWarningTime;
         this.sessionWarningTimer = setTimeout(() => {
             this.showSessionWarning();
-        }, this.settings.autoLockTimeout - this.settings.sessionWarningTime);
+        }, warningTime);
+        
+        // Schedule auto-lock
+        this.autoLockTimer = setTimeout(() => {
+            this.endSession();
+        }, this.settings.autoLockTimeout);
         
         this.updateSessionTimer();
     }
 
-    scheduleAutoLock(delay = this.settings.autoLockTimeout) {
-        this.cancelAutoLock();
-        
+    scheduleAutoLock(delay) {
+        clearTimeout(this.autoLockTimer);
         this.autoLockTimer = setTimeout(() => {
             this.endSession();
         }, delay);
     }
 
     cancelAutoLock() {
-        if (this.autoLockTimer) {
-            clearTimeout(this.autoLockTimer);
-            this.autoLockTimer = null;
-        }
+        clearTimeout(this.autoLockTimer);
+        clearTimeout(this.sessionWarningTimer);
     }
 
     showSessionWarning() {
-        document.getElementById('session-warning').style.display = 'flex';
+        document.getElementById('session-warning').classList.add('active');
         
-        let countdown = this.settings.sessionWarningTime / 1000;
+        let countdown = 30;
         const countdownElement = document.getElementById('warning-countdown');
         
         const countdownTimer = setInterval(() => {
@@ -576,133 +618,111 @@ Start writing your secure notes! They'll auto-save and remain protected even if 
             
             if (countdown <= 0) {
                 clearInterval(countdownTimer);
+                this.hideSessionWarning();
                 this.endSession();
             }
         }, 1000);
         
-        // Auto-lock after warning period
-        this.autoLockTimer = setTimeout(() => {
-            clearInterval(countdownTimer);
-            this.endSession();
-        }, this.settings.sessionWarningTime);
+        // Store timer for cleanup
+        this.countdownTimer = countdownTimer;
     }
 
     hideSessionWarning() {
-        document.getElementById('session-warning').style.display = 'none';
+        document.getElementById('session-warning').classList.remove('active');
+        if (this.countdownTimer) {
+            clearInterval(this.countdownTimer);
+        }
     }
 
     extendSession() {
         this.hideSessionWarning();
-        this.cancelSessionWarning();
         this.resetActivityTimer();
     }
 
     cancelSessionWarning() {
-        if (this.sessionWarningTimer) {
-            clearTimeout(this.sessionWarningTimer);
-            this.sessionWarningTimer = null;
-        }
+        clearTimeout(this.sessionWarningTimer);
+        this.hideSessionWarning();
     }
 
     updateSessionTimer() {
         if (!this.sessionActive) return;
         
-        const lockTimer = document.getElementById('lock-timer');
-        if (!lockTimer) return;
+        const timerElement = document.getElementById('lock-timer');
+        const timeLeft = this.settings.autoLockTimeout;
+        const minutes = Math.floor(timeLeft / 60000);
+        const seconds = Math.floor((timeLeft % 60000) / 1000);
         
-        const updateTimer = () => {
-            if (!this.sessionActive) return;
-            
-            // This is a simplified timer - in a real app you'd track the actual time remaining
-            const minutes = Math.floor(this.settings.autoLockTimeout / 60000);
-            lockTimer.textContent = `Auto-lock in ${minutes}:00`;
-        };
-        
-        updateTimer();
-        setInterval(updateTimer, 60000); // Update every minute
+        timerElement.textContent = `Auto-lock in ${minutes}:${seconds.toString().padStart(2, '0')}`;
     }
 
     updateAttemptsDisplay() {
-        const attemptsElement = document.getElementById('attempts-remaining');
         const remaining = this.settings.maxGuesses - this.settings.currentGuesses;
-        attemptsElement.textContent = `${remaining} attempts remaining`;
-        
-        if (remaining <= 3) {
-            attemptsElement.classList.add('warning');
-        }
+        document.getElementById('attempts-remaining').textContent = `${remaining} attempts remaining`;
     }
 
     showLoading(message) {
         const overlay = document.getElementById('loading-overlay');
-        const text = document.querySelector('.loading-text');
+        const text = overlay.querySelector('.loading-text');
         text.textContent = message;
-        overlay.style.display = 'flex';
+        overlay.classList.add('active');
     }
 
     hideLoading() {
-        document.getElementById('loading-overlay').style.display = 'none';
+        document.getElementById('loading-overlay').classList.remove('active');
     }
 
     showError(message) {
-        const errorElement = document.getElementById('error-message');
-        errorElement.textContent = message;
-        errorElement.style.display = 'block';
-        
+        document.getElementById('error-message').textContent = message;
         setTimeout(() => {
-            errorElement.style.display = 'none';
+            document.getElementById('error-message').textContent = '';
         }, 5000);
     }
 
     showTemporaryMessage(message) {
-        // Create temporary message element
-        const messageElement = document.createElement('div');
-        messageElement.className = 'temporary-message';
-        messageElement.textContent = message;
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--accent-success);
+            color: white;
+            padding: 0.8rem 1.2rem;
+            border-radius: 8px;
+            z-index: 3000;
+            animation: slideIn 0.3s ease;
+        `;
+        toast.textContent = message;
         
-        document.body.appendChild(messageElement);
+        document.body.appendChild(toast);
         
-        // Animate in
-        setTimeout(() => messageElement.classList.add('show'), 100);
-        
-        // Remove after delay
         setTimeout(() => {
-            messageElement.classList.remove('show');
-            setTimeout(() => {
-                if (messageElement.parentNode) {
-                    messageElement.parentNode.removeChild(messageElement);
-                }
-            }, 300);
-        }, 3000);
+            toast.remove();
+        }, 2000);
     }
 
     setupPWA() {
-        // PWA installation prompt
-        let deferredPrompt;
-        
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault();
-            deferredPrompt = e;
-            
-            // Show install button or prompt
-            console.log('👻 Ghost Notes can be installed as an app!');
+            this.deferredPrompt = e;
         });
         
-        // Handle successful installation
-        window.addEventListener('appinstalled', () => {
-            console.log('👻 Ghost Notes installed successfully!');
-            deferredPrompt = null;
-        });
+        if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) {
+            console.log('📱 Running as PWA');
+        }
     }
 }
 
-// Initialize the app when DOM is loaded
+// Initialize the app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-    window.ghostNotesApp = new GhostNotesApp();
+    window.ghostNotes = new GhostNotesApp();
 });
 
-// Handle page unload - ensure session is ended cleanly
-window.addEventListener('beforeunload', () => {
-    if (window.ghostNotesApp && window.ghostNotesApp.sessionActive) {
-        window.ghostNotesApp.endSession();
+// Add toast animation styles
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
     }
-}); 
+`;
+document.head.appendChild(style); 

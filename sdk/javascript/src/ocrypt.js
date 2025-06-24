@@ -29,6 +29,10 @@ import { sha256 } from '@noble/hashes/sha256';
 import { randomBytes } from 'crypto';
 import { Buffer } from 'buffer';
 
+// Import real OpenADP components
+import { generateEncryptionKey, recoverEncryptionKey } from './keygen.js';
+import { getServers, getFallbackServerInfo } from './client.js';
+
 /**
  * Custom error class for Ocrypt operations
  */
@@ -84,40 +88,69 @@ async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, b
     console.log(`📱 Application: ${appID}`);
     console.log(`🔑 Secret length: ${longTermSecret.length} bytes`);
 
-    // Step 1: Discover OpenADP servers
+    // Step 1: Discover OpenADP servers using REAL server discovery
     console.log('🌐 Discovering OpenADP servers...');
-    const serverInfos = await getServers();
+    let serverInfos;
+            try {
+            serverInfos = await getServers("https://servers.openadp.org/api/servers.json");
+            if (!serverInfos || serverInfos.length === 0) {
+                throw new Error("No servers returned from registry");
+            }
+            console.log(`   ✅ Successfully fetched ${serverInfos.length} servers from registry`);
+    } catch (error) {
+        console.log(`   ⚠️  Failed to fetch from registry: ${error.message}`);
+        console.log('   🔄 Falling back to hardcoded servers...');
+        serverInfos = getFallbackServerInfo();
+        console.log(`   Fallback servers: ${serverInfos.length}`);
+    }
     
-    if (serverInfos.length === 0) {
+    if (!serverInfos || serverInfos.length === 0) {
         throw new OcryptError('No OpenADP servers available', 'NO_SERVERS');
     }
 
-    console.log(`   ✅ Successfully fetched ${serverInfos.length} servers from registry`);
+    // Random server selection for load balancing (max 15 servers for performance)
+    if (serverInfos.length > 15) {
+        serverInfos = serverInfos.sort(() => 0.5 - Math.random()).slice(0, 15);
+        console.log(`   �� Randomly selected 15 servers for load balancing`);
+    }
 
-    // Step 2: Generate encryption key using OpenADP (simulated for now)
+    // Step 2: Generate encryption key using REAL OpenADP protocol
     console.log(`🔄 Using backup ID: ${backupID}`);
     console.log('🔑 Generating encryption key using OpenADP servers...');
 
-    // For the JavaScript implementation, we'll simulate the OpenADP key generation
-    // In a full implementation, this would use the same protocol as Python/Go
-    const filename = `file://${userID}#${appID}#${backupID}`;
+    // Create synthetic filename for BID derivation
+    const filename = `${userID}#${appID}#${backupID}`;
     
     try {
-        const result = await generateEncryptionKey(filename, pin, userID, maxGuesses, serverInfos);
+        const result = await generateEncryptionKey(
+            filename,
+            pin,
+            userID,
+            maxGuesses,
+            0, // No expiration by default
+            serverInfos
+        );
         
-        console.log(`✅ Generated encryption key with ${result.serverURLs.length} servers`);
+        if (result.error) {
+            throw new Error(result.error);
+        }
 
-        // Step 3: Wrap the long-term secret with AES-256-GCM
+        console.log(`✅ Generated encryption key with ${result.serverUrls.length} servers`);
+
+        // Step 3: Wrap the long-term secret with AES-256-GCM using WebCrypto API
         console.log('🔐 Wrapping long-term secret...');
         const wrappedSecret = await wrapSecret(longTermSecret, result.encryptionKey);
 
         // Step 4: Create metadata
         const metadata = {
-            servers: result.serverURLs,
+            // Standard openadp-encrypt metadata
+            servers: result.serverUrls,
             threshold: result.threshold,
             version: '1.0',
-            auth_code: result.authCode,
+            auth_code: result.authCodes.baseAuthCode,
             user_id: userID,
+            
+            // Ocrypt-specific additions
             wrapped_long_term_secret: wrappedSecret,
             backup_id: backupID,
             app_id: appID,
@@ -128,7 +161,7 @@ async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, b
         const metadataBytes = new TextEncoder().encode(JSON.stringify(metadata));
 
         console.log(`📦 Created metadata (${metadataBytes.length} bytes)`);
-        console.log(`🎯 Threshold: ${result.threshold}-of-${result.serverURLs.length} recovery`);
+        console.log(`🎯 Threshold: ${result.threshold}-of-${result.serverUrls.length} recovery`);
 
         return metadataBytes;
     } catch (error) {
@@ -211,9 +244,15 @@ async function recoverWithoutRefresh(metadataBytes, pin) {
 
     console.log(`🔍 Recovering secret for user: ${metadata.user_id}, app: ${metadata.app_id}, bid: ${metadata.backup_id}`);
 
-    // Get server information
+    // Get server information using REAL server discovery
     console.log('🌐 Getting server information from registry...');
-    const allServers = await getServers();
+    let allServers;
+    try {
+        allServers = await getServers("https://servers.openadp.org/api/servers.json");
+    } catch (error) {
+        console.log(`   ⚠️  Failed to fetch from registry: ${error.message}`);
+        allServers = getFallbackServerInfo();
+    }
 
     // Match servers from metadata with registry
     const serverInfos = [];
@@ -229,22 +268,47 @@ async function recoverWithoutRefresh(metadataBytes, pin) {
         throw new OcryptError('No servers from metadata found in registry', 'SERVERS_NOT_FOUND');
     }
 
-    // Recover encryption key from OpenADP (simulated)
+    // Recover encryption key from OpenADP using REAL protocol
     console.log('🔑 Recovering encryption key from OpenADP servers...');
-    const filename = `file://${metadata.user_id}#${metadata.app_id}#${metadata.backup_id}`;
+    const filename = `${metadata.user_id}#${metadata.app_id}#${metadata.backup_id}`;
+    
+    // Reconstruct auth codes
+    const authCodes = {
+        baseAuthCode: metadata.auth_code,
+        serverAuthCodes: {},
+        userID: metadata.user_id
+    };
+
+    // Generate server-specific auth codes
+    for (const serverURL of metadata.servers) {
+        const combined = `${metadata.auth_code}:${serverURL}`;
+        const hash = sha256(new TextEncoder().encode(combined));
+        authCodes.serverAuthCodes[serverURL] = Buffer.from(hash).toString('hex');
+    }
     
     try {
-        const result = await recoverEncryptionKey(filename, pin, metadata.user_id, serverInfos, metadata.threshold, metadata.auth_code);
+        const result = await recoverEncryptionKey(
+            filename, 
+            pin, 
+            metadata.user_id, 
+            serverInfos, 
+            metadata.threshold, 
+            authCodes
+        );
+        
+        if (result.error) {
+            throw new Error(result.error);
+        }
         
         console.log('✅ Successfully recovered encryption key');
 
-        // Unwrap the long-term secret
+        // Unwrap the long-term secret using WebCrypto API
         console.log('🔐 Validating PIN by unwrapping secret...');
         const secret = await unwrapSecret(metadata.wrapped_long_term_secret, result.encryptionKey);
         
         console.log('✅ PIN validation successful - secret unwrapped');
 
-        return { secret, remaining: 0 }; // Simplified - no remaining guess tracking in this implementation
+        return { secret, remaining: 0 }; // Success = 0 remaining guesses in this implementation
     } catch (error) {
         throw new OcryptError(`OpenADP recovery failed: ${error.message}`, 'OPENADP_RECOVERY_FAILED');
     }
@@ -295,115 +359,79 @@ function generateNextBackupID(currentBackupID) {
 }
 
 /**
- * Encrypts a secret using AES-256-GCM
+ * Encrypts a secret using AES-256-GCM with WebCrypto API
  * @private
  */
 async function wrapSecret(secret, key) {
-    // For this demo implementation, we'll use a simplified approach
-    // In a full implementation, this would use proper AES-GCM
-    const nonce = randomBytes(12);
-    
-    // Simulate AES-GCM encryption (in practice, use WebCrypto API or a proper library)
-    const ciphertext = new Uint8Array(secret.length);
-    for (let i = 0; i < secret.length; i++) {
-        ciphertext[i] = secret[i] ^ key[i % key.length] ^ nonce[i % nonce.length];
-    }
-    
-    const tag = sha256(new Uint8Array([...key, ...nonce, ...ciphertext])).slice(0, 16);
+    try {
+        // Convert key to WebCrypto format
+        const cryptoKey = await crypto.subtle.importKey(
+            'raw',
+            key,
+            { name: 'AES-GCM', length: 256 },
+            false,
+            ['encrypt']
+        );
 
-    return {
-        nonce: Buffer.from(nonce).toString('base64'),
-        ciphertext: Buffer.from(ciphertext).toString('base64'),
-        tag: Buffer.from(tag).toString('base64')
-    };
+        // Generate random nonce
+        const nonce = crypto.getRandomValues(new Uint8Array(12));
+
+        // Encrypt with AES-GCM
+        const encrypted = await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv: nonce },
+            cryptoKey,
+            secret
+        );
+
+        // Split ciphertext and tag (WebCrypto appends tag)
+        const encryptedArray = new Uint8Array(encrypted);
+        const tagSize = 16; // AES-GCM tag is always 16 bytes
+        const ciphertext = encryptedArray.slice(0, -tagSize);
+        const tag = encryptedArray.slice(-tagSize);
+
+        return {
+            nonce: Buffer.from(nonce).toString('base64'),
+            ciphertext: Buffer.from(ciphertext).toString('base64'),
+            tag: Buffer.from(tag).toString('base64')
+        };
+    } catch (error) {
+        throw new OcryptError(`Secret wrapping failed: ${error.message}`, 'WRAPPING_FAILED');
+    }
 }
 
 /**
- * Decrypts a secret using AES-256-GCM
+ * Decrypts a secret using AES-256-GCM with WebCrypto API
  * @private
  */
 async function unwrapSecret(wrapped, key) {
     try {
+        // Convert key to WebCrypto format
+        const cryptoKey = await crypto.subtle.importKey(
+            'raw',
+            key,
+            { name: 'AES-GCM', length: 256 },
+            false,
+            ['decrypt']
+        );
+
         const nonce = Buffer.from(wrapped.nonce, 'base64');
         const ciphertext = Buffer.from(wrapped.ciphertext, 'base64');
         const tag = Buffer.from(wrapped.tag, 'base64');
 
-        // Verify tag (simplified)
-        const expectedTag = sha256(new Uint8Array([...key, ...nonce, ...ciphertext])).slice(0, 16);
-        if (!Buffer.from(expectedTag).equals(tag)) {
-            throw new Error('MAC check failed');
-        }
+        // Reconstruct full encrypted data (ciphertext + tag)
+        const encryptedData = new Uint8Array(ciphertext.length + tag.length);
+        encryptedData.set(ciphertext);
+        encryptedData.set(tag, ciphertext.length);
 
-        // Decrypt (simplified)
-        const plaintext = new Uint8Array(ciphertext.length);
-        for (let i = 0; i < ciphertext.length; i++) {
-            plaintext[i] = ciphertext[i] ^ key[i % key.length] ^ nonce[i % nonce.length];
-        }
+        // Decrypt with AES-GCM
+        const decrypted = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: nonce },
+            cryptoKey,
+            encryptedData
+        );
 
-        return plaintext;
+        return new Uint8Array(decrypted);
     } catch (error) {
         throw new OcryptError(`Invalid PIN or corrupted data: ${error.message}`, 'INVALID_PIN');
     }
-}
-
-/**
- * Discovers OpenADP servers from the registry
- * @private
- */
-async function getServers() {
-    try {
-        // In a full implementation, this would fetch from the actual registry
-        // For demo purposes, return some example servers
-        return [
-            { url: 'https://xyzzy.openadp.org', public_key: 'ed25519:example_key_1', country: 'US' },
-            { url: 'https://sky.openadp.org', public_key: 'ed25519:example_key_2', country: 'EU' },
-            { url: 'https://minime.openadp.org', public_key: 'ed25519:example_key_3', country: 'AS' }
-        ];
-    } catch (error) {
-        throw new OcryptError(`Server discovery failed: ${error.message}`, 'SERVER_DISCOVERY_FAILED');
-    }
-}
-
-/**
- * Simulated encryption key generation (would use actual OpenADP protocol)
- * @private
- */
-async function generateEncryptionKey(filename, pin, userID, maxGuesses, serverInfos) {
-    // Simulate the OpenADP key generation process
-    // In a real implementation, this would:
-    // 1. Generate shares using threshold cryptography
-    // 2. Register shares with servers using Noise-NK encryption
-    // 3. Return the derived encryption key
-    
-    const encryptionKey = sha256(new TextEncoder().encode(`${filename}:${pin}:${userID}`));
-    const authCode = Buffer.from(randomBytes(32)).toString('hex');
-    
-    // Use up to 3 servers for demo
-    const selectedServers = serverInfos.slice(0, 3);
-    const threshold = Math.max(1, Math.min(2, selectedServers.length));
-
-    return {
-        encryptionKey,
-        authCode,
-        serverURLs: selectedServers.map(s => s.url),
-        threshold
-    };
-}
-
-/**
- * Simulated encryption key recovery (would use actual OpenADP protocol)
- * @private
- */
-async function recoverEncryptionKey(filename, pin, userID, serverInfos, threshold, authCode) {
-    // Simulate the OpenADP key recovery process
-    // In a real implementation, this would:
-    // 1. Contact servers to recover shares
-    // 2. Reconstruct the secret using threshold cryptography
-    // 3. Derive the same encryption key
-    
-    const encryptionKey = sha256(new TextEncoder().encode(`${filename}:${pin}:${userID}`));
-    
-    return {
-        encryptionKey
-    };
 } 

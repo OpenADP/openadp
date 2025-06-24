@@ -143,7 +143,7 @@ Time needed: Centuries (if even possible)
 ### For Users
 - **Same experience**: Still just enter your PIN
 - **Better security**: PIN is now unbreakable
-- **Peace of mind**: Notes protected by distributed trust cryptography
+- **Peace of mind**: Notes protected by military-grade cryptography
 
 ### For Developers
 - **Drop-in replacement**: Minimal code changes
@@ -211,7 +211,7 @@ const openadpServers = [
 OpenADP transforms Ghost Notes from a cute demo into a **production-ready secure notes application**:
 
 - ✅ **Same user experience** (just enter your PIN)
-- ✅ **Distributed trust security** (distributed cryptography)
+- ✅ **Military-grade security** (distributed cryptography)
 - ✅ **No single point of failure** (threshold cryptography)
 - ✅ **Brute-force resistant** (even simple PINs are secure)
 

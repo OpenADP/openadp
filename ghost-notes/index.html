@@ -3,40 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>👻 Ghost Notes - OpenADP Protected</title>
+    <title>👻 Ghost Notes with OpenADP</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#1a1a1a">
-    <meta name="description" content="Secure notes protected by distributed cryptography">
 </head>
 <body>
     <!-- Login Screen -->
     <div id="login-screen" class="screen active">
         <div class="ghost-container">
             <div class="ghost-logo">👻</div>
-            <h1>Ghost Notes</h1>
-            <p class="tagline">Protected by OpenADP Distributed Cryptography</p>
-            
-            <!-- OpenADP Status -->
-            <div class="openadp-status-container">
-                <div id="openadp-indicator" class="status-indicator checking"></div>
-                <div id="openadp-status" class="openadp-status">🔍 Checking OpenADP Network...</div>
-            </div>
-            
-            <div class="security-features">
-                <div class="security-feature">
-                    <span class="feature-icon">🛡️</span>
-                    <span class="feature-text">Distributed trust cryptography</span>
-                </div>
-                <div class="security-feature">
-                    <span class="feature-icon">🌍</span>
-                    <span class="feature-text">Protected across multiple countries</span>
-                </div>
-                <div class="security-feature">
-                    <span class="feature-icon">🚫</span>
-                    <span class="feature-text">Government backdoor resistant</span>
-                </div>
-            </div>
+            <h1>Ghost Notes with OpenADP</h1>
+            <p class="tagline">Nation-state resistant note protection</p>
             
             <div class="pin-entry">
                 <input type="password" id="pin-input" placeholder="Enter your PIN" maxlength="20">
@@ -49,56 +27,19 @@
             <div class="setup-options">
                 <button id="setup-btn" class="setup-btn">⚙️ First Time Setup</button>
             </div>
-            
-            <div class="security-explanation">
-                <h3>🔒 Your Security Upgrade</h3>
-                <div class="security-comparison">
-                    <div class="before-after">
-                        <div class="security-level before">
-                            <h4>❌ Before OpenADP</h4>
-                            <p>PIN "1234" = Crackable in seconds</p>
-                        </div>
-                        <div class="security-level after">
-                            <h4>✅ With OpenADP</h4>
-                            <p>PIN "1234" = Unbreakable by nation-states</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 
     <!-- Setup Screen -->
     <div id="setup-screen" class="screen">
         <div class="setup-container">
-            <h2>🛡️ Setup OpenADP Protection</h2>
-            <p class="setup-subtitle">Create your secure PIN and enable distributed cryptography</p>
-            
-            <div class="openadp-explanation">
-                <h3>What is OpenADP?</h3>
-                <p>OpenADP distributes your encryption key across multiple independent servers in different countries. Even simple PINs become unbreakable through threshold cryptography.</p>
-                
-                <div class="protection-features">
-                    <div class="protection-item">
-                        <span class="protection-icon">🔐</span>
-                        <span>Your PIN is protected by multiple servers</span>
-                    </div>
-                    <div class="protection-item">
-                        <span class="protection-icon">🌍</span>
-                        <span>Distributed across different jurisdictions</span>
-                    </div>
-                    <div class="protection-item">
-                        <span class="protection-icon">🚫</span>
-                        <span>No single point of failure or control</span>
-                    </div>
-                </div>
-            </div>
+            <h2>🔐 Setup Ghost Notes</h2>
+            <p>Create your secure PIN and configure your servers</p>
             
             <div class="setup-form">
                 <div class="form-group">
                     <label for="setup-pin">Create PIN:</label>
                     <input type="password" id="setup-pin" placeholder="Enter a secure PIN">
-                    <div class="pin-help">Even simple PINs become secure with OpenADP</div>
                 </div>
                 
                 <div class="form-group">
@@ -126,7 +67,7 @@
                     </select>
                 </div>
                 
-                <button id="create-vault-btn" class="create-btn">🛡️ Create OpenADP Vault</button>
+                <button id="create-vault-btn" class="create-btn">🛡️ Create Secure Vault</button>
                 <button id="cancel-setup-btn" class="cancel-btn">Cancel</button>
             </div>
         </div>
@@ -135,13 +76,7 @@
     <!-- Main App Screen -->
     <div id="app-screen" class="screen">
         <header class="app-header">
-            <div class="header-left">
-                <h1>👻 Ghost Notes</h1>
-                <div class="openadp-badge">
-                    <span class="badge-icon">🛡️</span>
-                    <span class="badge-text">OpenADP Protected</span>
-                </div>
-            </div>
+            <h1>👻 Ghost Notes with OpenADP</h1>
             <div class="session-info">
                 <div id="lock-timer" class="lock-timer">Auto-lock in 5:00</div>
                 <button id="lock-now-btn" class="lock-now-btn">🔒 Lock Now</button>
@@ -161,13 +96,10 @@
             
             <section class="note-editor-container">
                 <div id="welcome-message" class="welcome-message">
-                    <div class="welcome-icon">🛡️</div>
-                    <h3>Welcome to OpenADP Protected Notes</h3>
-                    <p>Your notes are now protected by distributed trust cryptography across multiple servers in different countries.</p>
-                    <p><strong>Security Level:</strong> Even simple PINs become unbreakable by nation-states</p>
-                    <div class="welcome-actions">
-                        <p>Create your first note or select an existing one from the sidebar.</p>
-                    </div>
+                    <div class="welcome-icon">📝</div>
+                    <h3>Welcome to Ghost Notes</h3>
+                    <p>Create your first note or select an existing one from the sidebar.</p>
+                    <p><strong>Remember:</strong> Your notes will disappear when you close the app!</p>
                 </div>
                 
                 <div id="note-editor" class="note-editor" style="display: none;">
@@ -178,18 +110,10 @@
                             <button id="delete-note-btn" class="delete-btn">🗑️ Delete</button>
                         </div>
                     </div>
-                    <textarea id="note-content" class="note-content" placeholder="Start writing your secure thoughts...
-
-Your notes are protected by OpenADP distributed cryptography:
-• Encrypted locally with AES-256-GCM
-• Encryption key protected across multiple servers
-• Even device theft won't compromise your PIN
-
-Write freely - your privacy is mathematically guaranteed."></textarea>
+                    <textarea id="note-content" class="note-content" placeholder="Start writing your secret thoughts..."></textarea>
                     <div class="note-metadata">
                         <span id="note-created">Created: --</span>
                         <span id="note-modified">Modified: --</span>
-                        <span class="security-indicator">🛡️ OpenADP Protected</span>
                     </div>
                 </div>
             </section>
@@ -201,7 +125,7 @@ Write freely - your privacy is mathematically guaranteed."></textarea>
         <div class="modal-content">
             <div class="warning-icon">⚠️</div>
             <h2>Session Ending Soon</h2>
-            <p>Your notes will be secured with OpenADP and locked in <span id="warning-countdown">30</span> seconds...</p>
+            <p>Your notes will be encrypted and locked in <span id="warning-countdown">30</span> seconds...</p>
             <div class="modal-actions">
                 <button id="extend-session-btn" class="extend-btn">Stay Active</button>
                 <button id="lock-immediately-btn" class="lock-btn">Lock Now</button>
@@ -211,9 +135,8 @@ Write freely - your privacy is mathematically guaranteed."></textarea>
 
     <!-- Loading Overlay -->
     <div id="loading-overlay" class="loading-overlay">
-        <div class="loading-spinner">🛡️</div>
-        <div class="loading-text">Connecting to OpenADP network...</div>
-        <div class="loading-details">Securing your notes with distributed cryptography</div>
+        <div class="loading-spinner">👻</div>
+        <div class="loading-text">Securing your notes...</div>
     </div>
 
     <script type="module" src="app.js"></script>
