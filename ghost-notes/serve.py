@@ -14,8 +14,8 @@ from pathlib import Path
 def main():
     PORT = 8080
     
-    # Change to script directory
-    os.chdir(Path(__file__).parent)
+    # Change to parent directory so we can serve SDK files
+    os.chdir(Path(__file__).parent.parent)
     
     Handler = http.server.SimpleHTTPRequestHandler
     Handler.extensions_map['.js'] = 'application/javascript'
@@ -37,13 +37,13 @@ def main():
             url = f"http://localhost:{PORT}"
             print(f"👻 Ghost Notes server starting...")
             print(f"🌐 Server running at: {url}")
-            print(f"🧪 Test page: {url}/test.html")
-            print(f"📱 Main app: {url}/index.html")
+            print(f"🧪 Test page: {url}/ghost-notes/test.html")
+            print(f"📱 Main app: {url}/ghost-notes/index.html")
             print("🔒 Press Ctrl+C to stop")
             
             # Try to open browser
             try:
-                webbrowser.open(f"{url}/test.html")
+                webbrowser.open(f"{url}/ghost-notes/test.html")
                 print("🚀 Opened test page in browser")
             except:
                 print("💡 Manually open browser to the URL above")

@@ -1,0 +1,15 @@
+{
+  "name": "ghost-notes",
+  "version": "1.0.0",
+  "description": "**Session-based secure note taking app - your notes vanish when you leave**",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@noble/ciphers": "^1.3.0"
+  }
+}

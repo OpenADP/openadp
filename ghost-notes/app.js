@@ -2,8 +2,16 @@
 // Local-only version with encrypted storage
 
 // Import ocrypt functions for distributed password hashing
-import { register, recover } from '../sdk/javascript/src/ocrypt.js';
-import { Buffer } from 'buffer';
+import { register, recover } from './ocrypt.js';
+
+// Helper functions for base64 encoding/decoding in browser
+function uint8ArrayToBase64(uint8Array) {
+    return btoa(String.fromCharCode(...uint8Array));
+}
+
+function base64ToUint8Array(base64) {
+    return new Uint8Array(atob(base64).split('').map(c => c.charCodeAt(0)));
+}
 
 class GhostNotesApp {
     constructor() {
@@ -79,9 +87,15 @@ class GhostNotesApp {
 
     setupEventListeners() {
         // Login screen
-        document.getElementById('unlock-btn').addEventListener('click', () => this.handleUnlock());
+        document.getElementById('unlock-btn').addEventListener('click', () => {
+            console.log('🔘 Unlock button clicked!');
+            this.handleUnlock();
+        });
         document.getElementById('pin-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.handleUnlock();
+            if (e.key === 'Enter') {
+                console.log('⌨️ Enter key pressed!');
+                this.handleUnlock();
+            }
         });
         document.getElementById('setup-btn').addEventListener('click', () => this.showScreen('setup'));
         
@@ -173,7 +187,7 @@ class GhostNotesApp {
             
             // Store the ocrypt metadata
             localStorage.setItem('ghost_notes_ocrypt_metadata', 
-                Buffer.from(ocryptMetadata).toString('base64'));
+                uint8ArrayToBase64(ocryptMetadata));
             
             // Derive session key from the long-term secret
             this.sessionKey = await this.deriveSessionKeyFromSecret(longTermSecret);
@@ -199,9 +213,12 @@ class GhostNotesApp {
     }
 
     async handleUnlock() {
+        console.log('🔓 handleUnlock() called');
         const pin = document.getElementById('pin-input').value;
+        console.log('🔑 PIN entered:', pin ? `${pin.length} characters` : 'empty');
         
         if (!pin) {
+            console.log('❌ No PIN entered');
             this.showError('Please enter your PIN');
             return;
         }
@@ -222,7 +239,7 @@ class GhostNotesApp {
                 return;
             }
             
-            const metadataBytes = Buffer.from(storedMetadata, 'base64');
+            const metadataBytes = base64ToUint8Array(storedMetadata);
             
             // Use ocrypt to recover the long-term secret
             console.log('🔐 Recovering long-term secret using OpenADP...');
@@ -233,7 +250,7 @@ class GhostNotesApp {
             // Update stored metadata if it was refreshed
             if (updatedMetadata !== metadataBytes) {
                 localStorage.setItem('ghost_notes_ocrypt_metadata', 
-                    Buffer.from(updatedMetadata).toString('base64'));
+                    uint8ArrayToBase64(updatedMetadata));
                 console.log('📦 Updated backup metadata after automatic refresh');
             }
             
