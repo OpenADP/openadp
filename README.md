@@ -41,41 +41,39 @@ user data while offering a compromise where lives can be saved.
 
 ## Getting Started
 
-### The Ocrypt Password Hashing Functions
+### The Ocrypt Password Hashing Library
 
-The simplest way to use OpenADP is to replace your existing password hashing
-functions with Ocrypt. You may use well known functions such as Bcrypt,
-Scrypt, Argon2, or PBKDF2. Simply replace them with these Ocrypt functions:
+The simplest way to use OpenADP is through the **Ocrypt** library - a drop-in replacement for traditional password hashing functions (bcrypt, scrypt, Argon2, PBKDF2) that provides distributed threshold cryptography.
 
-* ocrypt.register(user_id, app_id, long_term_secret, pin, max_guesses=10) -> metadata
-* ocrypt.recover(metadata, pin) -> (long_term_secret, remaining_guesses)
+**🔗 Ocrypt is now available as a separate library:**
+- **Go**: `github.com/OpenADP/ocrypt` - [Repository](https://github.com/OpenADP/ocrypt)
+- **Python**: `github.com/OpenADP/ocrypt-python` (coming soon)
+- **JavaScript**: `github.com/OpenADP/ocrypt-js` (coming soon)
 
-Ocrypt password hashing replaces "salt" with "metadata", which is computed
-by `ocrypt.Register`. Wherever you would normally store the userID, salt,
-and password hash, instead store the userID and metadata.
+**Simple 2-function API:**
+* `ocrypt.Register(user_id, app_id, long_term_secret, pin, max_guesses)` → metadata
+* `ocrypt.Recover(metadata, pin)` → (long_term_secret, remaining_guesses, updated_metadata)
 
 **Key Features:**
 - **User-controlled secrets**: You provide the `longTermSecret` (e.g., ed25519 private key)
 - **Distributed protection**: Secrets are split across multiple OpenADP servers
 - **Guess limiting**: Built-in brute force protection with configurable attempts
 - **Drop-in replacement**: Minimal changes to existing authentication code
+- **Nation-state resistant**: No single point of failure
 
-**Example Use Case - Password Manager:**
+**Example Use Case - Go:**
 ```go
-// Generate ed25519 keypair for vault encryption
-privateKey, publicKey := ed25519.GenerateKey()
+import "github.com/OpenADP/ocrypt/ocrypt"
 
 // Protect private key with user's PIN
-metadata, err := ocrypt.Register(userEmail, "vault", privateKey, userPIN, "v1", 10)
+metadata, err := ocrypt.Register("user@example.com", "vault", privateKey, userPIN, 10)
 
-// Later: recover private key to decrypt vault (with automatic backup refresh)
+// Later: recover private key to decrypt vault
 privateKey, remaining, updatedMetadata, err := ocrypt.Recover(metadata, userPIN)
 // Store updatedMetadata for future recoveries
 ```
 
-These APIs are available in Go, Python, and JavaScript in the `sdk` directory, in
-the `ocrypt` module for each language. See `docs/ocrypt_design.md` for detailed
-specifications and additional use cases.
+See the [Ocrypt documentation](https://github.com/OpenADP/ocrypt) for installation instructions and detailed usage examples.
 
 ### Prerequisites
 
