@@ -1,0 +1,10 @@
+go test fuzz v1
+string("0:,")
+string("0")
+string("0")
+string("0")
+int(45)
+int(83)
+[]byte("0")
+int(53)
+int64(2000000000)

@@ -82,7 +82,12 @@ clean:
 # Run tests using the built-in go test
 test:
 	@echo "🧪 Running tests..."
-	$(GOTEST) -v ./$(PKG_DIR)/...
+	@echo "Testing common module..."
+	cd common && $(GOTEST) -v ./...
+	@echo "Testing client module..."
+	cd client && $(GOTEST) -v ./...
+	@echo "Testing server module..."
+	cd server && $(GOTEST) -v ./...
 
 # Run tests using our comprehensive test runner
 run-tests: build-test-runner
@@ -107,19 +112,33 @@ run-tests-bench: build-test-runner
 # Run tests with coverage
 test-coverage:
 	@echo "🧪 Running tests with coverage..."
-	$(GOTEST) -v -coverprofile=coverage.out ./$(PKG_DIR)/...
-	$(GOCMD) tool cover -html=coverage.out -o coverage.html
-	@echo "📊 Coverage report generated: coverage.html"
+	@echo "Testing common module with coverage..."
+	cd common && $(GOTEST) -v -coverprofile=../coverage-common.out ./...
+	@echo "Testing client module with coverage..."
+	cd client && $(GOTEST) -v -coverprofile=../coverage-client.out ./...
+	@echo "Testing server module with coverage..."
+	cd server && $(GOTEST) -v -coverprofile=../coverage-server.out ./...
+	@echo "📊 Coverage reports generated: coverage-*.out"
 
 # Run tests with race detection
 test-race:
 	@echo "🧪 Running tests with race detection..."
-	$(GOTEST) -v -race ./$(PKG_DIR)/...
+	@echo "Testing common module with race detection..."
+	cd common && $(GOTEST) -v -race ./...
+	@echo "Testing client module with race detection..."
+	cd client && $(GOTEST) -v -race ./...
+	@echo "Testing server module with race detection..."
+	cd server && $(GOTEST) -v -race ./...
 
 # Run benchmarks
 bench:
 	@echo "⚡ Running benchmarks..."
-	$(GOTEST) -bench=. -benchmem ./$(PKG_DIR)/...
+	@echo "Running benchmarks for common module..."
+	cd common && $(GOTEST) -bench=. -benchmem ./...
+	@echo "Running benchmarks for client module..."
+	cd client && $(GOTEST) -bench=. -benchmem ./...
+	@echo "Running benchmarks for server module..."
+	cd server && $(GOTEST) -bench=. -benchmem ./...
 
 # Install dependencies
 deps:
@@ -289,7 +308,7 @@ stats:
 	@echo "Lines of code:"
 	@find . -name "*.go" -not -path "./vendor/*" -exec wc -l {} + | tail -1
 	@echo "Packages:"
-	@find ./$(PKG_DIR) -type d | wc -l
+	@find ./common ./client ./server -type d | wc -l
 	@echo "Test files:"
 	@find . -name "*_test.go" -not -path "./vendor/*" | wc -l
 
@@ -349,37 +368,37 @@ help:
 # Run all fuzz tests for a short duration (useful for CI)
 fuzz-quick:
 	@echo "Running quick fuzz tests..."
-	go test -fuzz=FuzzRegisterInputs -fuzztime=10s ./pkg/server
-	go test -fuzz=FuzzRecoverInputs -fuzztime=10s ./pkg/server
-	go test -fuzz=FuzzPoint2D -fuzztime=10s ./pkg/crypto
+	cd server && go test -fuzz=FuzzRegisterInputs -fuzztime=10s ./server
+	cd server && go test -fuzz=FuzzRecoverInputs -fuzztime=10s ./server
+	cd common && go test -fuzz=FuzzPoint2D -fuzztime=10s ./crypto
 	go test -fuzz=FuzzJSONRPCRequest -fuzztime=10s ./cmd/openadp-server
 
 # Run server-specific fuzz tests
 fuzz-server:
 	@echo "Running server fuzz tests..."
-	go test -fuzz=FuzzRegisterInputs -fuzztime=1m ./pkg/server
-	go test -fuzz=FuzzRecoverInputs -fuzztime=1m ./pkg/server  
-	go test -fuzz=FuzzRegisterSecretE2E -fuzztime=1m ./pkg/server
-	go test -fuzz=FuzzRecoverSecretE2E -fuzztime=1m ./pkg/server
-	go test -fuzz=FuzzPointValid -fuzztime=30s ./pkg/server
-	go test -fuzz=FuzzServerInfo -fuzztime=30s ./pkg/server
-	go test -fuzz=FuzzEcho -fuzztime=30s ./pkg/server
-	go test -fuzz=FuzzListBackups -fuzztime=1m ./pkg/server
-	go test -fuzz=FuzzJSONSerialization -fuzztime=1m ./pkg/server
-	go test -fuzz=FuzzConcurrentAccess -fuzztime=30s ./pkg/server
+	go test -fuzz=FuzzRegisterInputs -fuzztime=1m ./server/server
+	go test -fuzz=FuzzRecoverInputs -fuzztime=1m ./server/server  
+	go test -fuzz=FuzzRegisterSecretE2E -fuzztime=1m ./server/server
+	go test -fuzz=FuzzRecoverSecretE2E -fuzztime=1m ./server/server
+	go test -fuzz=FuzzPointValid -fuzztime=30s ./server/server
+	go test -fuzz=FuzzServerInfo -fuzztime=30s ./server/server
+	go test -fuzz=FuzzEcho -fuzztime=30s ./server/server
+	go test -fuzz=FuzzListBackups -fuzztime=1m ./server/server
+	go test -fuzz=FuzzJSONSerialization -fuzztime=1m ./server/server
+	go test -fuzz=FuzzConcurrentAccess -fuzztime=30s ./server/server
 
 # Run cryptography fuzz tests
 fuzz-crypto:
 	@echo "Running crypto fuzz tests..."
-	go test -fuzz=FuzzPoint2D -fuzztime=1m ./pkg/crypto
-	go test -fuzz=FuzzPoint4D -fuzztime=1m ./pkg/crypto
-	go test -fuzz=FuzzScalarMult -fuzztime=2m ./pkg/crypto
-	go test -fuzz=FuzzPointAdd -fuzztime=2m ./pkg/crypto
-	go test -fuzz=FuzzX25519Operations -fuzztime=1m ./pkg/crypto
-	go test -fuzz=FuzzHashFunctions -fuzztime=1m ./pkg/crypto
-	go test -fuzz=FuzzRandomBytes -fuzztime=30s ./pkg/crypto
-	go test -fuzz=FuzzPointConversions -fuzztime=1m ./pkg/crypto
-	go test -fuzz=FuzzBigIntOperations -fuzztime=1m ./pkg/crypto
+	go test -fuzz=FuzzPoint2D -fuzztime=1m ./common/crypto
+	go test -fuzz=FuzzPoint4D -fuzztime=1m ./common/crypto
+	go test -fuzz=FuzzScalarMult -fuzztime=2m ./common/crypto
+	go test -fuzz=FuzzPointAdd -fuzztime=2m ./common/crypto
+	go test -fuzz=FuzzX25519Operations -fuzztime=1m ./common/crypto
+	go test -fuzz=FuzzHashFunctions -fuzztime=1m ./common/crypto
+	go test -fuzz=FuzzRandomBytes -fuzztime=30s ./common/crypto
+	go test -fuzz=FuzzPointConversions -fuzztime=1m ./common/crypto
+	go test -fuzz=FuzzBigIntOperations -fuzztime=1m ./common/crypto
 
 # Run API endpoint fuzz tests
 fuzz-api:
@@ -398,10 +417,10 @@ fuzz-api:
 # Run extended fuzz tests (longer duration)
 fuzz-extended:
 	@echo "Running extended fuzz tests (5 minutes each)..."
-	go test -fuzz=FuzzRegisterSecretE2E -fuzztime=5m ./pkg/server
-	go test -fuzz=FuzzRecoverSecretE2E -fuzztime=5m ./pkg/server
-	go test -fuzz=FuzzScalarMult -fuzztime=5m ./pkg/crypto
-	go test -fuzz=FuzzPointAdd -fuzztime=5m ./pkg/crypto
+	go test -fuzz=FuzzRegisterSecretE2E -fuzztime=5m ./server/server
+	go test -fuzz=FuzzRecoverSecretE2E -fuzztime=5m ./server/server
+	go test -fuzz=FuzzScalarMult -fuzztime=5m ./common/crypto
+	go test -fuzz=FuzzPointAdd -fuzztime=5m ./common/crypto
 	go test -fuzz=FuzzJSONRPCRequest -fuzztime=5m ./cmd/openadp-server
 	go test -fuzz=FuzzRegisterSecretMethod -fuzztime=5m ./cmd/openadp-server
 
@@ -409,7 +428,7 @@ fuzz-extended:
 fuzz-all: fuzz-server fuzz-crypto fuzz-api
 
 # Run specific fuzz test with custom duration
-# Usage: make fuzz-custom FUZZ=FuzzRegisterInputs PACKAGE=./pkg/server DURATION=30s
+# Usage: make fuzz-custom FUZZ=FuzzRegisterInputs PACKAGE=./server/server DURATION=30s
 fuzz-custom:
 	@echo "Running custom fuzz test: $(FUZZ) for $(DURATION)..."
 	go test -fuzz=$(FUZZ) -fuzztime=$(DURATION) $(PACKAGE)
@@ -418,8 +437,8 @@ fuzz-custom:
 fuzz-coverage:
 	@echo "Generating fuzz test coverage..."
 	mkdir -p coverage
-	go test -fuzz=FuzzRegisterInputs -fuzztime=1m -coverprofile=coverage/fuzz-server.out ./pkg/server
-	go test -fuzz=FuzzPoint2D -fuzztime=1m -coverprofile=coverage/fuzz-crypto.out ./pkg/crypto
+	go test -fuzz=FuzzRegisterInputs -fuzztime=1m -coverprofile=coverage/fuzz-server.out ./server/server
+	go test -fuzz=FuzzPoint2D -fuzztime=1m -coverprofile=coverage/fuzz-crypto.out ./common/crypto
 	go test -fuzz=FuzzJSONRPCRequest -fuzztime=1m -coverprofile=coverage/fuzz-api.out ./cmd/openadp-server
 	go tool cover -html=coverage/fuzz-server.out -o coverage/fuzz-server.html
 	go tool cover -html=coverage/fuzz-crypto.out -o coverage/fuzz-crypto.html
@@ -447,7 +466,7 @@ fuzz-help:
 	@echo "  fuzz-clean      - Clean up fuzz test artifacts"
 	@echo ""
 	@echo "Custom usage:"
-	@echo "  make fuzz-custom FUZZ=FuzzRegisterInputs PACKAGE=./pkg/server DURATION=30s"
+	@echo "  make fuzz-custom FUZZ=FuzzRegisterInputs PACKAGE=./server/server DURATION=30s"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make fuzz-server                    # Test server logic"
