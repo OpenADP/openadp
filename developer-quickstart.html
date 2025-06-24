@@ -42,6 +42,7 @@
             font-family: 'Monaco', 'Menlo', monospace;
             font-size: 14px;
             line-height: 1.5;
+            white-space: pre-wrap;
         }
         .step-number {
             display: inline-block;
@@ -117,24 +118,26 @@
             <div class="container">
                 <h2 class="section-title">What is Ocrypt?</h2>
                 <div class="integration-step">
-                    <p><strong>Ocrypt</strong> is OpenADP's high-level API that makes distributed cryptography as simple as traditional password-based encryption. Instead of storing encryption keys on a single server (vulnerable to government pressure), Ocrypt distributes key shares across multiple independent servers in different countries.</p>
-                    
+                    <p><strong>Ocrypt</strong> is OpenADP's network-based password hashing algorithm.  It derives strong encryption keys from simple pins and passwords.  Instead of storing encryption keys on a single server (vulnerable to government pressure), Ocrypt distributes key shares across multiple independent servers in different countries.</p>
+                    <p>There are several popular password hashing algorithms, such as PBKDF2 (weak), Bcrypt, Script and Argon2id (strong).  However, <strong>no password hashing algorithm can protect a pin.</strong></p>
+                    <p>The "O" in Ocrypt stans for "Oblivious".  Ocrypt uses what cryptographers call a DOPRF, which stands for "Distributed Oblivious Pseudo Random Function".  DOPRFs have goodness called "information theoretic security", which means that even if 100% of the OpenADP servers are compromised, attackers learn nothing about your pin.  No information about your pin is ever sent to OpenADP servers.  Accessing your encrypted data requires access to your encrypted storage, and also hacking most OpenADP servers protecting your data.</p>
                     <div class="success-box">
                         <h4>🔒 Security Transformation</h4>
-                        <p><strong>Before:</strong> PIN "1234" can be cracked in seconds<br>
-                        <strong>After:</strong> Same PIN "1234" becomes cryptographically strong through distributed threshold cryptography</p>
+                        <p><strong>Before:</strong> PIN "3344" can be cracked in seconds, regardless of the local password hashing algorithm used.<br>
+                        <strong>After:</strong> Same PIN "3344" becomes a strong encryption key.<br>
+                        Your data is safe so long as the attacker cannot guess your pin within a fixed number of guesses (defaults to 10).</p>
                     </div>
                 </div>
 
                 <h3>Perfect For These Applications:</h3>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0;">
                     <div class="example-app">
-                        <h4>💬 Secure Messaging</h4>
-                        <p>Backup chat history without central vulnerability</p>
+                        <h4>🪙 Devices backups</h4>
+                        <p>Protects your backups from your cloud provider</p>
                     </div>
                     <div class="example-app">
-                        <h4>🪙 Crypto Wallets</h4>
-                        <p>Seed phrase recovery without single points of failure</p>
+                        <h4>💬 Secure Messaging</h4>
+                        <p>Backup chat history without central vulnerability</p>
                     </div>
                     <div class="example-app">
                         <h4>🔐 Password Managers</h4>
@@ -288,10 +291,10 @@ class SecureNotesApp {
 const app = new SecureNotesApp();
 
 // Save a note
-await app.saveNote('My secret note content', '1234');
+await app.saveNote('My secret note content', '3344');
 
 // Load the note
-const noteContent = await app.loadNote('1234');
+const noteContent = await app.loadNote('3344');
 console.log('Recovered note:', noteContent);</div>
                     </div>
                 </div>
@@ -424,11 +427,11 @@ wallet = CryptoWallet('user123')
 wallet.backup_wallet(
     seed_phrase='abandon abandon abandon...',
     private_keys=['key1', 'key2', 'key3'],
-    user_pin='1234'
+    user_pin='3344'
 )
 
 # Restore wallet
-restored_data = wallet.restore_wallet('1234')
+restored_data = wallet.restore_wallet('3344')
 print('Restored wallet:', restored_data)</div>
                     </div>
                 </div>
@@ -610,13 +613,13 @@ func main() {
     storage := &SecureFileStorage{UserID: "user123"}
     
     // Save a file
-    err := storage.SaveFile("secret.txt", "My secret content", "1234")
+    err := storage.SaveFile("secret.txt", "My secret content", "3344")
     if err != nil {
         log.Fatal("Save failed:", err)
     }
     
     // Load the file
-    fileData, err := storage.LoadFile("secret.txt", "1234")
+    fileData, err := storage.LoadFile("secret.txt", "3344")
     if err != nil {
         log.Fatal("Load failed:", err)
     }
@@ -654,7 +657,7 @@ curl https://servers.openadp.org/servers</div>
                     <p>Test the complete flow with a simple example:</p>
                     <div class="code-block">// Test with simple data
 const testData = { message: "Hello OpenADP!" };
-const testPIN = "1234";
+const testPIN = "3344";
 const testUserID = "test-user-" + Date.now();
 
 // Register
@@ -685,7 +688,7 @@ try {
 
                 <div class="success-box">
                     <h4>🎉 Integration Complete!</h4>
-                    <p>Once your tests pass, your application is using distributed trust cryptography. Even simple PINs like "1234" are now protected by threshold cryptography across multiple servers in different countries.</p>
+                    <p>Once your tests pass, your application is using distributed trust cryptography. Even simple PINs like "3344" are now protected by threshold cryptography across multiple servers in different countries.</p>
                 </div>
             </div>
         </section>
