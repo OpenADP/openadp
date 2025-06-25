@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
 from openadp import (
     OpenADPClient, EncryptedOpenADPClient, MultiServerClient,
-    derive_identifiers, password_to_pin, generate_auth_codes,
+    Identity, password_to_pin, generate_auth_codes,
     generate_encryption_key, recover_encryption_key,
     ServerInfo
 )
@@ -199,26 +199,26 @@ class IntegrationTestSuite:
         ]
         
         for case in test_cases:
-            uid, did, bid = derive_identifiers(
-                case["filename"], 
-                case["user_id"], 
-                case["hostname"]
+            identity = Identity(
+                uid=case["user_id"],
+                did=case["hostname"],
+                bid=f"file://{case['filename']}"
             )
             
             print(f"   Input: {case}")
-            print(f"   UID: {uid}")
-            print(f"   DID: {did}")
-            print(f"   BID: {bid}")
+            print(f"   UID: {identity.uid}")
+            print(f"   DID: {identity.did}")
+            print(f"   BID: {identity.bid}")
             
             # Verify deterministic
-            uid2, did2, bid2 = derive_identifiers(
-                case["filename"], 
-                case["user_id"], 
-                case["hostname"]
+            identity2 = Identity(
+                uid=case["user_id"],
+                did=case["hostname"],
+                bid=f"file://{case['filename']}"
             )
             
-            assert uid == uid2 and did == did2 and bid == bid2, "Identifier derivation not deterministic"
-            print("   ✅ Identifier derivation is deterministic")
+            assert identity.uid == identity2.uid and identity.did == identity2.did and identity.bid == identity2.bid, "Identity creation not deterministic"
+            print("   ✅ Identity creation is deterministic")
     
     def test_password_to_pin(self):
         """Test password to PIN conversion"""
@@ -289,10 +289,10 @@ class IntegrationTestSuite:
         # Step 4a: Generate encryption key
         print("   🔐 Generating encryption key...")
         
+        identity = Identity(uid=user_id, did="test-hostname", bid=f"file://{filename}")
         result = generate_encryption_key(
-            filename=filename,
+            identity=identity,
             password=password,
-            user_id=user_id,
             max_guesses=max_guesses,
             expiration=expiration,
             server_infos=server_infos
@@ -312,9 +312,8 @@ class IntegrationTestSuite:
         print("   🔓 Recovering encryption key...")
         
         recovery_result = recover_encryption_key(
-            filename=filename,
+            identity=identity,
             password=password,
-            user_id=user_id,
             server_infos=server_infos,
             threshold=result.threshold,
             auth_codes=result.auth_codes

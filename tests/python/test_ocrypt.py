@@ -114,7 +114,10 @@ class TestOcryptBasic(unittest.TestCase):
         
         mock_result = GenerateEncryptionKeyResult(
             encryption_key=secrets.token_bytes(32),  # 256-bit key
-            server_urls=["https://server1.example.com", "https://server2.example.com"],
+            server_infos=[
+                ServerInfo(url="https://server1.example.com", public_key="", country="US"),
+                ServerInfo(url="https://server2.example.com", public_key="", country="US")
+            ],
             threshold=2,
             auth_codes=mock_auth_codes
         )
@@ -237,7 +240,7 @@ class TestOcryptBasic(unittest.TestCase):
             
             mock_result = GenerateEncryptionKeyResult(
                 encryption_key=secrets.token_bytes(32),
-                server_urls=["https://test.example.com"],
+                server_infos=[ServerInfo(url="https://test.example.com", public_key="", country="US")],
                 threshold=1,
                 auth_codes=mock_auth_codes
             )
@@ -278,7 +281,7 @@ class TestOcryptBasic(unittest.TestCase):
         
         mock_result = GenerateEncryptionKeyResult(
             encryption_key=secrets.token_bytes(32),
-            server_urls=[server.url for server in selected_servers],
+            server_infos=[server for server in selected_servers],
             threshold=8,  # 15//2 + 1 = 8
             auth_codes=mock_auth_codes
         )
@@ -444,7 +447,7 @@ class TestOcryptIntegration(unittest.TestCase):
             
             mock_result = GenerateEncryptionKeyResult(
                 encryption_key=secrets.token_bytes(32),
-                server_urls=["https://test.example.com"],
+                server_infos=[ServerInfo(url="https://test.example.com", public_key="", country="US")],
                 threshold=1,
                 auth_codes=mock_auth_codes
             )

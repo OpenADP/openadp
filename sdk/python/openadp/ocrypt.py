@@ -113,7 +113,7 @@ def _register_with_bid(user_id: str, app_id: str, long_term_secret: bytes, pin: 
         enc_key = result.encryption_key
         auth_codes = result.auth_codes
         
-        print(f"✅ Generated encryption key with {len(result.server_urls)} servers")
+        print(f"✅ Generated encryption key with {len(result.server_infos)} servers")
         
         # Step 4: Long-Term Secret Wrapping
         print("🔐 Wrapping long-term secret...")
@@ -122,9 +122,10 @@ def _register_with_bid(user_id: str, app_id: str, long_term_secret: bytes, pin: 
         wrapped_secret, tag = cipher.encrypt_and_digest(long_term_secret)
         
         # Step 5: Metadata Creation
+        server_urls = [server_info.url for server_info in result.server_infos]
         metadata = {
             # Standard openadp-encrypt metadata
-            "servers": result.server_urls,
+            "servers": server_urls,
             "threshold": result.threshold,
             "version": "1.0",
             "auth_code": auth_codes.base_auth_code,
@@ -145,7 +146,7 @@ def _register_with_bid(user_id: str, app_id: str, long_term_secret: bytes, pin: 
         metadata_bytes = json.dumps(metadata, separators=(',', ':')).encode('utf-8')
         
         print(f"📦 Created metadata ({len(metadata_bytes)} bytes)")
-        print(f"🎯 Threshold: {result.threshold}-of-{len(result.server_urls)} recovery")
+        print(f"🎯 Threshold: {result.threshold}-of-{len(result.server_infos)} recovery")
         
         return metadata_bytes
         

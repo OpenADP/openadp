@@ -6,6 +6,7 @@ import {
     generateEncryptionKey, recoverEncryptionKey
 } from '../src/keygen.js';
 import { ServerInfo } from '../src/client.js';
+import { Identity } from '../src/keygen.js';
 
 // Test colors for output
 const GREEN = '\x1b[32m';
@@ -134,29 +135,30 @@ function testRecoverEncryptionKeyResult() {
     assertEquals(errorResult.error, "Recovery error", "Error result should store error message");
 }
 
-// Test deriveIdentifiers function
-testSection("Identifier Derivation Tests");
-function testDeriveIdentifiers() {
-    const filename = "/path/to/test.txt";
-    const userId = "testuser";
-    const hostname = "testhost";
+// Test Identity class
+testSection("Identity Tests");
+function testIdentity() {
+    const uid = "testuser";
+    const did = "testhost";
+    const bid = "test.txt";
     
-    const [uid, did, bid] = deriveIdentifiers(filename, userId, hostname);
+    const identity = new Identity(uid, did, bid);
     
-    assertEquals(uid, userId, "UID should be the user ID");
-    assertEquals(did, hostname || "localhost", "DID should be hostname or localhost");
-    assert(bid.startsWith("file://"), "BID should start with file://");
-    assert(bid.includes("test.txt"), "BID should include filename");
+    assertEquals(identity.uid, uid, "UID should be set correctly");
+    assertEquals(identity.did, did, "DID should be set correctly");
+    assertEquals(identity.bid, bid, "BID should be set correctly");
     
-    // Test with empty hostname (should use system hostname)
-    const [uid2, did2, bid2] = deriveIdentifiers(filename, userId, "");
-    assert(did2.length > 0, "DID should not be empty when hostname auto-detected");
+    // Test toString method
+    const str = identity.toString();
+    assert(str.includes(uid), "toString should include UID");
+    assert(str.includes(did), "toString should include DID");
+    assert(str.includes(bid), "toString should include BID");
     
     // Test deterministic behavior
-    const [uid3, did3, bid3] = deriveIdentifiers(filename, userId, hostname);
-    assertEquals(uid3, uid, "UID should be deterministic");
-    assertEquals(did3, did, "DID should be deterministic");
-    assertEquals(bid3, bid, "BID should be deterministic");
+    const identity2 = new Identity(uid, did, bid);
+    assertEquals(identity.uid, identity2.uid, "UID should be deterministic");
+    assertEquals(identity.did, identity2.did, "DID should be deterministic");
+    assertEquals(identity.bid, identity2.bid, "BID should be deterministic");
 }
 
 // Test passwordToPin function
@@ -216,21 +218,30 @@ function testGenerateAuthCodes() {
 // Test input validation
 testSection("Input Validation Tests");
 function testInputValidation() {
-    // Test deriveIdentifiers with invalid inputs
+    // Test Identity with invalid inputs
     try {
-        deriveIdentifiers("", "user", "host");
-        console.log(`${YELLOW}⚠${RESET} deriveIdentifiers allows empty filename`);
+        const identity = new Identity("", "device", "backup");
+        console.log(`${YELLOW}⚠${RESET} Identity allows empty UID`);
     } catch (error) {
-        console.log(`${GREEN}✓${RESET} deriveIdentifiers correctly rejects empty filename`);
+        console.log(`${GREEN}✓${RESET} Identity correctly rejects empty UID`);
         passCount++;
         testCount++;
     }
     
     try {
-        deriveIdentifiers("file.txt", "", "host");
-        console.log(`${YELLOW}⚠${RESET} deriveIdentifiers allows empty user ID`);
+        const identity = new Identity("user", "", "backup");
+        console.log(`${YELLOW}⚠${RESET} Identity allows empty DID`);
     } catch (error) {
-        console.log(`${GREEN}✓${RESET} deriveIdentifiers correctly rejects empty user ID`);
+        console.log(`${GREEN}✓${RESET} Identity correctly rejects empty DID`);
+        passCount++;
+        testCount++;
+    }
+    
+    try {
+        const identity = new Identity("user", "device", "");
+        console.log(`${YELLOW}⚠${RESET} Identity allows empty BID`);
+    } catch (error) {
+        console.log(`${GREEN}✓${RESET} Identity correctly rejects empty BID`);
         passCount++;
         testCount++;
     }
@@ -260,25 +271,25 @@ function testInputValidation() {
 // Test consistency between generation and recovery identifiers
 testSection("Generation/Recovery Consistency Tests");
 function testGenerationRecoveryConsistency() {
-    const filename = "test.txt";
-    const userId = "testuser";
-    const hostname = "testhost";
+    const uid = "testuser";
+    const did = "testhost";
+    const bid = "test.txt";
     
-    // Test that identifiers are consistent between generation and recovery
-    const [genUid, genDid, genBid] = deriveIdentifiers(filename, userId, hostname);
-    const [recUid, recDid, recBid] = deriveIdentifiers(filename, userId, hostname);
+    // Test that identities are consistent between generation and recovery
+    const genIdentity = new Identity(uid, did, bid);
+    const recIdentity = new Identity(uid, did, bid);
     
-    assertEquals(genUid, recUid, "UID should be consistent between generation and recovery");
-    assertEquals(genDid, recDid, "DID should be consistent between generation and recovery");
-    assertEquals(genBid, recBid, "BID should be consistent between generation and recovery");
+    assertEquals(genIdentity.uid, recIdentity.uid, "UID should be consistent between generation and recovery");
+    assertEquals(genIdentity.did, recIdentity.did, "DID should be consistent between generation and recovery");
+    assertEquals(genIdentity.bid, recIdentity.bid, "BID should be consistent between generation and recovery");
     
-    // Test with explicit hostname
-    const [genUid2, genDid2, genBid2] = deriveIdentifiers(filename, userId, "testhost");
-    const [recUid2, recDid2, recBid2] = deriveIdentifiers(filename, userId, "testhost");
+    // Test with different values
+    const genIdentity2 = new Identity(uid, did, "different.txt");
+    const recIdentity2 = new Identity(uid, did, "different.txt");
     
-    assertEquals(genUid2, recUid2, "UID should be consistent with explicit hostname");
-    assertEquals(genDid2, recDid2, "DID should be consistent with explicit hostname");
-    assertEquals(genBid2, recBid2, "BID should be consistent with explicit hostname");
+    assertEquals(genIdentity2.uid, recIdentity2.uid, "UID should be consistent with different BID");
+    assertEquals(genIdentity2.did, recIdentity2.did, "DID should be consistent with different BID");
+    assertEquals(genIdentity2.bid, recIdentity2.bid, "BID should be consistent with different BID");
 }
 
 // Helper function to compare arrays
@@ -334,15 +345,16 @@ class MockServer {
 // Test integration scenarios (without actual network calls)
 testSection("Integration Scenario Tests");
 function testIntegrationScenarios() {
-    // Test the flow of identifier derivation -> auth code generation -> consistency
-    const filename = "important.doc";
-    const userId = "alice";
+    // Test the flow of identity creation -> auth code generation -> consistency
+    const uid = "alice";
+    const did = "laptop-2024";
+    const bid = "important.doc";
     const password = "secure123";
     const serverUrls = ["https://server1.com", "https://server2.com"];
     
     try {
-        // Step 1: Derive identifiers (as done in generation)
-        const [uid, did, bid] = deriveIdentifiers(filename, userId);
+        // Step 1: Create identity (as done in generation)
+        const identity = new Identity(uid, did, bid);
         
         // Step 2: Convert password to PIN
         const pin = passwordToPin(password);
@@ -351,12 +363,12 @@ function testIntegrationScenarios() {
         const authCodes = generateAuthCodes(serverUrls);
         
         // Step 4: Verify consistency for recovery
-        const [recUid, recDid, recBid] = deriveIdentifiers(filename, userId);
+        const recIdentity = new Identity(uid, did, bid);
         const recPin = passwordToPin(password);
         
-        assertEquals(uid, recUid, "UID should be consistent for recovery");
-        assertEquals(did, recDid, "DID should be consistent for recovery");
-        assertEquals(bid, recBid, "BID should be consistent for recovery");
+        assertEquals(identity.uid, recIdentity.uid, "UID should be consistent for recovery");
+        assertEquals(identity.did, recIdentity.did, "DID should be consistent for recovery");
+        assertEquals(identity.bid, recIdentity.bid, "BID should be consistent for recovery");
         assertArrayEquals(Array.from(pin), Array.from(recPin), "PIN should be consistent for recovery");
         
         // Step 5: Test auth code generation consistency using test fixture
@@ -390,7 +402,7 @@ async function runAllTests() {
     testAuthCodes();
     testGenerateEncryptionKeyResult();
     testRecoverEncryptionKeyResult();
-    testDeriveIdentifiers();
+    testIdentity();
     testPasswordToPin();
     testGenerateAuthCodes();
     testInputValidation();

@@ -19,7 +19,7 @@ from Crypto.Random import get_random_bytes
 # Add the openadp package to the path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'sdk', 'python'))
 
-from openadp.keygen import generate_encryption_key, derive_identifiers
+from openadp.keygen import generate_encryption_key, Identity
 from openadp.client import get_servers, get_fallback_server_info, ServerInfo, OpenADPClient
 
 VERSION = "1.0.0"
@@ -112,7 +112,13 @@ def encrypt_file(input_filename, password, user_id, server_infos, servers_url):
     
     # Generate encryption key using OpenADP with full distributed protocol
     print("🔄 Generating encryption key using OpenADP servers...")
-    result = generate_encryption_key(input_filename, password, user_id, 10, 0, server_infos)
+    # Create Identity from filename, user_id, and hostname (matching old derive_identifiers behavior)
+    identity = Identity(
+        uid=user_id,
+        did=get_hostname(),
+        bid=f"file://{os.path.basename(input_filename)}"
+    )
+    result = generate_encryption_key(identity, password, 10, 0, server_infos)
     
     if result.error:
         raise Exception(f"failed to generate encryption key: {result.error}")
@@ -120,7 +126,7 @@ def encrypt_file(input_filename, password, user_id, server_infos, servers_url):
     # Extract information from the result
     enc_key = result.encryption_key
     auth_codes = result.auth_codes
-    actual_server_urls = result.server_urls
+    actual_server_urls = [server_info.url for server_info in result.server_infos]
     threshold = result.threshold
     
     print(f"🔑 Generated authentication codes for {len(auth_codes.server_auth_codes)} servers")

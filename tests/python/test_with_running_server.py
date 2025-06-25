@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
 from openadp import (
     OpenADPClient, EncryptedOpenADPClient,
-    derive_identifiers, password_to_pin, generate_auth_codes,
+    Identity, password_to_pin, generate_auth_codes,
     generate_encryption_key
 )
 from openadp.crypto import derive_enc_key, H
@@ -116,11 +116,11 @@ def test_key_generation_workflow(server_info):
         hostname = "test-device"
         password = "test-password-123"
         
-        # Derive identifiers
-        uid, did, bid = derive_identifiers(filename, user_id, hostname)
-        print(f"   📋 UID: {uid}")
-        print(f"   📋 DID: {did}")
-        print(f"   📋 BID: {bid}")
+        # Create Identity
+        identity = Identity(uid=user_id, did=hostname, bid=f"file://{filename}")
+        print(f"   📋 UID: {identity.uid}")
+        print(f"   📋 DID: {identity.did}")
+        print(f"   📋 BID: {identity.bid}")
         
         # Convert password to PIN
         pin = password_to_pin(password)
@@ -141,9 +141,8 @@ def test_key_generation_workflow(server_info):
         print("   🚀 Attempting key generation...")
         
         result = generate_encryption_key(
-            filename=filename,
+            identity=identity,
             password=password,
-            user_id=user_id,
             max_guesses=10,
             expiration=0,  # No expiration for test
             server_infos=server_infos

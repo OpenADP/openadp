@@ -15,7 +15,7 @@ import os
 import hashlib
 import secrets
 import base64
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from dataclasses import dataclass
 
 from .crypto import (
@@ -27,6 +27,17 @@ from .client import EncryptedOpenADPClient, ServerInfo
 
 
 @dataclass
+class Identity:
+    """Identity represents the primary key tuple for secret shares stored on servers"""
+    uid: str  # User ID - uniquely identifies the user
+    did: str  # Device ID - identifies the device/application  
+    bid: str  # Backup ID - identifies the specific backup
+    
+    def __str__(self) -> str:
+        return f"UID={self.uid}, DID={self.did}, BID={self.bid}"
+
+
+@dataclass
 class AuthCodes:
     """Authentication codes for OpenADP servers."""
     base_auth_code: str
@@ -34,14 +45,14 @@ class AuthCodes:
     user_id: str
 
 
-@dataclass 
+@dataclass
 class GenerateEncryptionKeyResult:
     """Result of encryption key generation."""
     encryption_key: Optional[bytes] = None
     error: Optional[str] = None
-    server_urls: Optional[List[str]] = None
+    server_infos: Optional[List[ServerInfo]] = None
     threshold: Optional[int] = None
-    auth_codes: Optional[AuthCodes] = None
+    auth_codes: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -49,33 +60,6 @@ class RecoverEncryptionKeyResult:
     """Result of encryption key recovery."""
     encryption_key: Optional[bytes] = None
     error: Optional[str] = None
-
-
-def derive_identifiers(filename: str, user_id: str, hostname: str = "") -> Tuple[str, str, str]:
-    """
-    Derive UID, DID, and BID for OpenADP operations (matches Go DeriveIdentifiers).
-    
-    Args:
-        filename: Name of file being encrypted/decrypted  
-        user_id: Authenticated user ID (authentication code system - UUID)
-        hostname: Override hostname (auto-detected if empty)
-        
-    Returns:
-        Tuple of (uid, did, bid) identifiers
-    """
-    # Auto-detect hostname if not provided
-    if not hostname:
-        try:
-            hostname = os.uname().nodename
-        except:
-            hostname = "unknown"
-    
-    # Phase 4: Use authenticated user ID (UUID) as UID directly
-    uid = user_id  # This is now the authenticated user ID (UUID)
-    did = hostname  # Device identifier
-    bid = f"file://{os.path.basename(filename)}"  # Backup identifier for this file
-    
-    return uid, did, bid
 
 
 def password_to_pin(password: str) -> bytes:
@@ -95,71 +79,93 @@ def password_to_pin(password: str) -> bytes:
 
 def generate_auth_codes(server_urls: List[str]) -> AuthCodes:
     """
-    Generate authentication codes for OpenADP servers (matches Go GenerateAuthCodes).
+    Generate authentication codes for OpenADP servers.
     
-    This creates a base authentication code (256-bit SHA256 hash) and derives 
-    server-specific codes for each server URL, matching the expected 64-character hex format.
+    Creates a base authentication code and derives server-specific codes.
+    Each server gets a unique code derived from the base code and server URL.
+    
+    Args:
+        server_urls: List of server URLs to generate codes for
+        
+    Returns:
+        AuthCodes object containing base code and server-specific codes
     """
-    # Generate random base authentication code (32 bytes = 256 bits)
-    base_auth_bytes = secrets.token_bytes(32)
-    base_auth_code = base_auth_bytes.hex()
+    # Generate base authentication code (32 random bytes as hex)
+    base_auth_code = secrets.token_hex(32)
+    print(f"🔍 PY AUTH DEBUG: Generated base auth code: {base_auth_code}")
     
-    # Derive server-specific auth codes
+    # Generate server-specific authentication codes
     server_auth_codes = {}
     for server_url in server_urls:
-        # Combine base auth code with server URL and hash (matches Go format with colon separator)
+        # Derive server-specific code using SHA256 (same as Go implementation)
         combined = f"{base_auth_code}:{server_url}"
-        server_hash = hashlib.sha256(combined.encode('utf-8')).digest()
-        server_auth_codes[server_url] = server_hash.hex()
+        hash_bytes = hashlib.sha256(combined.encode('utf-8')).digest()
+        server_code = hash_bytes.hex()
+        server_auth_codes[server_url] = server_code
+        print(f"🔍 PY AUTH DEBUG: Server {server_url} auth code: {server_code}")
     
+    # Return with a placeholder user_id (will be set by caller)
     return AuthCodes(
         base_auth_code=base_auth_code,
         server_auth_codes=server_auth_codes,
-        user_id=""  # Will be set by caller
+        user_id=""  # Will be set by the caller
     )
 
 
 def generate_encryption_key(
-    filename: str,
+    identity: Identity,
     password: str, 
-    user_id: str,
     max_guesses: int = 10,
     expiration: int = 0,
     server_infos: List[ServerInfo] = None
 ) -> GenerateEncryptionKeyResult:
     """
-    Generate an encryption key using OpenADP distributed secret sharing (matches Go GenerateEncryptionKey).
+    Generate an encryption key using OpenADP distributed secret sharing.
     
     FULL DISTRIBUTED IMPLEMENTATION: This implements the complete OpenADP protocol:
-    1. Derives unique UID/DID/BID from filename and user identity
+    1. Uses the provided Identity (UID, DID, BID) as the primary key
     2. Converts password to cryptographic PIN
     3. Distributes secret shares to OpenADP servers via JSON-RPC
     4. Uses authentication codes for secure server communication
     5. Uses threshold cryptography for recovery
+    
+    Args:
+        identity: Identity containing (UID, DID, BID) primary key tuple
+        password: User password to convert to PIN
+        max_guesses: Maximum password attempts allowed
+        expiration: Expiration time for shares (0 = no expiration)
+        server_infos: List of OpenADP servers
+        
+    Returns:
+        GenerateEncryptionKeyResult with encryption key or error
     """
     # Input validation
-    if not filename:
-        return GenerateEncryptionKeyResult(error="Filename cannot be empty")
+    if identity is None:
+        return GenerateEncryptionKeyResult(error="Identity cannot be None")
     
-    if not user_id:
-        return GenerateEncryptionKeyResult(error="User ID cannot be empty")
+    if not identity.uid:
+        return GenerateEncryptionKeyResult(error="UID cannot be empty")
+    
+    if not identity.did:
+        return GenerateEncryptionKeyResult(error="DID cannot be empty")
+    
+    if not identity.bid:
+        return GenerateEncryptionKeyResult(error="BID cannot be empty")
     
     if max_guesses < 0:
         return GenerateEncryptionKeyResult(error="Max guesses cannot be negative")
     
+    print(f"OpenADP: Identity={identity}")
+    
     try:
-        # Step 1: Derive identifiers using authenticated user_id
-        uid, did, bid = derive_identifiers(filename, user_id, "")
-        print(f"OpenADP: UID={uid}, DID={did}, BID={bid}")
-        
-        # Step 2: Convert password to PIN
+        # Step 1: Convert password to PIN
         pin = password_to_pin(password)
         
-        # Step 3: Check if we have servers
+        # Step 2: Check if we have servers
         if not server_infos:
             return GenerateEncryptionKeyResult(error="No OpenADP servers available")
         
-        # Step 4: Initialize encrypted clients for each server using public keys from servers.json
+        # Step 3: Initialize encrypted clients for each server using public keys from servers.json
         clients = []
         live_server_urls = []
         
@@ -199,22 +205,21 @@ def generate_encryption_key(
         
         print(f"OpenADP: Using {len(clients)} live servers")
         
-        # Step 5: Generate authentication codes for the live servers
+        # Step 4: Generate authentication codes for the live servers
         auth_codes = generate_auth_codes(live_server_urls)
-        auth_codes.user_id = user_id
+        auth_codes.user_id = identity.uid
         
-        # Step 6: Generate RANDOM secret and create point
+        # Step 5: Generate RANDOM secret and create point
         # SECURITY FIX: Use random secret for Shamir secret sharing, not deterministic
         secret = secrets.randbelow(Q)
-        while secret == 0:  # Ensure secret is not zero
-            secret = secrets.randbelow(Q)
+        # Note: secret can be 0 - this is valid for Shamir secret sharing
         
-        U = H(uid.encode(), did.encode(), bid.encode(), pin)
+        U = H(identity.uid.encode(), identity.did.encode(), identity.bid.encode(), pin)
         S = point_mul(secret, U)
         
-        # Step 7: Create shares using secret sharing
-        threshold = max(1, min(2, len(clients)))  # At least 1, prefer 2 if available
+        # Step 6: Create shares using secret sharing
         num_shares = len(clients)
+        threshold = len(clients) // 2 + 1  # Standard majority threshold: floor(N/2) + 1
         
         if num_shares < threshold:
             return GenerateEncryptionKeyResult(
@@ -224,7 +229,7 @@ def generate_encryption_key(
         shares = ShamirSecretSharing.split_secret(secret, threshold, num_shares)
         print(f"OpenADP: Created {len(shares)} shares with threshold {threshold}")
         
-        # Step 8: Register shares with servers using authentication codes and encryption
+        # Step 7: Register shares with servers using authentication codes and encryption
         # Only use encrypted registration for sensitive operations
         version = 1
         registration_errors = []
@@ -249,7 +254,7 @@ def generate_encryption_key(
             
             try:
                 success = client.register_secret(
-                    auth_code, uid, did, bid, version, x, y_str, max_guesses, expiration, encrypted, None
+                    auth_code, identity.uid, identity.did, identity.bid, version, x, y_str, max_guesses, expiration, encrypted, None
                 )
                 
                 if not success:
@@ -267,13 +272,13 @@ def generate_encryption_key(
                 error=f"Failed to register any shares: {registration_errors}"
             )
         
-        # Step 9: Derive encryption key
+        # Step 8: Derive encryption key
         enc_key = derive_enc_key(S)
         print("OpenADP: Successfully generated encryption key")
         
         return GenerateEncryptionKeyResult(
             encryption_key=enc_key,
-            server_urls=live_server_urls,
+            server_infos=server_infos,
             threshold=threshold,
             auth_codes=auth_codes
         )
@@ -283,48 +288,55 @@ def generate_encryption_key(
 
 
 def recover_encryption_key(
-    filename: str,
+    identity: Identity,
     password: str,
-    user_id: str,
     server_infos: List[ServerInfo],
     threshold: int,
-    auth_codes: AuthCodes
+    auth_codes: Dict[str, Any]
 ) -> RecoverEncryptionKeyResult:
     """
-    Recover an encryption key using OpenADP distributed secret sharing (matches Go RecoverEncryptionKeyWithServerInfo).
+    Recover an encryption key using OpenADP distributed secret sharing.
     
     FULL DISTRIBUTED IMPLEMENTATION: This implements the complete OpenADP protocol:
-    1. Derives the same UID/DID/BID as during encryption
+    1. Uses the provided Identity (UID, DID, BID) as the primary key
     2. Converts password to the same PIN
-    3. Recovers shares from OpenADP servers via JSON-RPC with Noise-NK encryption
+    3. Recovers shares from OpenADP servers via JSON-RPC with encryption
     4. Reconstructs the original secret using threshold cryptography
     5. Derives the same encryption key
+    
+    Args:
+        identity: Identity containing (UID, DID, BID) primary key tuple
+        password: User password to convert to PIN
+        server_infos: List of OpenADP servers
+        threshold: Minimum shares needed for recovery
+        auth_codes: Authentication codes for servers
+        
+    Returns:
+        RecoverEncryptionKeyResult with encryption key or error
     """
     # Input validation
-    if not filename:
-        return RecoverEncryptionKeyResult(error="Filename cannot be empty")
+    if identity is None:
+        return RecoverEncryptionKeyResult(error="Identity cannot be None")
     
-    if not user_id:
-        return RecoverEncryptionKeyResult(error="User ID cannot be empty")
+    if not identity.uid:
+        return RecoverEncryptionKeyResult(error="UID cannot be empty")
+    
+    if not identity.did:
+        return RecoverEncryptionKeyResult(error="DID cannot be empty")
+    
+    if not identity.bid:
+        return RecoverEncryptionKeyResult(error="BID cannot be empty")
     
     if threshold <= 0:
         return RecoverEncryptionKeyResult(error="Threshold must be positive")
     
-    if not server_infos:
-        return RecoverEncryptionKeyResult(error="No OpenADP servers available")
-    
-    if not auth_codes:
-        return RecoverEncryptionKeyResult(error="No authentication codes provided")
+    print(f"OpenADP: Identity={identity}")
     
     try:
-        # Step 1: Derive same identifiers as during encryption
-        uid, did, bid = derive_identifiers(filename, user_id, "")
-        print(f"OpenADP: UID={uid}, DID={did}, BID={bid}")
-        
-        # Step 2: Convert password to same PIN
+        # Step 1: Convert password to same PIN
         pin = password_to_pin(password)
         
-        # Step 3: Initialize clients for the specific servers, using encryption when public keys are available
+        # Step 2: Initialize clients for the specific servers, using encryption when public keys are available
         clients = []
         live_server_urls = []
         
@@ -356,8 +368,12 @@ def recover_encryption_key(
         
         print(f"OpenADP: Using {len(clients)} live servers")
         
-        # Step 4: Create cryptographic context (same as encryption)
-        U = H(uid.encode(), did.encode(), bid.encode(), pin)
+        # Step 3: Create cryptographic context (same as encryption)
+        U = H(identity.uid.encode(), identity.did.encode(), identity.bid.encode(), pin)
+        
+        # Debug: Show the U point that we're using for recovery (convert to affine)
+        u_point_affine = unexpand(U)
+        print(f"🔍 PY DECRYPTION DEBUG: U point (H(uid,did,bid,pin)) affine = Point(x={u_point_affine.x}, y={u_point_affine.y})")
         
         # Generate random r and compute B for recovery protocol
         r = secrets.randbelow(Q)
@@ -373,7 +389,17 @@ def recover_encryption_key(
         b_compressed = point_compress(B)
         b_base64_format = base64.b64encode(b_compressed).decode('ascii')
         
-        # Step 5: Recover shares from servers using authentication codes
+        print(f"🔍 PY DECRYPTION DEBUG: Generated r = {r}")
+        b_point_affine = unexpand(B)
+        print(f"🔍 PY DECRYPTION DEBUG: Generated B point: x={b_point_affine.x}, y={b_point_affine.y}")
+        print(f"🔍 PY DECRYPTION DEBUG: B compressed (hex): {b_compressed.hex()}")
+        print(f"🔍 PY DECRYPTION DEBUG: B base64 sent to servers: {b_base64_format}")
+        
+        # Debug: We'll verify si*B values after we get them from servers
+        print(f"🔍 PY DECRYPTION DEBUG: Will verify si*B = r*(si*U) after receiving server responses")
+        print(f"🔍 PY DECRYPTION DEBUG: r = {r}")
+        
+        # Step 4: Recover shares from servers using authentication codes
         print("OpenADP: Recovering shares from servers...")
         recovered_point_shares = []
         
@@ -381,15 +407,17 @@ def recover_encryption_key(
             server_url = live_server_urls[i]
             auth_code = auth_codes.server_auth_codes[server_url]
             
+            print(f"🔍 PY DECRYPTION DEBUG: Server {i+1} ({server_url}) auth_code: {auth_code}")
+            
             # Get current guess number for this backup from the server
             guess_num = 0  # Default to 0 for first guess (0-based indexing)
             try:
-                backups = client.list_backups(uid, False, None)
+                backups = client.list_backups(identity.uid, False, None)
                 # Find our backup in the list using the complete primary key (UID, DID, BID)
                 for backup in backups:
-                    if (backup.get("uid") == uid and 
-                        backup.get("did") == did and 
-                        backup.get("bid") == bid):
+                    if (backup.get("uid") == identity.uid and 
+                        backup.get("did") == identity.did and 
+                        backup.get("bid") == identity.bid):
                         guess_num = int(backup.get("num_guesses", 0))
                         break
             except Exception as e:
@@ -397,7 +425,9 @@ def recover_encryption_key(
             
             # Try recovery with current guess number, retry once if guess number is wrong
             try:
-                result_map = client.recover_secret(auth_code, uid, did, bid, b_base64_format, guess_num, True, None)
+                result_map = client.recover_secret(auth_code, identity.uid, identity.did, identity.bid, b_base64_format, guess_num, True, None)
+                print(f"🔍 PY DECRYPTION DEBUG: Server {i+1} returned si_b (base64): {result_map.get('si_b', 'N/A')}")
+                print(f"🔍 PY DECRYPTION DEBUG: Server {i+1} returned x: {result_map.get('x', 'N/A')}")
             except Exception as e:
                 # If we get a guess number error, try to parse the expected number and retry
                 if "expecting guess_num =" in str(e):
@@ -411,7 +441,9 @@ def recover_encryption_key(
                                 expected_str = expected_str[:space_idx]
                             expected_guess = int(expected_str)
                             print(f"Server {i+1} ({server_url}): Retrying with expected guess_num = {expected_guess}")
-                            result_map = client.recover_secret(auth_code, uid, did, bid, b_base64_format, expected_guess, True, None)
+                            result_map = client.recover_secret(auth_code, identity.uid, identity.did, identity.bid, b_base64_format, expected_guess, True, None)
+                            print(f"🔍 PY DECRYPTION DEBUG: Server {i+1} returned si_b (base64): {result_map.get('si_b', 'N/A')}")
+                            print(f"🔍 PY DECRYPTION DEBUG: Server {i+1} returned x: {result_map.get('x', 'N/A')}")
                         else:
                             raise
                     except:
@@ -427,10 +459,19 @@ def recover_encryption_key(
                 
                 # Decode si_b from base64
                 si_b_bytes = base64.b64decode(si_b_base64)
+                print(f"🔍 PY DECRYPTION DEBUG: si_b bytes (hex): {si_b_bytes.hex()}")
                 
                 # Decompress si_b from the result
                 si_b_4d = point_decompress(si_b_bytes)
                 si_b = unexpand(si_b_4d)
+                
+                print(f"🔍 PY DECRYPTION DEBUG: Decompressed si*B point: x={si_b.x}, y={si_b.y}")
+                
+                # Compute rInv * siB to compare with siU from encryption
+                si_b_expanded = expand(si_b)
+                computed_si_u = point_mul(r_inv, si_b_expanded)
+                computed_si_u_affine = unexpand(computed_si_u)
+                print(f"🔍 PY DECRYPTION DEBUG: r_inv * si*B = Point(x={computed_si_u_affine.x}, y={computed_si_u_affine.y}) (should match si*U from encryption)")
                 
                 # Create point share from recovered data (si * B point)
                 # This matches Go's recover_sb which expects (x, Point2D) pairs
@@ -448,7 +489,7 @@ def recover_encryption_key(
                 error=f"Could not recover enough shares (got {len(recovered_point_shares)}, need at least {threshold})"
             )
         
-        # Step 6: Reconstruct secret using point-based recovery (like Go recover_sb)
+        # Step 5: Reconstruct secret using point-based recovery (like Go recover_sb)
         print(f"OpenADP: Reconstructing secret from {len(recovered_point_shares)} point shares...")
         
         # Use point-based Lagrange interpolation to recover s*B (like Go RecoverPointSecret)
@@ -459,7 +500,7 @@ def recover_encryption_key(
         recovered_sb_4d = expand(recovered_sb)
         original_su = point_mul(r_inv, recovered_sb_4d)
         
-        # Step 7: Derive same encryption key
+        # Step 6: Derive same encryption key
         enc_key = derive_enc_key(original_su)
         print("OpenADP: Successfully recovered encryption key")
         

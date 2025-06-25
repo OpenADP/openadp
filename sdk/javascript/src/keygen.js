@@ -34,13 +34,28 @@ export class AuthCodes {
 }
 
 /**
+ * Identity represents the primary key tuple for secret shares stored on servers
+ */
+export class Identity {
+    constructor(uid, did, bid) {
+        this.uid = uid;  // User ID - uniquely identifies the user
+        this.did = did;  // Device ID - identifies the device/application  
+        this.bid = bid;  // Backup ID - identifies the specific backup
+    }
+    
+    toString() {
+        return `UID=${this.uid}, DID=${this.did}, BID=${this.bid}`;
+    }
+}
+
+/**
  * Result of encryption key generation
  */
 export class GenerateEncryptionKeyResult {
-    constructor(encryptionKey = null, error = null, serverUrls = null, threshold = null, authCodes = null) {
+    constructor(encryptionKey = null, error = null, serverInfos = null, threshold = null, authCodes = null) {
         this.encryptionKey = encryptionKey;
         this.error = error;
-        this.serverUrls = serverUrls;
+        this.serverInfos = serverInfos;
         this.threshold = threshold;
         this.authCodes = authCodes;
     }
@@ -54,27 +69,6 @@ export class RecoverEncryptionKeyResult {
         this.encryptionKey = encryptionKey;
         this.error = error;
     }
-}
-
-/**
- * Derive UID, DID, and BID for OpenADP operations (matches Python DeriveIdentifiers)
- */
-export function deriveIdentifiers(filename, userId, hostname = "") {
-    // Auto-detect hostname if not provided
-    if (!hostname) {
-        try {
-            hostname = os.hostname();
-        } catch {
-            hostname = "unknown";
-        }
-    }
-    
-    // Use authenticated user ID (UUID) as UID directly
-    const uid = userId; // This is now the authenticated user ID (UUID)
-    const did = hostname; // Device identifier
-    const bid = `file://${path.basename(filename)}`; // Backup identifier for this file
-    
-    return [uid, did, bid];
 }
 
 /**
@@ -92,68 +86,79 @@ export function passwordToPin(password) {
  * @param {string} [fixedSeed] - Optional fixed seed for testing (DO NOT use in production)
  */
 export function generateAuthCodes(serverUrls, fixedSeed = null) {
+    // Generate base authentication code (32 random bytes as hex)
     let baseAuthCode;
-    
-    if (fixedSeed !== null) {
-        // FOR TESTING ONLY - Generate deterministic auth code from seed
-        const seedBytes = sha256Hash(new TextEncoder().encode(fixedSeed));
-        baseAuthCode = Buffer.from(seedBytes).toString('hex');
+    if (fixedSeed) {
+        // For testing: use a fixed seed to generate deterministic auth codes
+        const seedHash = sha256Hash(Buffer.from(fixedSeed, 'utf8'));
+        baseAuthCode = Buffer.from(seedHash).toString('hex');
     } else {
-        // PRODUCTION - Generate random base authentication code (32 bytes = 256 bits)
-        const baseAuthBytes = crypto.randomBytes(32);
-        baseAuthCode = baseAuthBytes.toString('hex');
+        // Production: use cryptographically secure random bytes
+        const randomBytes = new Uint8Array(32);
+        crypto.getRandomValues(randomBytes);
+        baseAuthCode = Buffer.from(randomBytes).toString('hex');
     }
     
-    // Derive server-specific auth codes
+    console.log(`🔍 JS AUTH DEBUG: Generated base auth code: ${baseAuthCode}`);
+    
+    // Generate server-specific authentication codes
     const serverAuthCodes = {};
     for (const serverUrl of serverUrls) {
-        // Combine base auth code with server URL and hash (matches Python format with colon separator)
+        // Derive server-specific code using SHA256 (same as Go/Python implementation)
         const combined = `${baseAuthCode}:${serverUrl}`;
-        const serverHash = sha256Hash(new TextEncoder().encode(combined));
-        serverAuthCodes[serverUrl] = Buffer.from(serverHash).toString('hex');
+        const hashBytes = sha256Hash(Buffer.from(combined, 'utf8'));
+        const serverCode = Buffer.from(hashBytes).toString('hex');
+        serverAuthCodes[serverUrl] = serverCode;
+        console.log(`🔍 JS AUTH DEBUG: Server ${serverUrl} auth code: ${serverCode}`);
     }
     
+    // Return with placeholder user_id (will be set by caller)
     return new AuthCodes(baseAuthCode, serverAuthCodes, "");
 }
 
 /**
- * Generate an encryption key using OpenADP distributed secret sharing (matches Python GenerateEncryptionKey)
+ * Generate an encryption key using OpenADP distributed secret sharing
  */
 export async function generateEncryptionKey(
-    filename,
+    identity,
     password,
-    userId,
     maxGuesses = 10,
     expiration = 0,
     serverInfos = null
 ) {
     // Input validation
-    if (!filename) {
-        return new GenerateEncryptionKeyResult(null, "Filename cannot be empty");
+    if (!identity) {
+        return new GenerateEncryptionKeyResult(null, "Identity cannot be null");
     }
     
-    if (!userId) {
-        return new GenerateEncryptionKeyResult(null, "User ID cannot be empty");
+    if (!identity.uid) {
+        return new GenerateEncryptionKeyResult(null, "UID cannot be empty");
+    }
+    
+    if (!identity.did) {
+        return new GenerateEncryptionKeyResult(null, "DID cannot be empty");
+    }
+    
+    if (!identity.bid) {
+        return new GenerateEncryptionKeyResult(null, "BID cannot be empty");
     }
     
     if (maxGuesses < 0) {
         return new GenerateEncryptionKeyResult(null, "Max guesses cannot be negative");
     }
-    
+
+    console.log(`OpenADP: Identity=${identity.toString()}`);
+
     try {
-        // Step 1: Derive identifiers using authenticated user_id
-        const [uid, did, bid] = deriveIdentifiers(filename, userId, "");
-        console.log(`OpenADP: UID=${uid}, DID=${did}, BID=${bid}`);
-        
-        // Step 2: Convert password to PIN
+        // Step 1: Convert password to PIN
         const pin = passwordToPin(password);
         
-        // Step 3: Check if we have servers
+        // Step 2: Check if we have servers
         if (!serverInfos || serverInfos.length === 0) {
             return new GenerateEncryptionKeyResult(null, "No OpenADP servers available");
         }
         
-        // Step 4: Initialize encrypted clients for each server by fetching their public keys
+        // Step 3: Initialize encrypted clients for each server by fetching their public keys
         const clients = [];
         const liveServerUrls = [];
         
@@ -198,35 +203,34 @@ export async function generateEncryptionKey(
         
         console.log(`OpenADP: Using ${clients.length} live servers`);
         
-        // Step 5: Generate authentication codes for live servers
+        // Step 4: Generate authentication codes for live servers
         const authCodes = generateAuthCodes(liveServerUrls);
-        authCodes.userId = userId;
+        authCodes.userId = identity.uid;
         
-        // Step 6: Calculate threshold - require majority of servers
+        // Step 5: Calculate threshold - require majority of servers
         const threshold = Math.floor(clients.length / 2) + 1;
         console.log(`OpenADP: Using threshold ${threshold}/${clients.length} servers`);
         
-        // Step 7: Generate RANDOM secret for this encryption operation
+        // Step 6: Generate RANDOM secret for this encryption operation
         // SECURITY FIX: Use random secret for Shamir secret sharing, not deterministic
         let secret = BigInt(0);
-        while (secret === BigInt(0)) {
-            // Generate random secret from 0 to Q-1
-            const randomBytes = crypto.getRandomValues(new Uint8Array(32));
-            // Convert bytes to BigInt (big-endian)
-            let secretBig = BigInt(0);
-            for (let i = 0; i < randomBytes.length; i++) {
-                secretBig = (secretBig << BigInt(8)) | BigInt(randomBytes[i]);
-            }
-            secret = secretBig % Q;
+        // Generate random secret from 0 to Q-1
+        // Note: secret can be 0 - this is valid for Shamir secret sharing
+        const randomBytes = new Uint8Array(32);
+        crypto.getRandomValues(randomBytes);
+        let secretBig = BigInt(0);
+        for (let i = 0; i < randomBytes.length; i++) {
+            secretBig = (secretBig << BigInt(8)) | BigInt(randomBytes[i]);
         }
+        secret = secretBig % Q;
         console.log(`OpenADP: Generated random secret for encryption key derivation`);
         
-        // Step 8: Split secret into shares using Shamir secret sharing
+        // Step 7: Split secret into shares using Shamir secret sharing
         const shares = ShamirSecretSharing.splitSecret(secret, threshold, clients.length);
         console.log(`OpenADP: Split secret into ${shares.length} shares (threshold: ${threshold})`);
         
-        // Step 9: Compute point H(uid, did, bid, pin) for point-based shares
-        const hPoint = H(uid, did, bid, pin); // U = H(uid, did, bid, pin)
+        // Step 8: Compute point H(uid, did, bid, pin) for point-based shares
+        const hPoint = H(identity.uid, identity.did, identity.bid, pin); // U = H(uid, did, bid, pin)
         
         // Step 9.5: Compute S = secret * U (this is the point used for key derivation, like Go)
         const sPoint = pointMul(secret, hPoint); // S = secret * U
@@ -280,7 +284,7 @@ export async function generateEncryptionKey(
             console.log(`🔍 JS DEBUG: Share ${i+1}: x=${x}, y=${y}`);
             
             const promise = client.registerSecret(
-                authCode, uid, did, bid, version, x, yString, maxGuesses, expiration, true
+                authCode, identity.uid, identity.did, identity.bid, version, x, yString, maxGuesses, expiration, true
             );
             registrationPromises.push(promise);
         }
@@ -299,11 +303,17 @@ export async function generateEncryptionKey(
             }
         }
         
+        // Create ServerInfo objects for the live servers (used in both success and error cases)
+        const liveServerInfos = liveServerUrls.map(url => {
+            const originalServerInfo = serverInfos.find(si => si.url === url);
+            return originalServerInfo || { url: url, publicKey: "", name: "Unknown" };
+        });
+        
         if (successCount < threshold) {
             return new GenerateEncryptionKeyResult(
                 null, 
                 `Failed to register enough shares. Got ${successCount}/${clients.length}, need ${threshold}`,
-                liveServerUrls,
+                liveServerInfos,
                 threshold,
                 authCodes
             );
@@ -320,7 +330,7 @@ export async function generateEncryptionKey(
         return new GenerateEncryptionKeyResult(
             encryptionKey,
             null,
-            liveServerUrls,
+            liveServerInfos,
             threshold,
             authCodes
         );
@@ -332,42 +342,47 @@ export async function generateEncryptionKey(
 }
 
 /**
- * Recover an encryption key using OpenADP distributed secret sharing (matches Python RecoverEncryptionKey)
+ * Recover an encryption key using OpenADP distributed secret sharing
  */
 export async function recoverEncryptionKey(
-    filename,
+    identity,
     password,
-    userId,
     serverInfos,
     threshold,
     authCodes
 ) {
     // Input validation
-    if (!filename) {
-        return new RecoverEncryptionKeyResult(null, "Filename cannot be empty");
+    if (!identity) {
+        return new RecoverEncryptionKeyResult(null, "Identity cannot be null");
     }
     
-    if (!userId) {
-        return new RecoverEncryptionKeyResult(null, "User ID cannot be empty");
+    if (!identity.uid) {
+        return new RecoverEncryptionKeyResult(null, "UID cannot be empty");
     }
     
+    if (!identity.did) {
+        return new RecoverEncryptionKeyResult(null, "DID cannot be empty");
+    }
+    
+    if (!identity.bid) {
+        return new RecoverEncryptionKeyResult(null, "BID cannot be empty");
+    }
+
     if (!serverInfos || serverInfos.length === 0) {
         return new RecoverEncryptionKeyResult(null, "No OpenADP servers available");
     }
-    
+
     if (!authCodes) {
         return new RecoverEncryptionKeyResult(null, "Authentication codes required");
     }
-    
+
+    console.log(`OpenADP: Recovery - Identity=${identity.toString()}`);
+
     try {
-        // Step 1: Derive identifiers (same as during generation)
-        const [uid, did, bid] = deriveIdentifiers(filename, userId, "");
-        console.log(`OpenADP: Recovery - UID=${uid}, DID=${did}, BID=${bid}`);
-        
-        // Step 2: Convert password to PIN
+        // Step 1: Convert password to PIN
         const pin = passwordToPin(password);
         
-        // Step 3: Initialize encrypted clients
+        // Step 2: Initialize encrypted clients
         const clients = [];
         const liveServerUrls = [];
         
@@ -408,7 +423,7 @@ export async function recoverEncryptionKey(
         console.log(`OpenADP: Recovery using ${clients.length} live servers (threshold: ${threshold})`);
         
         // Step 4: Create cryptographic context (same as encryption)
-        const uPoint = H(uid, did, bid, pin);
+        const uPoint = H(identity.uid, identity.did, identity.bid, pin);
         
         // Debug: Show the U point that we're using for recovery (convert to affine)
         const uPointAffine = unexpand(uPoint);
@@ -443,8 +458,6 @@ export async function recoverEncryptionKey(
         console.log(`🔍 JS DECRYPTION DEBUG: Will verify si*B = r*(si*U) after receiving server responses`);
         console.log(`🔍 JS DECRYPTION DEBUG: r = ${r}`);
         
-
-        
         // Step 5: Recover shares from servers
         console.log(`OpenADP: Recovering shares from servers...`);
         const recoveryPromises = [];
@@ -459,10 +472,60 @@ export async function recoverEncryptionKey(
                 continue;
             }
             
-            const promise = client.recoverSecret(
-                authCode, uid, did, bid, bBase64, 0, true
-            );
-            recoveryPromises.push(promise.then(result => ({ serverUrl, result })).catch(error => ({ serverUrl, error })));
+            // Get current guess number for this backup from the server
+            let guessNum = 0; // Default to 0 for first guess (0-based indexing)
+            try {
+                const backups = await client.listBackups(identity.uid, false, null);
+                // Find our backup in the list using the complete primary key (UID, DID, BID)
+                for (const backup of backups) {
+                    if (backup.uid === identity.uid && 
+                        backup.did === identity.did && 
+                        backup.bid === identity.bid) {
+                        guessNum = parseInt(backup.num_guesses || 0);
+                        break;
+                    }
+                }
+            } catch (error) {
+                console.warn(`Warning: Could not list backups from server ${i+1}: ${error.message}`);
+            }
+            
+            // Try recovery with current guess number, retry once if guess number is wrong
+            const recoverWithRetry = async () => {
+                try {
+                    const result = await client.recoverSecret(
+                        authCode, identity.uid, identity.did, identity.bid, bBase64, guessNum, true
+                    );
+                    return { serverUrl, result };
+                } catch (error) {
+                    // If we get a guess number error, try to parse the expected number and retry
+                    if (error.message && error.message.includes("expecting guess_num =")) {
+                        try {
+                            const errorStr = error.message;
+                            const idx = errorStr.indexOf("expecting guess_num = ");
+                            if (idx !== -1) {
+                                const expectedStr = errorStr.substring(idx + "expecting guess_num = ".length);
+                                const spaceIdx = expectedStr.indexOf(" ");
+                                const expectedGuess = parseInt(spaceIdx !== -1 ? expectedStr.substring(0, spaceIdx) : expectedStr);
+                                console.log(`Server ${i+1} (${serverUrl}): Retrying with expected guess_num = ${expectedGuess}`);
+                                const retryResult = await client.recoverSecret(
+                                    authCode, identity.uid, identity.did, identity.bid, bBase64, expectedGuess, true
+                                );
+                                return { serverUrl, result: retryResult };
+                            } else {
+                                throw error;
+                            }
+                        } catch (retryError) {
+                            console.warn(`Server ${i+1} (${serverUrl}) recovery failed: ${error.message}`);
+                            return { serverUrl, error };
+                        }
+                    } else {
+                        console.warn(`Server ${i+1} (${serverUrl}) recovery failed: ${error.message}`);
+                        return { serverUrl, error };
+                    }
+                }
+            };
+            
+            recoveryPromises.push(recoverWithRetry());
         }
         
         const recoveryResults = await Promise.allSettled(recoveryPromises);

@@ -12,7 +12,7 @@ import crypto from 'crypto';
 import os from 'os';
 import { Buffer } from 'buffer';
 import { Command } from 'commander';
-import { generateEncryptionKey } from './src/keygen.js';
+import { generateEncryptionKey, Identity } from './src/keygen.js';
 import { getServers, getFallbackServerInfo, ServerInfo, OpenADPClient } from './src/client.js';
 
 const VERSION = "1.0.0";
@@ -105,7 +105,13 @@ async function encryptFile(inputFilename, password, userId, serverInfos, servers
     
     // Generate encryption key using OpenADP with full distributed protocol
     console.log("🔄 Generating encryption key using OpenADP servers...");
-    const result = await generateEncryptionKey(inputFilename, password, userId, 10, 0, serverInfos);
+    // Create Identity from filename, userId, and hostname (matching old derive_identifiers behavior)
+    const identity = new Identity(
+        userId,
+        getHostname(),
+        `file://${path.basename(inputFilename)}`
+    );
+    const result = await generateEncryptionKey(identity, password, 10, 0, serverInfos);
     
     if (result.error) {
         throw new Error(`failed to generate encryption key: ${result.error}`);
@@ -114,7 +120,7 @@ async function encryptFile(inputFilename, password, userId, serverInfos, servers
     // Extract information from the result
     const encKey = result.encryptionKey;
     const authCodes = result.authCodes;
-    const actualServerUrls = result.serverUrls;
+    const actualServerUrls = result.serverInfos.map(serverInfo => serverInfo.url);
     const threshold = result.threshold;
     
     console.log(`🔑 Generated authentication codes for ${Object.keys(authCodes.serverAuthCodes).length} servers`);

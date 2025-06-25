@@ -30,7 +30,7 @@ import { randomBytes } from 'crypto';
 import { Buffer } from 'buffer';
 
 // Import real OpenADP components
-import { generateEncryptionKey, recoverEncryptionKey } from './keygen.js';
+import { generateEncryptionKey, recoverEncryptionKey, Identity } from './keygen.js';
 import { getServers, getFallbackServerInfo } from './client.js';
 
 /**
@@ -118,14 +118,17 @@ async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, b
     console.log(`🔄 Using backup ID: ${backupID}`);
     console.log('🔑 Generating encryption key using OpenADP servers...');
 
-    // Create synthetic filename for BID derivation
-    const filename = `${userID}#${appID}#${backupID}`;
+    // Create Identity from Ocrypt parameters
+    const identity = new Identity(
+        userID,   // UID = userID (user identifier)
+        appID,    // DID = appID (application identifier, serves as device ID)
+        backupID  // BID = backupID (managed by Ocrypt: "even"/"odd")
+    );
     
     try {
         const result = await generateEncryptionKey(
-            filename,
+            identity,
             pin,
-            userID,
             maxGuesses,
             0, // No expiration by default
             serverInfos
@@ -270,7 +273,13 @@ async function recoverWithoutRefresh(metadataBytes, pin) {
 
     // Recover encryption key from OpenADP using REAL protocol
     console.log('🔑 Recovering encryption key from OpenADP servers...');
-    const filename = `${metadata.user_id}#${metadata.app_id}#${metadata.backup_id}`;
+    
+    // Create Identity from metadata
+    const identity = new Identity(
+        metadata.user_id,   // UID = userID
+        metadata.app_id,    // DID = appID
+        metadata.backup_id  // BID = backupID
+    );
     
     // Reconstruct auth codes
     const authCodes = {
@@ -288,9 +297,8 @@ async function recoverWithoutRefresh(metadataBytes, pin) {
     
     try {
         const result = await recoverEncryptionKey(
-            filename, 
+            identity, 
             pin, 
-            metadata.user_id, 
             serverInfos, 
             metadata.threshold, 
             authCodes

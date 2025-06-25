@@ -81,6 +81,7 @@ class RegisterSecretResponse:
 class RecoverSecretRequest:
     """Standardized request for RecoverSecret operation."""
     auth_code: str
+    uid: str
     did: str
     bid: str
     b: str  # Base64 encoded point
@@ -893,7 +894,7 @@ class EncryptedOpenADPClient:
     def recover_secret_standardized(self, request: RecoverSecretRequest) -> RecoverSecretResponse:
         """Recover secret using standardized interface."""
         result = self.recover_secret(
-            request.auth_code, "", request.did, request.bid,
+            request.auth_code, request.uid, request.did, request.bid,
             request.b, request.guess_num,
             request.encrypted, request.auth_data
         )
@@ -1384,7 +1385,7 @@ class MultiServerClient:
     def recover_secret_standardized(self, request: RecoverSecretRequest) -> RecoverSecretResponse:
         """Recover secret using standardized interface."""
         result = self.recover_secret(
-            request.auth_code, "", request.did, request.bid,
+            request.auth_code, request.uid, request.did, request.bid,
             request.b, request.guess_num, request.auth_data
         )
         

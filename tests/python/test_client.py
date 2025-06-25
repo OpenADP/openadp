@@ -20,7 +20,7 @@ try:
         get_fallback_servers, discover_servers
     )
     from openadp.crypto import Point2D, Point4D, G, P, Q, D, point_add, point_mul, point_compress, point_decompress
-    from openadp.keygen import generate_encryption_key, derive_identifiers
+    from openadp.keygen import generate_encryption_key, Identity
     print("✅ All imports successful")
 except ImportError as e:
     print(f"❌ Import failed: {e}")
@@ -40,9 +40,9 @@ def test_crypto_operations():
         decompressed = point_decompress(compressed)
         print(f"✅ Point decompression works")
         
-        # Test key derivation
-        uid, did, bid = derive_identifiers("test_file.txt", "user@example.com", "device123")
-        print(f"✅ Key derivation works, UID: {uid[:16]}...")
+        # Test Identity creation
+        identity = Identity(uid="user@example.com", did="device123", bid="file://test_file.txt")
+        print(f"✅ Identity creation works, UID: {identity.uid[:16]}...")
         
     except Exception as e:
         print(f"❌ Crypto test failed: {e}")
@@ -189,10 +189,10 @@ def test_key_generation():
     try:
         # Test basic key generation (without actual server connection)
         try:
+            identity = Identity(uid="test@example.com", did="test_device", bid="test_backup")
             result = generate_encryption_key(
-                filename="test_backup",
-                password="test_password",
-                user_id="test@example.com"
+                identity=identity,
+                password="test_password"
             )
             if result.error:
                 if "No OpenADP servers available" in result.error:

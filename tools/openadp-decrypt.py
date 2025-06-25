@@ -12,13 +12,14 @@ import json
 import getpass
 import struct
 import hashlib
+import socket
 from pathlib import Path
 from Crypto.Cipher import AES
 
 # Add the openadp package to the path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'sdk', 'python'))
 
-from openadp.keygen import recover_encryption_key, derive_identifiers, AuthCodes
+from openadp.keygen import recover_encryption_key, Identity, AuthCodes
 from openadp.client import get_servers, get_fallback_server_info, ServerInfo, OpenADPClient
 
 VERSION = "1.0.0"
@@ -85,9 +86,14 @@ def read_uint32_le(data):
 
 def recover_encryption_key_with_server_info(filename, password, user_id, base_auth_code, server_infos, threshold):
     """Recover encryption key using OpenADP servers"""
-    # Derive identifiers (same as during encryption)
-    uid, did, bid = derive_identifiers(filename, user_id, "")
-    print(f"🔑 Recovering with UID={uid}, DID={did}, BID={bid}")
+    # Create Identity from filename, user_id (same as during encryption)
+    hostname = socket.gethostname()
+    identity = Identity(
+        uid=user_id,
+        did=hostname,
+        bid=f"file://{os.path.basename(filename)}"
+    )
+    print(f"🔑 Recovering with UID={identity.uid}, DID={identity.did}, BID={identity.bid}")
     
     # Regenerate server auth codes from base auth code
     server_auth_codes = {}
@@ -105,7 +111,7 @@ def recover_encryption_key_with_server_info(filename, password, user_id, base_au
     )
     
     # Recover encryption key using the full distributed protocol
-    result = recover_encryption_key(filename, password, user_id, server_infos, threshold, auth_codes)
+    result = recover_encryption_key(identity, password, server_infos, threshold, auth_codes)
     if result.error:
         raise Exception(f"key recovery failed: {result.error}")
     

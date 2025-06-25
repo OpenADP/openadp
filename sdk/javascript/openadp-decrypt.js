@@ -11,8 +11,9 @@ import path from 'path';
 import crypto from 'crypto';
 import { Buffer } from 'buffer';
 import { Command } from 'commander';
-import { recoverEncryptionKey } from './src/keygen.js';
+import { recoverEncryptionKey, Identity } from './src/keygen.js';
 import { getServers, getFallbackServerInfo, ServerInfo, OpenADPClient } from './src/client.js';
+import os from 'os';
 
 const VERSION = "1.0.0";
 const NONCE_SIZE = 12; // AES-GCM nonce size
@@ -92,12 +93,15 @@ function sha256Hash(data) {
 
 async function recoverEncryptionKeyWithServerInfo(filename, password, userId, baseAuthCode, serverInfos, threshold) {
     // Create AuthCodes structure from metadata
+    console.log(`🔍 JS AUTH DEBUG: Using base auth code: ${baseAuthCode}`);
     const serverAuthCodes = {};
     for (const serverInfo of serverInfos) {
         // Derive server-specific code using SHA256 (same as GenerateAuthCodes)
-        const combined = `${baseAuthCode}:${serverInfo.url}`;
-        const hash = sha256Hash(Buffer.from(combined, 'utf8'));
-        serverAuthCodes[serverInfo.url] = hash.toString('hex');
+            const combined = `${baseAuthCode}:${serverInfo.url}`;
+    const hash = sha256Hash(Buffer.from(combined, 'utf8'));
+    const serverCode = Buffer.from(hash).toString('hex');
+        serverAuthCodes[serverInfo.url] = serverCode;
+        console.log(`🔍 JS AUTH DEBUG: Server ${serverInfo.url} auth code: ${serverCode}`);
     }
 
     const authCodes = {
@@ -107,7 +111,18 @@ async function recoverEncryptionKeyWithServerInfo(filename, password, userId, ba
     };
 
     // Recover encryption key using the full distributed protocol
-    const result = await recoverEncryptionKey(filename, password, userId, serverInfos, threshold, authCodes);
+    // Create Identity from filename, userId (matching old derive_identifiers behavior)
+    // Use original filename without .enc extension for BID to match encryption
+    let originalFilename = filename;
+    if (originalFilename.endsWith('.enc')) {
+        originalFilename = originalFilename.slice(0, -4);
+    }
+    const identity = new Identity(
+        userId,
+        os.hostname(),
+        `file://${path.basename(originalFilename)}`
+    );
+    const result = await recoverEncryptionKey(identity, password, serverInfos, threshold, authCodes);
     if (result.error) {
         throw new Error(`key recovery failed: ${result.error}`);
     }
@@ -308,7 +323,7 @@ async function decryptFile(inputFilename, password, userId, overrideServers) {
 
     // Recover encryption key using OpenADP
     console.log("🔄 Recovering encryption key from OpenADP servers...");
-    const encKey = await recoverEncryptionKeyWithServerInfo(outputFilename, password, finalUserId, baseAuthCode, serverInfos, metadata.threshold);
+    const encKey = await recoverEncryptionKeyWithServerInfo(inputFilename, password, finalUserId, baseAuthCode, serverInfos, metadata.threshold);
 
     // Decrypt the file using metadata as additional authenticated data
     const decipher = crypto.createDecipheriv('aes-256-gcm', encKey, nonce);

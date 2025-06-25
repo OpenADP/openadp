@@ -62,9 +62,9 @@ from .crypto import (
 
 # Key generation and recovery
 from .keygen import (
+    Identity,
     generate_encryption_key,
     recover_encryption_key,
-    derive_identifiers,
     password_to_pin,
     generate_auth_codes
 )
@@ -137,8 +137,8 @@ __all__ = [
     "mod_inverse",
     
     # Keygen
-    "generate_encryption_key", "recover_encryption_key",
-    "derive_identifiers", "password_to_pin", "generate_auth_codes",
+    "Identity", "generate_encryption_key", "recover_encryption_key",
+    "password_to_pin", "generate_auth_codes",
     
     # Ocrypt
     "ocrypt_register", "ocrypt_recover",
