@@ -10,15 +10,16 @@ The name "Ocrypt" reflects the underlying **Oblivious Pseudo Random Function (OP
 
 ```python
 # Register a long-term secret protected by a PIN
-ocrypt.register(user_id: str, app_id: str, long_term_secret: bytes, pin: str, backup_id: str, max_guesses: int = 10) -> bytes
+ocrypt.register(user_id: str, app_id: str, long_term_secret: bytes, pin: str, backup_id: str, max_guesses: int = 10, servers_url: str = "") -> bytes
 
 # Recover the long-term secret using the PIN with automatic backup refresh
-ocrypt.recover(metadata: bytes, pin: str) -> (bytes, int, bytes)
+ocrypt.recover(metadata: bytes, pin: str, servers_url: str = "") -> (bytes, int, bytes)
 ```
 
 The simplified API provides:
 - **`register()`**: Initial registration with developer-specified backup ID
 - **`recover()`**: Recovery with automatic backup refresh using two-phase commit for crash safety
+- **`servers_url`**: Optional parameter to specify custom server registry URL (defaults to official OpenADP registry)
 
 ## Design Principles
 
@@ -64,6 +65,26 @@ Recovery automatically refreshes backups using a two-phase commit pattern for cr
 ### 5. **Load Balancing**
 When more than 15 servers are available, Ocrypt randomly selects a subset of 15 servers to distribute load evenly across the OpenADP network. This prevents overloading early servers in the registry list and ensures fair resource utilization.
 
+### 6. **Custom Server Discovery**
+The optional `servers_url` parameter allows applications to specify custom server registries for testing, private deployments, or alternative networks:
+
+```python
+# Use default OpenADP registry (empty string)
+metadata = ocrypt.register(user_id, app_id, secret, pin, max_guesses=10, servers_url="")
+
+# Use custom registry for testing
+metadata = ocrypt.register(user_id, app_id, secret, pin, max_guesses=10, servers_url="http://localhost:9390")
+
+# Use private enterprise deployment
+metadata = ocrypt.register(user_id, app_id, secret, pin, max_guesses=10, servers_url="https://openadp.mycompany.com/servers.json")
+```
+
+**Server Discovery Behavior:**
+- **Empty string (`""`)**:  Uses default OpenADP registry at `https://servers.openadp.org/api/servers.json`
+- **Custom URL**: Fetches server list from the specified registry endpoint
+- **Format**: Registry must return JSON in the same format as the official registry
+- **Fallback**: If custom registry fails, operations will fail rather than falling back to default registry for security
+
 ## Current OpenADP Architecture (Based on detailed-design.md)
 
 ### Authentication & Authorization
@@ -87,13 +108,13 @@ When more than 15 servers are available, Ocrypt randomly selects a subset of 15 
 **Ocrypt Register Flow:**
 ```python
 # Public API - defaults to "even" backup_id for simplicity
-def register(user_id: str, app_id: str, long_term_secret: bytes, pin: str, max_guesses: int = 10) -> bytes:
-    return _register_with_bid(user_id, app_id, long_term_secret, pin, max_guesses, "even")
+def register(user_id: str, app_id: str, long_term_secret: bytes, pin: str, max_guesses: int = 10, servers_url: str = "") -> bytes:
+    return _register_with_bid(user_id, app_id, long_term_secret, pin, max_guesses, "even", servers_url)
 
 # Private implementation - handles the actual OpenADP registration
-def _register_with_bid(user_id: str, app_id: str, long_term_secret: bytes, pin: str, max_guesses: int = 10, backup_id: str = "even") -> bytes:
-         # 1. Auto-discover live servers from https://servers.openadp.org/api/servers.json
-     all_live_servers = discover_servers()  # Tests liveness with Echo RPC + gets public keys
+def _register_with_bid(user_id: str, app_id: str, long_term_secret: bytes, pin: str, max_guesses: int = 10, backup_id: str = "even", servers_url: str = "") -> bytes:
+         # 1. Auto-discover live servers from registry (default: https://servers.openadp.org/api/servers.json)
+     all_live_servers = discover_servers(servers_url)  # Tests liveness with Echo RPC + gets public keys
      
      # 2. Random server selection for load balancing
      if len(all_live_servers) > 15:
@@ -147,9 +168,9 @@ def _register_with_bid(user_id: str, app_id: str, long_term_secret: bytes, pin: 
 
 **Ocrypt Recover Flow:**
 ```python
-def recover(metadata: bytes, pin: str) -> (bytes, int, bytes):
+def recover(metadata: bytes, pin: str, servers_url: str = "") -> (bytes, int, bytes):
     # 1. Recover secret using existing backup
-    secret, remaining = _recover_without_refresh(metadata, pin)
+    secret, remaining = _recover_without_refresh(metadata, pin, servers_url)
     
     # 2. Attempt automatic backup refresh with two-phase commit
     try:
@@ -161,7 +182,7 @@ def recover(metadata: bytes, pin: str) -> (bytes, int, bytes):
         
         # Two-phase commit backup refresh
         new_metadata, new_backup_id = _register_with_commit_internal(
-            user_id, app_id, secret, pin, current_backup_id, max_guesses
+            user_id, app_id, secret, pin, current_backup_id, max_guesses, servers_url
         )
         
         # Return secret with updated metadata
@@ -171,16 +192,18 @@ def recover(metadata: bytes, pin: str) -> (bytes, int, bytes):
         # Backup refresh failed, but recovery still succeeded
         return secret, remaining, metadata
 
-def _recover_without_refresh(metadata: bytes, pin: str) -> (bytes, int):
+def _recover_without_refresh(metadata: bytes, pin: str, servers_url: str = "") -> (bytes, int):
     # 1. Parse metadata and validate format
     meta = json.loads(metadata.decode())
     
     # 2. Recover encryption key using identical method as openadp-decrypt
+    # Use custom servers_url if provided, otherwise fall back to servers from metadata
+    server_infos = get_server_info(meta["servers"], servers_url) if servers_url else get_server_info(meta["servers"])
     enc_key = recover_encryption_key(
         filename=f"{meta['user_id']}#{meta['app_id']}#{meta['backup_id']}",
         password=pin,
         user_id=meta["user_id"],
-        server_infos=get_server_info(meta["servers"]),
+        server_infos=server_infos,
         threshold=meta["threshold"],
         auth_codes=reconstruct_auth_codes(meta["auth_code"], meta["servers"])
     )
@@ -202,15 +225,15 @@ def _recover_without_refresh(metadata: bytes, pin: str) -> (bytes, int):
     return long_term_secret, 0  # 0 remaining guesses = success
 
 def _register_with_commit_internal(user_id: str, app_id: str, secret: bytes, pin: str, 
-                                  current_backup_id: str, max_guesses: int) -> (bytes, str):
+                                  current_backup_id: str, max_guesses: int, servers_url: str = "") -> (bytes, str):
     # Generate next backup ID using smart strategies
     new_backup_id = _generate_next_backup_id(current_backup_id)
     
     # Phase 1: PREPARE - Register new backup (old one still exists)
-    new_metadata = _register_with_bid(user_id, app_id, secret, pin, max_guesses, new_backup_id)
+    new_metadata = _register_with_bid(user_id, app_id, secret, pin, max_guesses, new_backup_id, servers_url)
     
     # Phase 2: COMMIT - Verify new backup works
-    recovered_secret, remaining = _recover_without_refresh(new_metadata, pin)
+    recovered_secret, remaining = _recover_without_refresh(new_metadata, pin, servers_url)
     
     if recovered_secret == secret:
         # New backup verified - commit the change
@@ -321,7 +344,7 @@ import secrets
 # Generate any binary secret (e.g., AES key, ed25519 key bytes, etc.)
 secret_key = secrets.token_bytes(32)  # 256-bit key
 
-# Protect with Ocrypt
+# Protect with Ocrypt (using default registry)
 metadata = ocrypt.register(
     user_id="alice@example.com",
     app_id="encryption_key",
@@ -332,6 +355,15 @@ metadata = ocrypt.register(
 # Later: recover and use
 recovered_key, remaining, updated_metadata = ocrypt.recover(metadata, "secure_pin")
 # Use recovered_key for encryption, signing, etc.
+
+# Example with custom server registry (for testing/private deployment)
+metadata = ocrypt.register(
+    user_id="alice@example.com",
+    app_id="encryption_key",
+    long_term_secret=secret_key,
+    pin="secure_pin",
+    servers_url="https://private.mycompany.com/openadp/servers.json"
+)
 ```
 
 ### 2. **API Token Storage**
@@ -384,6 +416,44 @@ def verify_password_new(email, password):
     except Exception:
         return False  # Password wrong
 ```
+
+### 5. **Integration Testing with Custom Registry**
+```python
+# Production-like integration tests
+def test_full_e2e_flow():
+    # Start local test servers
+    test_servers = start_test_openadp_servers(["localhost:9300", "localhost:9301", "localhost:9302"])
+    
+    # Start local registry server serving dynamic server info
+    registry_url = start_local_registry_server(test_servers)  # e.g., "http://localhost:9390"
+    
+    # Test complete registration and recovery flow using actual server discovery
+    metadata = ocrypt.register(
+        user_id="test@example.com",
+        app_id="integration_test",
+        long_term_secret=b"test_secret_data",
+        pin="test_pin",
+        servers_url=registry_url  # Use local test registry
+    )
+    
+    # Verify recovery works with server discovery
+    recovered_secret, remaining, updated_metadata = ocrypt.recover(
+        metadata, 
+        "test_pin", 
+        servers_url=registry_url
+    )
+    
+    assert recovered_secret == b"test_secret_data"
+    
+    # Clean up test infrastructure
+    cleanup_test_servers(test_servers)
+```
+
+**Testing Benefits:**
+- **Production-like**: Tests exercise the actual `GetServers()` discovery code path
+- **Dynamic Registry**: Local HTTP server serves real server metadata with public keys
+- **Isolated**: Test servers and registry are completely separate from production
+- **Comprehensive**: Tests both server discovery AND cryptographic functionality
 
 ## Implementation Status
 
