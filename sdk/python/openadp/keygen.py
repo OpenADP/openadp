@@ -335,11 +335,22 @@ def recover_encryption_key(
         # Step 1: Convert password to same PIN
         pin = password_to_pin(password)
         
-        # Step 2: Initialize clients for the specific servers, using encryption when public keys are available
+        # Step 2: Fetch remaining guesses for all servers and select the best ones
+        print("OpenADP: Fetching remaining guesses from servers...")
+        server_infos_with_guesses = fetch_remaining_guesses_for_servers(identity, server_infos)
+        
+        # Calculate threshold for server selection
+        threshold = len(server_infos_with_guesses) // 2 + 1  # Standard majority threshold: floor(N/2) + 1
+        
+        # Select servers intelligently based on remaining guesses
+        selected_server_infos = select_servers_by_remaining_guesses(server_infos_with_guesses, threshold)
+        
+        # Initialize clients for the selected servers
         clients = []
         live_server_urls = []
+        live_server_infos = []
         
-        for server_info in server_infos:
+        for server_info in selected_server_infos:
             public_key = None
             if server_info.public_key:
                 try:
@@ -359,6 +370,7 @@ def recover_encryption_key(
                 client.ping()
                 clients.append(client)
                 live_server_urls.append(server_info.url)
+                live_server_infos.append(server_info)
             except Exception as e:
                 print(f"Warning: Server {server_info.url} is not accessible: {e}")
         
@@ -387,13 +399,14 @@ def recover_encryption_key(
         b_compressed = point_compress(b_point)
         b_base64_format = base64.b64encode(b_compressed).decode('ascii')
         
-        # Step 5: Recover shares from servers
+        # Step 5: Recover shares from servers (use all available servers, already intelligently selected)
         print("OpenADP: Recovering shares from servers...")
         valid_shares = []
         
-        for i in range(min(len(clients), threshold + 2)):  # Get a few extra shares for redundancy
+        for i in range(len(clients)):  # Use all available servers (already filtered by remaining guesses)
             client = clients[i]
             server_url = live_server_urls[i]
+            server_info = live_server_infos[i]
             auth_code = auth_codes.server_auth_codes[server_url]
             
             if not auth_code:
@@ -422,7 +435,8 @@ def recover_encryption_key(
                     )
                     result_map = result if isinstance(result, dict) else result.__dict__
                     
-                    print(f"OpenADP: ✓ Recovered share from server {i+1} ({server_url})")
+                    guesses_str = "unknown" if server_info.remaining_guesses == -1 else f"{server_info.remaining_guesses}"
+                    print(f"OpenADP: ✓ Recovered share from server {i+1} ({server_url}, {guesses_str} remaining guesses)")
                     
                     # Convert si_b back to point and then to share
                     try:
@@ -458,7 +472,8 @@ def recover_encryption_key(
                                 )
                                 retry_result_map = retry_result if isinstance(retry_result, dict) else retry_result.__dict__
                                 
-                                print(f"OpenADP: ✓ Recovered share from server {i+1} ({server_url}) on retry")
+                                guesses_str = "unknown" if server_info.remaining_guesses == -1 else f"{server_info.remaining_guesses}"
+                                print(f"OpenADP: ✓ Recovered share from server {i+1} ({server_url}, {guesses_str} remaining guesses) on retry")
                                 
                                 # Convert si_b back to point and then to share
                                 try:
@@ -512,4 +527,113 @@ def recover_encryption_key(
         return RecoverEncryptionKeyResult(encryption_key=encryption_key)
         
     except Exception as e:
-        return RecoverEncryptionKeyResult(error=f"Unexpected error: {e}") 
+        return RecoverEncryptionKeyResult(error=f"Unexpected error: {e}")
+
+
+def fetch_remaining_guesses_for_servers(identity: Identity, server_infos: List[ServerInfo]) -> List[ServerInfo]:
+    """
+    Fetch remaining guesses for each server and update ServerInfo objects.
+    
+    Args:
+        identity: The identity to check remaining guesses for
+        server_infos: List of ServerInfo objects to update
+        
+    Returns:
+        Updated list of ServerInfo objects with remaining_guesses populated
+    """
+    updated_server_infos = []
+    
+    for server_info in server_infos:
+        # Create a copy to avoid modifying the original
+        updated_server_info = ServerInfo(
+            url=server_info.url,
+            public_key=server_info.public_key,
+            country=server_info.country,
+            remaining_guesses=server_info.remaining_guesses
+        )
+        
+        try:
+            # Parse public key if available
+            public_key = None
+            if server_info.public_key:
+                try:
+                    key_str = server_info.public_key
+                    if key_str.startswith("ed25519:"):
+                        key_str = key_str[8:]
+                    public_key = base64.b64decode(key_str)
+                except Exception as e:
+                    print(f"Warning: Invalid public key for server {server_info.url}: {e}")
+            
+            # Create client and try to fetch backup info
+            client = EncryptedOpenADPClient(server_info.url, public_key)
+            client.ping()  # Test connectivity
+            
+            # List backups to get remaining guesses
+            backups = client.list_backups(identity.uid, False, None)
+            
+            # Find our specific backup
+            remaining_guesses = -1  # Default to unknown
+            for backup in backups:
+                if (backup.get('uid') == identity.uid and 
+                    backup.get('did') == identity.did and 
+                    backup.get('bid') == identity.bid):
+                    num_guesses = int(backup.get('num_guesses', 0))
+                    max_guesses = int(backup.get('max_guesses', 10))
+                    remaining_guesses = max(0, max_guesses - num_guesses)
+                    break
+            
+            updated_server_info.remaining_guesses = remaining_guesses
+            print(f"OpenADP: Server {server_info.url} has {remaining_guesses} remaining guesses")
+            
+        except Exception as e:
+            print(f"Warning: Could not fetch remaining guesses from server {server_info.url}: {e}")
+            # Keep the original remaining_guesses value (likely -1 for unknown)
+        
+        updated_server_infos.append(updated_server_info)
+    
+    return updated_server_infos
+
+
+def select_servers_by_remaining_guesses(server_infos: List[ServerInfo], threshold: int) -> List[ServerInfo]:
+    """
+    Select servers intelligently based on remaining guesses.
+    
+    Strategy:
+    1. Filter out servers with 0 remaining guesses (exhausted)
+    2. Sort by remaining guesses (descending) to use servers with most guesses first
+    3. Servers with unknown remaining guesses (-1) are treated as having infinite guesses
+    4. Select threshold + 2 servers for redundancy
+    
+    Args:
+        server_infos: List of ServerInfo objects with remaining_guesses populated
+        threshold: Minimum number of servers needed
+        
+    Returns:
+        Selected servers sorted by remaining guesses (descending)
+    """
+    # Filter out servers with 0 remaining guesses (exhausted)
+    available_servers = [s for s in server_infos if s.remaining_guesses != 0]
+    
+    if len(available_servers) == 0:
+        print("Warning: All servers have exhausted their guesses!")
+        return server_infos  # Return original list as fallback
+    
+    # Sort by remaining guesses (descending)
+    # Servers with unknown remaining guesses (-1) are treated as having the highest priority
+    def sort_key(server_info):
+        if server_info.remaining_guesses == -1:
+            return float('inf')  # Unknown guesses = highest priority
+        return server_info.remaining_guesses
+    
+    sorted_servers = sorted(available_servers, key=sort_key, reverse=True)
+    
+    # Select threshold + 2 servers for redundancy, but don't exceed available servers
+    num_to_select = min(len(sorted_servers), threshold + 2)
+    selected_servers = sorted_servers[:num_to_select]
+    
+    print(f"OpenADP: Selected {len(selected_servers)} servers based on remaining guesses:")
+    for i, server in enumerate(selected_servers):
+        guesses_str = "unknown" if server.remaining_guesses == -1 else str(server.remaining_guesses)
+        print(f"  {i+1}. {server.url} ({guesses_str} remaining guesses)")
+    
+    return selected_servers 

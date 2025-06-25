@@ -33,10 +33,11 @@ export const ServerSelectionStrategy = {
  * Server information from registry or configuration
  */
 export class ServerInfo {
-    constructor(url, publicKey = "", country = "Unknown") {
+    constructor(url, publicKey = "", country = "Unknown", remainingGuesses = -1) {
         this.url = url;
         this.publicKey = publicKey;
         this.country = country || "Unknown";
+        this.remainingGuesses = remainingGuesses; // -1 means unknown, >=0 means known remaining guesses
     }
 }
 
@@ -829,13 +830,15 @@ export async function getServers(registryUrl = "") {
             return data.map(server => new ServerInfo(
                 server.url || server.URL,
                 server.public_key || server.noise_nk_public_key || "",
-                server.country || ""
+                server.country || "",
+                server.remaining_guesses || -1
             ));
         } else if (data.servers) {
             return data.servers.map(server => new ServerInfo(
                 server.url || server.URL,
                 server.public_key || server.noise_nk_public_key || "",
-                server.country || ""
+                server.country || "",
+                server.remaining_guesses || -1
             ));
         }
         
@@ -851,7 +854,7 @@ export async function getServers(registryUrl = "") {
  */
 export function getFallbackServerInfo() {
     return [
-        new ServerInfo("http://localhost:8080", "", "Local")
+        new ServerInfo("http://localhost:8080", "", "Local", -1)
     ];
 }
 

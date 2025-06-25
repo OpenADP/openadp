@@ -55,6 +55,7 @@ class ServerInfo:
     url: str
     public_key: str = ""
     country: str = ""
+    remaining_guesses: int = -1  # -1 means unknown, >=0 means known remaining guesses
 
 @dataclass
 class RegisterSecretRequest:
@@ -1015,7 +1016,8 @@ def get_servers(registry_url: str = "") -> List[ServerInfo]:
         server = ServerInfo(
             url=server_data.get("url", ""),
             public_key=server_data.get("public_key", ""),
-            country=server_data.get("country", "")
+            country=server_data.get("country", ""),
+            remaining_guesses=server_data.get("remaining_guesses", -1)
         )
         servers.append(server)
     
@@ -1063,24 +1065,27 @@ def get_fallback_server_info() -> List[ServerInfo]:
         ServerInfo(
             url="https://xyzzy.openadp.org",
             public_key="ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder1XyzzyServer12345TestKey",
-            country="US"
+            country="US",
+            remaining_guesses=0
         ),
         ServerInfo(
             url="https://sky.openadp.org",
             public_key="ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder2SkyServerTestKey67890Demo",
-            country="US"
+            country="US",
+            remaining_guesses=0
         ),
         ServerInfo(
             url="https://akash.network",
             public_key="ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder3AkashNetworkTestKey111Demo",
-            country="CA"
+            country="CA",
+            remaining_guesses=0
         )
     ]
 
 def convert_urls_to_server_info(urls: List[str]) -> List[ServerInfo]:
     """Convert a list of URLs to ServerInfo structs (for backward compatibility)."""
     return [
-        ServerInfo(url=url, public_key="", country="Unknown")
+        ServerInfo(url=url, public_key="", country="Unknown", remaining_guesses=-1)
         for url in urls
     ]
 

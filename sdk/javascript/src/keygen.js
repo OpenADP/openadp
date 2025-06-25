@@ -360,11 +360,22 @@ export async function recoverEncryptionKey(
         // Step 1: Convert password to PIN
         const pin = passwordToPin(password);
         
-        // Step 2: Initialize encrypted clients
+        // Step 2: Fetch remaining guesses for all servers and select the best ones
+        console.log("OpenADP: Fetching remaining guesses from servers...");
+        const serverInfosWithGuesses = await fetchRemainingGuessesForServers(identity, serverInfos);
+        
+        // Calculate threshold for server selection
+        const calculatedThreshold = Math.floor(serverInfosWithGuesses.length / 2) + 1; // Standard majority threshold: floor(N/2) + 1
+        
+        // Select servers intelligently based on remaining guesses
+        const selectedServerInfos = selectServersByRemainingGuesses(serverInfosWithGuesses, calculatedThreshold);
+        
+        // Initialize encrypted clients for selected servers
         const clients = [];
         const liveServerUrls = [];
+        const liveServerInfos = [];
         
-        for (const serverInfo of serverInfos) {
+        for (const serverInfo of selectedServerInfos) {
             let publicKey = null;
             
             if (serverInfo.publicKey) {
@@ -386,6 +397,7 @@ export async function recoverEncryptionKey(
                 await client.ping();
                 clients.push(client);
                 liveServerUrls.push(serverInfo.url);
+                liveServerInfos.push(serverInfo);
             } catch (error) {
                 console.warn(`Server ${serverInfo.url} is not accessible: ${error.message}`);
             }
@@ -432,9 +444,10 @@ export async function recoverEncryptionKey(
         console.log(`OpenADP: Recovering shares from servers...`);
         const recoveryPromises = [];
         
-        for (let i = 0; i < Math.min(clients.length, threshold + 2); i++) { // Get a few extra shares for redundancy
+        for (let i = 0; i < clients.length; i++) { // Use all available servers (already filtered by remaining guesses)
             const client = clients[i];
             const serverUrl = liveServerUrls[i];
+            const serverInfo = liveServerInfos[i];
             const authCode = authCodes.serverAuthCodes[serverUrl];
             
             if (!authCode) {
@@ -465,7 +478,7 @@ export async function recoverEncryptionKey(
                     const result = await client.recoverSecret(
                         authCode, identity.uid, identity.did, identity.bid, bBase64, guessNum, true
                     );
-                    return { serverUrl, result };
+                    return { serverUrl, serverInfo, result };
                 } catch (error) {
                     // If we get a guess number error, try to parse the expected number and retry
                     if (error.message && error.message.includes("expecting guess_num =")) {
@@ -480,17 +493,17 @@ export async function recoverEncryptionKey(
                                 const retryResult = await client.recoverSecret(
                                     authCode, identity.uid, identity.did, identity.bid, bBase64, expectedGuess, true
                                 );
-                                return { serverUrl, result: retryResult };
+                                return { serverUrl, serverInfo, result: retryResult };
                             } else {
                                 throw error;
                             }
                         } catch (retryError) {
                             console.warn(`Server ${i+1} (${serverUrl}) recovery failed: ${error.message}`);
-                            return { serverUrl, error };
+                            return { serverUrl, serverInfo, error };
                         }
                     } else {
                         console.warn(`Server ${i+1} (${serverUrl}) recovery failed: ${error.message}`);
-                        return { serverUrl, error };
+                        return { serverUrl, serverInfo, error };
                     }
                 }
             };
@@ -504,11 +517,12 @@ export async function recoverEncryptionKey(
         const validShares = [];
         for (const settledResult of recoveryResults) {
             if (settledResult.status === 'fulfilled') {
-                const { serverUrl, result, error } = settledResult.value;
+                const { serverUrl, serverInfo, result, error } = settledResult.value;
                 if (error) {
                     console.warn(`OpenADP: Failed to recover from ${serverUrl}: ${error.message}`);
                 } else {
-                    console.log(`OpenADP: ✓ Recovered share from ${serverUrl}`);
+                    const guessesStr = serverInfo.remainingGuesses === -1 ? "unknown" : serverInfo.remainingGuesses.toString();
+                    console.log(`OpenADP: ✓ Recovered share from ${serverUrl} (${guessesStr} remaining guesses)`);
                     
                     // Convert si_b back to point and then to share
                     try {
@@ -555,4 +569,115 @@ export async function recoverEncryptionKey(
         console.error(`OpenADP encryption key recovery failed: ${error.message}`);
         return new RecoverEncryptionKeyResult(null, `Key recovery failed: ${error.message}`);
     }
+}
+
+/**
+ * Fetch remaining guesses for each server and update ServerInfo objects.
+ * 
+ * @param {Identity} identity - The identity to check remaining guesses for
+ * @param {ServerInfo[]} serverInfos - List of ServerInfo objects to update
+ * @returns {Promise<ServerInfo[]>} Updated list of ServerInfo objects with remainingGuesses populated
+ */
+async function fetchRemainingGuessesForServers(identity, serverInfos) {
+    const updatedServerInfos = [];
+    
+    for (const serverInfo of serverInfos) {
+        // Create a copy to avoid modifying the original
+        const updatedServerInfo = new ServerInfo(
+            serverInfo.url,
+            serverInfo.publicKey,
+            serverInfo.country,
+            serverInfo.remainingGuesses
+        );
+        
+        try {
+            // Parse public key if available
+            let publicKey = null;
+            if (serverInfo.publicKey) {
+                try {
+                    let keyStr = serverInfo.publicKey;
+                    if (keyStr.startsWith("ed25519:")) {
+                        keyStr = keyStr.substring(8);
+                    }
+                    publicKey = Buffer.from(keyStr, 'base64');
+                } catch (e) {
+                    console.warn(`Warning: Invalid public key for server ${serverInfo.url}:`, e);
+                }
+            }
+            
+            // Create client and try to fetch backup info
+            const client = new EncryptedOpenADPClient(serverInfo.url, publicKey);
+            await client.ping(); // Test connectivity
+            
+            // List backups to get remaining guesses
+            const backups = await client.listBackups(identity.uid, false, null);
+            
+            // Find our specific backup
+            let remainingGuesses = -1; // Default to unknown
+            for (const backup of backups) {
+                if (backup.uid === identity.uid && 
+                    backup.did === identity.did && 
+                    backup.bid === identity.bid) {
+                    const numGuesses = parseInt(backup.num_guesses || 0);
+                    const maxGuesses = parseInt(backup.max_guesses || 10);
+                    remainingGuesses = Math.max(0, maxGuesses - numGuesses);
+                    break;
+                }
+            }
+            
+            updatedServerInfo.remainingGuesses = remainingGuesses;
+            console.log(`OpenADP: Server ${serverInfo.url} has ${remainingGuesses} remaining guesses`);
+            
+        } catch (e) {
+            console.warn(`Warning: Could not fetch remaining guesses from server ${serverInfo.url}:`, e);
+            // Keep the original remainingGuesses value (likely -1 for unknown)
+        }
+        
+        updatedServerInfos.push(updatedServerInfo);
+    }
+    
+    return updatedServerInfos;
+}
+
+/**
+ * Select servers intelligently based on remaining guesses.
+ * 
+ * Strategy:
+ * 1. Filter out servers with 0 remaining guesses (exhausted)
+ * 2. Sort by remaining guesses (descending) to use servers with most guesses first
+ * 3. Servers with unknown remaining guesses (-1) are treated as having infinite guesses
+ * 4. Select threshold + 2 servers for redundancy
+ * 
+ * @param {ServerInfo[]} serverInfos - List of ServerInfo objects with remainingGuesses populated
+ * @param {number} threshold - Minimum number of servers needed
+ * @returns {ServerInfo[]} Selected servers sorted by remaining guesses (descending)
+ */
+function selectServersByRemainingGuesses(serverInfos, threshold) {
+    // Filter out servers with 0 remaining guesses (exhausted)
+    const availableServers = serverInfos.filter(s => s.remainingGuesses !== 0);
+    
+    if (availableServers.length === 0) {
+        console.warn("Warning: All servers have exhausted their guesses!");
+        return serverInfos; // Return original list as fallback
+    }
+    
+    // Sort by remaining guesses (descending)
+    // Servers with unknown remaining guesses (-1) are treated as having the highest priority
+    const sortedServers = availableServers.sort((a, b) => {
+        const aGuesses = a.remainingGuesses === -1 ? Infinity : a.remainingGuesses;
+        const bGuesses = b.remainingGuesses === -1 ? Infinity : b.remainingGuesses;
+        return bGuesses - aGuesses;
+    });
+    
+    // Select threshold + 2 servers for redundancy, but don't exceed available servers
+    const numToSelect = Math.min(sortedServers.length, threshold + 2);
+    const selectedServers = sortedServers.slice(0, numToSelect);
+    
+    console.log(`OpenADP: Selected ${selectedServers.length} servers based on remaining guesses:`);
+    selectedServers.forEach((server, i) => {
+        const guessesStr = server.remainingGuesses === -1 ? "unknown" : server.remainingGuesses.toString();
+        console.log(`  ${i+1}. ${server.url} (${guessesStr} remaining guesses)`);
+    });
+    
+    return selectedServers;
 } 
