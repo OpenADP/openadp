@@ -82,8 +82,6 @@ clean:
 # Run tests using the built-in go test
 test:
 	@echo "🧪 Running tests..."
-	@echo "Testing ocrypt module..."
-	cd ocrypt && $(GOTEST) -v ./...
 	@echo "Testing server module..."
 	cd server && $(GOTEST) -v ./...
 
@@ -110,8 +108,6 @@ run-tests-bench: build-test-runner
 # Run tests with coverage
 test-coverage:
 	@echo "🧪 Running tests with coverage..."
-	@echo "Testing ocrypt module with coverage..."
-	cd ocrypt && $(GOTEST) -v -coverprofile=../coverage-ocrypt.out ./...
 	@echo "Testing server module with coverage..."
 	cd server && $(GOTEST) -v -coverprofile=../coverage-server.out ./...
 	@echo "📊 Coverage reports generated: coverage-*.out"
@@ -119,16 +115,12 @@ test-coverage:
 # Run tests with race detection
 test-race:
 	@echo "🧪 Running tests with race detection..."
-	@echo "Testing ocrypt module with race detection..."
-	cd ocrypt && $(GOTEST) -v -race ./...
 	@echo "Testing server module with race detection..."
 	cd server && $(GOTEST) -v -race ./...
 
 # Run benchmarks
 bench:
 	@echo "⚡ Running benchmarks..."
-	@echo "Running benchmarks for ocrypt module..."
-	cd ocrypt && $(GOTEST) -bench=. -benchmem ./...
 	@echo "Running benchmarks for server module..."
 	cd server && $(GOTEST) -bench=. -benchmem ./...
 

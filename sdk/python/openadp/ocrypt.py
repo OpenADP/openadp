@@ -30,7 +30,7 @@ from .keygen import generate_encryption_key, recover_encryption_key, AuthCodes
 from .client import get_servers, get_fallback_server_info, ServerInfo
 
 
-def _register_with_bid(user_id: str, app_id: str, long_term_secret: bytes, pin: str, max_guesses: int = 10, backup_id: str = "even") -> bytes:
+def _register_with_bid(user_id: str, app_id: str, long_term_secret: bytes, pin: str, max_guesses: int = 10, backup_id: str = "even", servers_url: str = "") -> bytes:
     """
     Internal function to register a long-term secret with a specific backup ID.
     
@@ -44,6 +44,7 @@ def _register_with_bid(user_id: str, app_id: str, long_term_secret: bytes, pin: 
         pin: Password/PIN that will unlock the secret
         max_guesses: Maximum wrong attempts before lockout (default: 10)
         backup_id: Backup identifier ("even" or "odd") for crash safety
+        servers_url: Optional custom URL for server registry (empty string uses default)
     
     Returns:
         metadata: Opaque blob containing all recovery information (JSON bytes)
@@ -71,7 +72,7 @@ def _register_with_bid(user_id: str, app_id: str, long_term_secret: bytes, pin: 
         # Step 1: Server Discovery & Liveness Testing
         print("🌐 Discovering OpenADP servers...")
         try:
-            server_infos = get_servers("https://servers.openadp.org")
+            server_infos = get_servers(servers_url)
             if not server_infos:
                 raise Exception("No servers returned from registry")
             print(f"   ✅ Successfully fetched {len(server_infos)} servers from registry")
@@ -153,7 +154,7 @@ def _register_with_bid(user_id: str, app_id: str, long_term_secret: bytes, pin: 
         raise Exception(f"Ocrypt registration failed: {e}")
 
 
-def register(user_id: str, app_id: str, long_term_secret: bytes, pin: str, max_guesses: int = 10) -> bytes:
+def register(user_id: str, app_id: str, long_term_secret: bytes, pin: str, max_guesses: int = 10, servers_url: str = "") -> bytes:
     """
     Register a long-term secret protected by a PIN using OpenADP distributed cryptography.
     
@@ -169,6 +170,7 @@ def register(user_id: str, app_id: str, long_term_secret: bytes, pin: str, max_g
         long_term_secret: User-provided secret to protect (any byte sequence)
         pin: Password/PIN that will unlock the secret
         max_guesses: Maximum wrong attempts before lockout (default: 10)
+        servers_url: Optional custom URL for server registry (empty string uses default)
     
     Returns:
         metadata: Opaque blob containing all recovery information (JSON bytes)
@@ -190,10 +192,10 @@ def register(user_id: str, app_id: str, long_term_secret: bytes, pin: str, max_g
         secret, remaining, updated_metadata = ocrypt.recover(metadata, pin)
         # updated_metadata contains refreshed backup (e.g., even → odd)
     """
-    return _register_with_bid(user_id, app_id, long_term_secret, pin, max_guesses, "even")
+    return _register_with_bid(user_id, app_id, long_term_secret, pin, max_guesses, "even", servers_url)
 
 
-def recover(metadata: bytes, pin: str) -> Tuple[bytes, int, bytes]:
+def recover(metadata: bytes, pin: str, servers_url: str = "") -> Tuple[bytes, int, bytes]:
     """
     Recover a long-term secret using the PIN and automatically refresh backup using two-phase commit.
     
@@ -205,6 +207,7 @@ def recover(metadata: bytes, pin: str) -> Tuple[bytes, int, bytes]:
     Args:
         metadata: Metadata blob from previous registration
         pin: Password/PIN to unlock secret
+        servers_url: Optional custom URL for server registry (empty string uses default)
         
     Returns:
         Tuple of (recovered_secret, remaining_guesses, updated_metadata)
@@ -231,7 +234,7 @@ def recover(metadata: bytes, pin: str) -> Tuple[bytes, int, bytes]:
     """
     # First, recover with existing backup
     print("📋 Step 1: Recovering with existing backup...")
-    secret, remaining = _recover_without_refresh(metadata, pin)
+    secret, remaining = _recover_without_refresh(metadata, pin, servers_url)
     
     # Parse metadata to get current backup info
     try:
@@ -245,7 +248,7 @@ def recover(metadata: bytes, pin: str) -> Tuple[bytes, int, bytes]:
         
         # Attempt to refresh backup with two-phase commit
         new_metadata, new_backup_id = _register_with_commit_internal(
-            user_id, app_id, secret, pin, current_backup_id, max_guesses
+            user_id, app_id, secret, pin, current_backup_id, max_guesses, servers_url
         )
         
         print(f"✅ Backup refresh successful: {current_backup_id} → {new_backup_id}")
@@ -257,7 +260,7 @@ def recover(metadata: bytes, pin: str) -> Tuple[bytes, int, bytes]:
         return secret, remaining, metadata
 
 
-def _recover_without_refresh(metadata: bytes, pin: str) -> Tuple[bytes, int]:
+def _recover_without_refresh(metadata: bytes, pin: str, servers_url: str = "") -> Tuple[bytes, int]:
     """
     Internal function to recover secret without automatic backup refresh.
     This is the original recover logic, now used as a building block.
@@ -301,7 +304,9 @@ def _recover_without_refresh(metadata: bytes, pin: str) -> Tuple[bytes, int]:
         
         # Get server info from registry (same as decrypt tool)
         try:
-            registry_server_infos = get_servers("https://servers.openadp.org")
+            # Use provided servers_url or default
+            registry_url = servers_url if servers_url else "https://servers.openadp.org"
+            registry_server_infos = get_servers(registry_url)
             if not registry_server_infos:
                 raise Exception("No servers returned from registry")
         except Exception as e:
@@ -420,7 +425,7 @@ def _generate_next_backup_id(current_backup_id: str) -> str:
 
 
 def _register_with_commit_internal(user_id: str, app_id: str, long_term_secret: bytes, pin: str, 
-                                  current_backup_id: str, max_guesses: int = 10) -> Tuple[bytes, str]:
+                                  current_backup_id: str, max_guesses: int = 10, servers_url: str = "") -> Tuple[bytes, str]:
     """
     Two-phase commit registration for reliable backup refresh.
     
@@ -436,6 +441,7 @@ def _register_with_commit_internal(user_id: str, app_id: str, long_term_secret: 
         pin: Password/PIN for protection
         current_backup_id: Current backup identifier (for generating next one)
         max_guesses: Maximum wrong attempts before lockout
+        servers_url: Optional custom URL for server registry (empty string uses default)
         
     Returns:
         Tuple of (new_metadata, new_backup_id)
@@ -451,13 +457,13 @@ def _register_with_commit_internal(user_id: str, app_id: str, long_term_secret: 
     
     try:
         # Register new backup (old one still exists on servers)
-        new_metadata = _register_with_bid(user_id, app_id, long_term_secret, pin, max_guesses, new_backup_id)
+        new_metadata = _register_with_bid(user_id, app_id, long_term_secret, pin, max_guesses, new_backup_id, servers_url)
         
         print("✅ Phase 1 complete: New backup registered")
         
         # Phase 2: COMMIT - Verify new backup works
         print("📋 Phase 2: COMMIT - Verifying new backup...")
-        recovered_secret, remaining = _recover_without_refresh(new_metadata, pin)
+        recovered_secret, remaining = _recover_without_refresh(new_metadata, pin, servers_url)
         
         if recovered_secret == long_term_secret:
             print("✅ Phase 2 complete: New backup verified and committed")

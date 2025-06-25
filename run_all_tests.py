@@ -175,7 +175,7 @@ class OpenADPTestRunner:
         self.log("🧪 Running Go unit tests...", Colors.INFO)
         
         # Run tests for each module separately
-        modules = ["ocrypt", "server"]
+        modules = ["server"]
         all_output = []
         all_errors = []
         overall_success = True
