@@ -93,15 +93,14 @@ function sha256Hash(data) {
 
 async function recoverEncryptionKeyWithServerInfo(filename, password, userId, baseAuthCode, serverInfos, threshold) {
     // Create AuthCodes structure from metadata
-    console.log(`🔍 JS AUTH DEBUG: Using base auth code: ${baseAuthCode}`);
+    
     const serverAuthCodes = {};
     for (const serverInfo of serverInfos) {
         // Derive server-specific code using SHA256 (same as GenerateAuthCodes)
             const combined = `${baseAuthCode}:${serverInfo.url}`;
     const hash = sha256Hash(Buffer.from(combined, 'utf8'));
-    const serverCode = Buffer.from(hash).toString('hex');
-        serverAuthCodes[serverInfo.url] = serverCode;
-        console.log(`🔍 JS AUTH DEBUG: Server ${serverInfo.url} auth code: ${serverCode}`);
+        const serverCode = Buffer.from(hash).toString('hex');
+    serverAuthCodes[serverInfo.url] = serverCode;
     }
 
     const authCodes = {

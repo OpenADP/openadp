@@ -278,29 +278,10 @@ export async function generateEncryptionKey(
         const hCompressed = pointCompress(hPoint);
         const hBase64 = Buffer.from(hCompressed).toString('base64');
         
-        // Step 10: Register shares with servers
+        // Step 10: Register shares with servers (encrypted communication)
+        console.log(`OpenADP: Registering ${shares.length} shares with servers (threshold: ${threshold})...`);
+        
         const version = 1;
-        if (expiration === 0) {
-            // Set default expiration to 1 year from now
-            expiration = Math.floor(Date.now() / 1000) + (365 * 24 * 60 * 60);
-        }
-        
-        console.log(`OpenADP: Registering shares with ${clients.length} servers...`);
-        
-        // Debug: Compute si*U values that will be sent to servers
-        for (let i = 0; i < clients.length; i++) {
-            const [x, y] = shares[i];
-            const si = y; // The Shamir share value
-            const siU = pointMul(si, hPoint); // si * U point (U = H(uid,did,bid,pin))
-            const siUAffine = unexpand(siU);
-            console.log(`🔍 Server ${i+1}: si=${si}`);
-            console.log(`🔍 Server ${i+1}: si*U = Point(x=${siUAffine.x}, y=${siUAffine.y})`);
-            
-            // Convert to compressed format to match what server will compute
-            const siUCompressed = pointCompress(siU);
-            console.log(`🔍 Server ${i+1}: si*U compressed (hex): ${Buffer.from(siUCompressed).toString('hex')}`);
-        }
-        
         const registrationPromises = [];
         
         for (let i = 0; i < clients.length; i++) {
@@ -320,8 +301,7 @@ export async function generateEncryptionKey(
             // Convert BigInt to hex string properly (big-endian)
             let yHex = yBig.toString(16).padStart(64, '0'); // 32 bytes = 64 hex chars
             
-            console.log(`🔍 JS DEBUG: Sending Y for server ${i+1}: decimal="${yString}" hex="${yHex}"`);
-            console.log(`🔍 JS DEBUG: Share ${i+1}: x=${x}, y=${y}`);
+
             
             const promise = client.registerSecret(
                 authCode, identity.uid, identity.did, identity.bid, version, x, yString, maxGuesses, expiration, true
@@ -363,7 +343,6 @@ export async function generateEncryptionKey(
         
         // Step 11: Generate encryption key from S = secret * U (like Go)
         const sPointCompressed = pointCompress(sPoint);
-        console.log(`🔍 JS ENCRYPTION DEBUG: sPoint (secret*U) compressed (hex): ${Buffer.from(sPointCompressed).toString('hex')}`);
         const encryptionKey = deriveEncKey(sPoint);
         console.log(`OpenADP: Generated 32-byte encryption key from S = secret * U`);
         
@@ -465,9 +444,7 @@ export async function recoverEncryptionKey(
         // Step 4: Create cryptographic context (same as encryption)
         const uPoint = H(identity.uid, identity.did, identity.bid, pin);
         
-        // Debug: Show the U point that we're using for recovery (convert to affine)
         const uPointAffine = unexpand(uPoint);
-        console.log(`🔍 JS DECRYPTION DEBUG: U point (H(uid,did,bid,pin)) affine = Point(x=${uPointAffine.x}, y=${uPointAffine.y})`);
         
         // Generate random r for blinding (0 < r < Q)
         const randomBytes = crypto.randomBytes(32);
@@ -488,14 +465,7 @@ export async function recoverEncryptionKey(
         const bCompressed = pointCompress(bPoint);
         const bBase64 = Buffer.from(bCompressed).toString('base64');
         
-        console.log(`🔍 JS DECRYPTION DEBUG: Generated r = ${r}`);
-        console.log(`🔍 JS DECRYPTION DEBUG: Generated B point: x=${bPointAffine.x}, y=${bPointAffine.y}`);
-        console.log(`🔍 JS DECRYPTION DEBUG: B compressed (hex): ${Buffer.from(bCompressed).toString('hex')}`);
-        console.log(`🔍 JS DECRYPTION DEBUG: B base64 sent to servers: ${bBase64}`);
-        
-        // Debug: We'll verify si*B values after we get them from servers
-        console.log(`🔍 JS DECRYPTION DEBUG: Will verify si*B = r*(si*U) after receiving server responses`);
-        console.log(`🔍 JS DECRYPTION DEBUG: r = ${r}`);
+
         
         // Step 5: Recover shares from servers
         console.log(`OpenADP: Recovering shares from servers...`);
@@ -528,24 +498,12 @@ export async function recoverEncryptionKey(
                     console.warn(`OpenADP: Failed to recover from ${serverUrl}: ${error.message}`);
                 } else {
                     console.log(`OpenADP: ✓ Recovered share from ${serverUrl}`);
-                    console.log(`🔍 JS DECRYPTION DEBUG: Server returned si_b (base64): ${result.si_b}`);
-                    console.log(`🔍 JS DECRYPTION DEBUG: Server returned x: ${result.x}`);
                     
                     // Convert si_b back to point and then to share
                     try {
                         const siBBytes = Buffer.from(result.si_b, 'base64');
-                        console.log(`🔍 JS DECRYPTION DEBUG: si_b bytes (hex): ${Buffer.from(siBBytes).toString('hex')}`);
-                        
                         const siBPoint = pointDecompress(siBBytes);
                         const siBPoint2D = new Point2D(siBPoint.x, siBPoint.y);
-                        
-                        console.log(`🔍 JS DECRYPTION DEBUG: Decompressed si*B point: x=${siBPoint2D.x}, y=${siBPoint2D.y}`);
-                        
-                        // Compute rInv * siB to compare with siU from encryption
-                        const siB4D = expand(siBPoint2D);
-                        const computedSiU = pointMul(rInv, siB4D);
-                        const computedSiUAffine = unexpand(computedSiU);
-                        console.log(`🔍 JS DECRYPTION DEBUG: rInv * si*B = Point(x=${computedSiUAffine.x}, y=${computedSiUAffine.y}) (should match si*U from encryption)`);
                         
                         validShares.push(new PointShare(result.x, siBPoint2D));
                     } catch (shareError) {
@@ -570,33 +528,13 @@ export async function recoverEncryptionKey(
         // Use point-based Lagrange interpolation to recover s*B (like Go RecoverPointSecret)
         // Use ALL available shares, not just threshold (matches Go implementation)
         const recoveredSB = recoverPointSecret(validShares);
-        console.log(`🔍 JS DECRYPTION DEBUG: Recovered s*B from Lagrange interpolation: x=${recoveredSB.x}, y=${recoveredSB.y}`);
         
         // Apply r^-1 to get the original secret point: s*U = r^-1 * (s*B)
         // This matches Go: rec_s_point = crypto.point_mul(r_inv, crypto.expand(rec_sb))
         const recoveredSB4D = expand(recoveredSB);
         const originalSU = pointMul(rInv, recoveredSB4D);
-        console.log(`🔍 JS DECRYPTION DEBUG: Recovered s*U after r^-1 multiplication: x=${originalSU.x}, y=${originalSU.y}`);
-        
-        // Debug: Also compute individual si*U values for comparison with encryption
-        console.log(`🔍 JS DECRYPTION DEBUG: Computing individual si*U values from si*B shares:`);
-        for (let i = 0; i < validShares.length; i++) {
-            const share = validShares[i];
-            const siBPoint = share.point;
-            
-            // Convert si*B to si*U by multiplying by r^-1
-            const siB4D = expand(siBPoint);
-            const siU4D = pointMul(rInv, siB4D);
-            const siU2D = new Point2D(siU4D.x, siU4D.y);
-            
-            console.log(`🔍 Server ${i+1}: si*U recovered = Point(x=${siU2D.x}, y=${siU2D.y})`);
-        }
         
         // Step 7: Derive same encryption key
-        const originalSUAffine = unexpand(originalSU);
-        console.log(`🔍 JS DECRYPTION DEBUG: originalSU affine = Point(x=${originalSUAffine.x}, y=${originalSUAffine.y})`);
-        const originalSUCompressed = pointCompress(originalSU);
-        console.log(`🔍 JS DECRYPTION DEBUG: originalSU compressed (hex): ${Buffer.from(originalSUCompressed).toString('hex')}`);
         const encryptionKey = deriveEncKey(originalSU);
         console.log(`OpenADP: Successfully recovered encryption key`);
         

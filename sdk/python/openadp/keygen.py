@@ -92,7 +92,7 @@ def generate_auth_codes(server_urls: List[str]) -> AuthCodes:
     """
     # Generate base authentication code (32 random bytes as hex)
     base_auth_code = secrets.token_hex(32)
-    print(f"🔍 PY AUTH DEBUG: Generated base auth code: {base_auth_code}")
+
     
     # Generate server-specific authentication codes
     server_auth_codes = {}
@@ -102,7 +102,6 @@ def generate_auth_codes(server_urls: List[str]) -> AuthCodes:
         hash_bytes = hashlib.sha256(combined.encode('utf-8')).digest()
         server_code = hash_bytes.hex()
         server_auth_codes[server_url] = server_code
-        print(f"🔍 PY AUTH DEBUG: Server {server_url} auth code: {server_code}")
     
     # Return with a placeholder user_id (will be set by caller)
     return AuthCodes(
@@ -371,140 +370,146 @@ def recover_encryption_key(
         # Step 3: Create cryptographic context (same as encryption)
         U = H(identity.uid.encode(), identity.did.encode(), identity.bid.encode(), pin)
         
-        # Debug: Show the U point that we're using for recovery (convert to affine)
+        # Debug: Show the U point that we're using for recovery
         u_point_affine = unexpand(U)
-        print(f"🔍 PY DECRYPTION DEBUG: U point (H(uid,did,bid,pin)) affine = Point(x={u_point_affine.x}, y={u_point_affine.y})")
         
-        # Generate random r and compute B for recovery protocol
+        # Generate random r for blinding (0 < r < Q)  
         r = secrets.randbelow(Q)
-        while r == 0:  # Ensure r is not zero
-            r = secrets.randbelow(Q)
+        if r == 0:
+            r = 1  # Ensure r is not zero
         
-        # Compute r^-1 mod q
+        # Compute r^-1 mod Q
         r_inv = mod_inverse(r, Q)
         
-        B = point_mul(r, U)
-        
-        # Convert B to compressed point format (base64 string) - standard format for all servers
-        b_compressed = point_compress(B)
+        # Compute B = r * U
+        b_point = point_mul(r, U)
+        b_point_affine = unexpand(b_point)
+        b_compressed = point_compress(b_point)
         b_base64_format = base64.b64encode(b_compressed).decode('ascii')
         
-        print(f"🔍 PY DECRYPTION DEBUG: Generated r = {r}")
-        b_point_affine = unexpand(B)
-        print(f"🔍 PY DECRYPTION DEBUG: Generated B point: x={b_point_affine.x}, y={b_point_affine.y}")
-        print(f"🔍 PY DECRYPTION DEBUG: B compressed (hex): {b_compressed.hex()}")
-        print(f"🔍 PY DECRYPTION DEBUG: B base64 sent to servers: {b_base64_format}")
-        
-        # Debug: We'll verify si*B values after we get them from servers
-        print(f"🔍 PY DECRYPTION DEBUG: Will verify si*B = r*(si*U) after receiving server responses")
-        print(f"🔍 PY DECRYPTION DEBUG: r = {r}")
-        
-        # Step 4: Recover shares from servers using authentication codes
+        # Step 5: Recover shares from servers
         print("OpenADP: Recovering shares from servers...")
-        recovered_point_shares = []
+        valid_shares = []
         
-        for i, client in enumerate(clients):
+        for i in range(min(len(clients), threshold + 2)):  # Get a few extra shares for redundancy
+            client = clients[i]
             server_url = live_server_urls[i]
             auth_code = auth_codes.server_auth_codes[server_url]
             
-            print(f"🔍 PY DECRYPTION DEBUG: Server {i+1} ({server_url}) auth_code: {auth_code}")
-            
-            # Get current guess number for this backup from the server
-            guess_num = 0  # Default to 0 for first guess (0-based indexing)
-            try:
-                backups = client.list_backups(identity.uid, False, None)
-                # Find our backup in the list using the complete primary key (UID, DID, BID)
-                for backup in backups:
-                    if (backup.get("uid") == identity.uid and 
-                        backup.get("did") == identity.did and 
-                        backup.get("bid") == identity.bid):
-                        guess_num = int(backup.get("num_guesses", 0))
-                        break
-            except Exception as e:
-                print(f"Warning: Could not list backups from server {i+1}: {e}")
-            
-            # Try recovery with current guess number, retry once if guess number is wrong
-            try:
-                result_map = client.recover_secret(auth_code, identity.uid, identity.did, identity.bid, b_base64_format, guess_num, True, None)
-                print(f"🔍 PY DECRYPTION DEBUG: Server {i+1} returned si_b (base64): {result_map.get('si_b', 'N/A')}")
-                print(f"🔍 PY DECRYPTION DEBUG: Server {i+1} returned x: {result_map.get('x', 'N/A')}")
-            except Exception as e:
-                # If we get a guess number error, try to parse the expected number and retry
-                if "expecting guess_num =" in str(e):
-                    try:
-                        error_str = str(e)
-                        idx = error_str.find("expecting guess_num = ")
-                        if idx != -1:
-                            expected_str = error_str[idx + len("expecting guess_num = "):]
-                            space_idx = expected_str.find(" ")
-                            if space_idx != -1:
-                                expected_str = expected_str[:space_idx]
-                            expected_guess = int(expected_str)
-                            print(f"Server {i+1} ({server_url}): Retrying with expected guess_num = {expected_guess}")
-                            result_map = client.recover_secret(auth_code, identity.uid, identity.did, identity.bid, b_base64_format, expected_guess, True, None)
-                            print(f"🔍 PY DECRYPTION DEBUG: Server {i+1} returned si_b (base64): {result_map.get('si_b', 'N/A')}")
-                            print(f"🔍 PY DECRYPTION DEBUG: Server {i+1} returned x: {result_map.get('x', 'N/A')}")
-                        else:
-                            raise
-                    except:
-                        print(f"Server {i+1} ({server_url}) recovery failed: {e}")
-                        continue
-                else:
-                    print(f"Server {i+1} ({server_url}) recovery failed: {e}")
-                    continue
-            
-            try:
-                x = int(result_map["x"])
-                si_b_base64 = result_map["si_b"]
-                
-                # Decode si_b from base64
-                si_b_bytes = base64.b64decode(si_b_base64)
-                print(f"🔍 PY DECRYPTION DEBUG: si_b bytes (hex): {si_b_bytes.hex()}")
-                
-                # Decompress si_b from the result
-                si_b_4d = point_decompress(si_b_bytes)
-                si_b = unexpand(si_b_4d)
-                
-                print(f"🔍 PY DECRYPTION DEBUG: Decompressed si*B point: x={si_b.x}, y={si_b.y}")
-                
-                # Compute rInv * siB to compare with siU from encryption
-                si_b_expanded = expand(si_b)
-                computed_si_u = point_mul(r_inv, si_b_expanded)
-                computed_si_u_affine = unexpand(computed_si_u)
-                print(f"🔍 PY DECRYPTION DEBUG: r_inv * si*B = Point(x={computed_si_u_affine.x}, y={computed_si_u_affine.y}) (should match si*U from encryption)")
-                
-                # Create point share from recovered data (si * B point)
-                # This matches Go's recover_sb which expects (x, Point2D) pairs
-                point_share = PointShare(x=x, point=si_b)
-                
-                recovered_point_shares.append(point_share)
-                print(f"OpenADP: Recovered share {x} from server {i+1} ({server_url})")
-                
-            except Exception as e:
-                print(f"Server {i+1} ({server_url}): Failed to process recovery result: {e}")
+            if not auth_code:
+                print(f"Warning: No auth code for server {server_url}")
                 continue
+            
+            try:
+                # Get current guess number for this backup from the server
+                guess_num = 0  # Default to 0 for first guess (0-based indexing)
+                try:
+                    backups = client.list_backups(identity.uid, False, None)
+                    # Find our backup in the list using the complete primary key (UID, DID, BID)
+                    for backup in backups:
+                        if (backup['uid'] == identity.uid and 
+                            backup['did'] == identity.did and 
+                            backup['bid'] == identity.bid):
+                            guess_num = int(backup.get('num_guesses', 0))
+                            break
+                except Exception as e:
+                    print(f"Warning: Could not list backups from server {i+1}: {e}")
+                
+                # Try recovery with current guess number, retry once if guess number is wrong
+                try:
+                    result = client.recover_secret(
+                        auth_code, identity.uid, identity.did, identity.bid, b_base64_format, guess_num, True
+                    )
+                    result_map = result if isinstance(result, dict) else result.__dict__
+                    
+                    print(f"OpenADP: ✓ Recovered share from server {i+1} ({server_url})")
+                    
+                    # Convert si_b back to point and then to share
+                    try:
+                        si_b_base64 = result_map.get('si_b')
+                        x_coord = result_map.get('x')
+                        
+                        if not si_b_base64 or x_coord is None:
+                            print(f"Warning: Server {i+1} returned incomplete data")
+                            continue
+                        
+                        si_b_bytes = base64.b64decode(si_b_base64)
+                        si_b = point_decompress(si_b_bytes)
+                        
+                        valid_shares.append(PointShare(x_coord, si_b))
+                        
+                    except Exception as share_error:
+                        print(f"Warning: Failed to process share from server {i+1}: {share_error}")
+                        
+                except Exception as error:
+                    # If we get a guess number error, try to parse the expected number and retry
+                    if "expecting guess_num =" in str(error):
+                        try:
+                            error_str = str(error)
+                            idx = error_str.find("expecting guess_num = ")
+                            if idx != -1:
+                                expected_str = error_str[idx + len("expecting guess_num = "):]
+                                space_idx = expected_str.find(" ")
+                                expected_guess = int(expected_str[:space_idx] if space_idx != -1 else expected_str)
+                                print(f"Server {i+1} ({server_url}): Retrying with expected guess_num = {expected_guess}")
+                                
+                                retry_result = client.recover_secret(
+                                    auth_code, identity.uid, identity.did, identity.bid, b_base64_format, expected_guess, True
+                                )
+                                retry_result_map = retry_result if isinstance(retry_result, dict) else retry_result.__dict__
+                                
+                                print(f"OpenADP: ✓ Recovered share from server {i+1} ({server_url}) on retry")
+                                
+                                # Convert si_b back to point and then to share
+                                try:
+                                    si_b_base64 = retry_result_map.get('si_b')
+                                    x_coord = retry_result_map.get('x')
+                                    
+                                    if not si_b_base64 or x_coord is None:
+                                        print(f"Warning: Server {i+1} returned incomplete data on retry")
+                                        continue
+                                    
+                                    si_b_bytes = base64.b64decode(si_b_base64)
+                                    si_b = point_decompress(si_b_bytes)
+                                    
+                                    valid_shares.append(PointShare(x_coord, si_b))
+                                    
+                                except Exception as retry_share_error:
+                                    print(f"Warning: Failed to process retry share from server {i+1}: {retry_share_error}")
+                            else:
+                                print(f"Warning: Server {i+1} ({server_url}) recovery failed: {error}")
+                        except Exception as retry_error:
+                            print(f"Warning: Server {i+1} ({server_url}) recovery retry failed: {retry_error}")
+                    else:
+                        print(f"Warning: Server {i+1} ({server_url}) recovery failed: {error}")
+                    
+            except Exception as e:
+                print(f"Warning: Failed to recover from server {i+1} ({server_url}): {e}")
         
-        if len(recovered_point_shares) < threshold:
+        if len(valid_shares) < threshold:
             return RecoverEncryptionKeyResult(
-                error=f"Could not recover enough shares (got {len(recovered_point_shares)}, need at least {threshold})"
+                error=f"Not enough valid shares recovered. Got {len(valid_shares)}, need {threshold}"
             )
         
-        # Step 5: Reconstruct secret using point-based recovery (like Go recover_sb)
-        print(f"OpenADP: Reconstructing secret from {len(recovered_point_shares)} point shares...")
+        print(f"OpenADP: Recovered {len(valid_shares)} valid shares")
+        
+        # Step 6: Reconstruct secret using point-based recovery (like Go recover_sb)
+        print(f"OpenADP: Reconstructing secret from {len(valid_shares)} point shares...")
         
         # Use point-based Lagrange interpolation to recover s*B (like Go RecoverPointSecret)
-        recovered_sb = recover_point_secret(recovered_point_shares)
+        # Use ALL available shares, not just threshold (matches Go implementation)
+        recovered_sb = recover_point_secret(valid_shares)
         
         # Apply r^-1 to get the original secret point: s*U = r^-1 * (s*B)
         # This matches Go: rec_s_point = crypto.point_mul(r_inv, crypto.expand(rec_sb))
         recovered_sb_4d = expand(recovered_sb)
         original_su = point_mul(r_inv, recovered_sb_4d)
         
-        # Step 6: Derive same encryption key
-        enc_key = derive_enc_key(original_su)
+        # Step 7: Derive same encryption key
+        encryption_key = derive_enc_key(original_su)
         print("OpenADP: Successfully recovered encryption key")
         
-        return RecoverEncryptionKeyResult(encryption_key=enc_key)
+        return RecoverEncryptionKeyResult(encryption_key=encryption_key)
         
     except Exception as e:
         return RecoverEncryptionKeyResult(error=f"Unexpected error: {e}") 
