@@ -211,9 +211,24 @@ class NoiseNKClient {
 
 function loadServerInfo() {
     try {
-        const serverInfoPath = path.join(process.cwd(), '..', 'python', 'server_info.json');
-        const data = fs.readFileSync(serverInfoPath, 'utf8');
-        return JSON.parse(data);
+        // Try multiple possible paths
+        const possiblePaths = [
+            path.join(process.cwd(), 'server_info.json'),
+            path.join(process.cwd(), '..', 'python', 'server_info.json'),
+            path.join(process.cwd(), '..', '..', 'server_info.json')
+        ];
+        
+        for (const serverInfoPath of possiblePaths) {
+            try {
+                const data = fs.readFileSync(serverInfoPath, 'utf8');
+                return JSON.parse(data);
+            } catch (err) {
+                // Continue to next path
+                continue;
+            }
+        }
+        
+        throw new Error('server_info.json not found in any expected location');
     } catch (error) {
         console.error('❌ Could not load server info:', error.message);
         console.log('   Make sure the Python server is running and has created server_info.json');

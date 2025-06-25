@@ -1,0 +1,89 @@
+[package]
+name = "openadp-ocrypt"
+version = "0.1.0"
+edition = "2021"
+description = "Rust SDK for OpenADP - Distributed secret sharing and advanced data protection"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/openadp/openadp"
+homepage = "https://openadp.org"
+documentation = "https://docs.rs/openadp-ocrypt"
+keywords = ["cryptography", "secret-sharing", "distributed", "security", "openadp"]
+categories = ["cryptography", "authentication"]
+authors = ["OpenADP Team"]
+readme = "README.md"
+
+[dependencies]
+# Core cryptography
+ed25519-dalek = "2.0"
+curve25519-dalek = { version = "4.1", features = ["digest"] }
+x25519-dalek = "2.0"
+sha2 = "0.10"
+hkdf = "0.12"
+rand = "0.8"
+rand_core = "0.6"
+
+# AES-GCM for secret wrapping
+aes-gcm = "0.10"
+
+# Noise-NK protocol implementation
+snow = { version = "0.9", features = ["default-resolver"] }
+
+# HTTP client for server communication
+reqwest = { version = "0.11", features = ["json"] }
+tokio = { version = "1.0", features = ["full"] }
+
+# JSON handling and serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Base64 encoding
+base64 = "0.21"
+
+# Hex encoding
+hex = "0.4"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Utilities
+uuid = { version = "1.0", features = ["v4", "serde"] }
+url = "2.5"
+
+# Shamir secret sharing
+vsss-rs = "3.3.1"
+
+# Additional crypto utilities
+digest = "0.10"
+generic-array = "0.14"
+
+# Concurrent operations
+futures = "0.3"
+futures-util = "0.3"
+
+# Big integer arithmetic (GMP bindings for high performance)
+rug = { version = "1.27", features = ["integer", "std"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.8"
+
+[lib]
+name = "openadp_ocrypt"
+path = "src/lib.rs"
+
+[[example]]
+name = "basic_usage"
+path = "examples/basic_usage.rs"
+
+[[example]]
+name = "api_key_protection"
+path = "examples/api_key_protection.rs"
+
+[[example]]
+name = "full_openadp_demo"
+path = "examples/full_openadp_demo.rs"
+
+[[example]]
+name = "noise_client"
+path = "examples/noise_client.rs"
