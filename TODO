@@ -1,0 +1,22 @@
+# Server
+
+* Clean up old database entries.  Pick how long 0 means (5 years?)
+# Rerun fuzzing.  Automate this?
+
+# Client
+
+* Pick random servers distributed amonog countries, not concentrated in 1.
+* Enhance tests to provide a server_list URL pointing to test servers.
+* Add missing tests: using up last guess.
+
+# Ocrypt
+
+* Add server_list URL as optional paramter to APIs.  Try to eliminate this single point of failure.
+
+# Other
+
+* Fix Ghost Notes  app, which seems quite unreliable, not due to Ocrypta.
+* Redo test coverage exercise
+* Ghithub Actions work to run tests before commits.
+* Remaining guesses is always displayed as 10
+* Test using up last guess
