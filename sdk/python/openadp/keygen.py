@@ -19,7 +19,7 @@ from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 
 from .crypto import (
-    H, derive_secret, derive_enc_key, point_mul, point_compress, point_decompress,
+    H, derive_enc_key, point_mul, point_compress, point_decompress,
     ShamirSecretSharing, recover_point_secret, PointShare, Point2D, Point4D,
     expand, unexpand, Q, mod_inverse
 )
@@ -203,9 +203,11 @@ def generate_encryption_key(
         auth_codes = generate_auth_codes(live_server_urls)
         auth_codes.user_id = user_id
         
-        # Step 6: Generate deterministic secret and create point
-        # Use deterministic secret derivation for consistent key generation
-        secret = derive_secret(uid.encode(), did.encode(), bid.encode(), pin)
+        # Step 6: Generate RANDOM secret and create point
+        # SECURITY FIX: Use random secret for Shamir secret sharing, not deterministic
+        secret = secrets.randbelow(Q)
+        while secret == 0:  # Ensure secret is not zero
+            secret = secrets.randbelow(Q)
         
         U = H(uid.encode(), did.encode(), bid.encode(), pin)
         S = point_mul(secret, U)

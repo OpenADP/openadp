@@ -17,7 +17,7 @@ from openadp import (
     derive_identifiers, password_to_pin, generate_auth_codes,
     generate_encryption_key
 )
-from openadp.crypto import derive_secret, derive_enc_key, H
+from openadp.crypto import derive_enc_key, H
 
 
 @pytest.fixture

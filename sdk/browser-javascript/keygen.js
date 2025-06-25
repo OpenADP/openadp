@@ -62,7 +62,7 @@ const path = {
     }
 };
 import {
-    H, deriveSecret, deriveEncKey, pointMul, pointCompress, pointDecompress,
+    H, deriveEncKey, pointMul, pointCompress, pointDecompress,
     ShamirSecretSharing, recoverPointSecret, PointShare, Point2D, Point4D,
     expand, unexpand, Q, modInverse, sha256Hash
 } from './crypto.js';
@@ -253,8 +253,19 @@ export async function generateEncryptionKey(
         console.log(`OpenADP: Using threshold ${threshold}/${clients.length} servers`);
         
         // Step 7: Generate random secret for this encryption operation
-        const secret = deriveSecret(uid, did, bid, pin);
-        console.log(`OpenADP: Generated secret for encryption key derivation`);
+        // SECURITY FIX: Use random secret for Shamir secret sharing, not deterministic
+        let secret = BigInt(0);
+        while (secret === BigInt(0)) {
+            // Generate random secret from 0 to Q-1
+            const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+            // Convert bytes to BigInt (big-endian)
+            let secretBig = BigInt(0);
+            for (let i = 0; i < randomBytes.length; i++) {
+                secretBig = (secretBig << BigInt(8)) | BigInt(randomBytes[i]);
+            }
+            secret = secretBig % Q;
+        }
+        console.log(`OpenADP: Generated random secret for encryption key derivation`);
         
         // Step 8: Split secret into shares using Shamir secret sharing
         const shares = ShamirSecretSharing.splitSecret(secret, threshold, clients.length);

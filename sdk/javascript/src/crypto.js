@@ -449,51 +449,7 @@ export function deriveEncKey(point) {
     return key;
 }
 
-/**
- * Derive secret from identifiers and PIN (matches Go DeriveSecret)
- */
-export function deriveSecret(uid, did, bid, pin) {
-    // Combine all input parameters
-    const uidBytes = typeof uid === 'string' ? new TextEncoder().encode(uid) : uid;
-    const didBytes = typeof did === 'string' ? new TextEncoder().encode(did) : did;
-    const bidBytes = typeof bid === 'string' ? new TextEncoder().encode(bid) : bid;
-    
-    const totalLength = uidBytes.length + didBytes.length + bidBytes.length + pin.length;
-    const combined = new Uint8Array(totalLength);
-    let offset = 0;
-    
-    combined.set(uidBytes, offset);
-    offset += uidBytes.length;
-    combined.set(didBytes, offset);
-    offset += didBytes.length;
-    combined.set(bidBytes, offset);
-    offset += bidBytes.length;
-    combined.set(pin, offset);
-    
-    // Add domain separator to prevent collisions
-    const domainSep = new TextEncoder().encode('OPENADP_SECRET_DERIVATION_V1');
-    const finalInput = new Uint8Array(domainSep.length + combined.length);
-    finalInput.set(domainSep);
-    finalInput.set(combined, domainSep.length);
-    
-    // Hash the combined data
-    const hashBytes = sha256Hash(finalInput);
-    
-    // Convert to integer (big-endian) and reduce modulo Q
-    let secret = 0n;
-    for (let i = 0; i < hashBytes.length; i++) {
-        secret = (secret << 8n) | BigInt(hashBytes[i]);
-    }
-    
-    secret = secret % Q;
-    
-    // Ensure secret is not zero
-    if (secret === 0n) {
-        secret = 1n;
-    }
-    
-    return secret;
-}
+
 
 /**
  * Shamir Secret Sharing implementation (matches Go implementation)

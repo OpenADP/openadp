@@ -35,7 +35,7 @@ from openadp import (
     ServerInfo
 )
 from openadp.keygen import GenerateEncryptionKeyResult, RecoverEncryptionKeyResult
-from openadp.crypto import derive_secret, derive_enc_key, H
+from openadp.crypto import derive_enc_key, H
 
 
 class IntegrationTestSuite:

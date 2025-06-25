@@ -335,30 +335,7 @@ def derive_enc_key(point: Point4D) -> bytes:
     return hkdf.derive(compressed)
 
 
-def derive_secret(uid: bytes, did: bytes, bid: bytes, pin: bytes) -> int:
-    """
-    Create deterministic secret from input parameters (matches Go DeriveSecret).
-    
-    This ensures the same inputs always produce the same secret for key recovery.
-    """
-    # Combine all input parameters
-    combined = uid + did + bid + pin
-    
-    # Add domain separator to prevent collisions
-    domain_sep = b"OPENADP_SECRET_DERIVATION_V1"
-    combined = domain_sep + combined
-    
-    # Hash the combined data
-    hash_bytes = sha256_hash(combined)
-    
-    # Convert to integer and reduce modulo Q
-    secret = int.from_bytes(hash_bytes, byteorder='big') % Q
-    
-    # Ensure secret is not zero
-    if secret == 0:
-        secret = 1
-    
-    return secret
+
 
 
 class Ed25519:
