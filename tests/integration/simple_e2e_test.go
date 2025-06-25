@@ -6,10 +6,8 @@
 package integration
 
 import (
-	"encoding/json"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -75,41 +73,21 @@ func TestSimpleE2E(t *testing.T) {
 		}
 		defer serverManager.Cleanup()
 
-		// Start a single server for testing
-		_, err = serverManager.StartServers(9300, 1)
+		// Start OpenADP servers AND registry server using new enhanced method
+		_, err = serverManager.StartServersWithRegistry(9300, 1, 9350)
 		if err != nil {
-			t.Fatalf("Failed to start test server: %v", err)
+			t.Fatalf("Failed to start test servers with registry: %v", err)
 		}
 
-		// Get server info with public keys
-		serverInfos, err := serverManager.GetServerInfos()
-		if err != nil {
-			t.Fatalf("Failed to get server info with public keys: %v", err)
-		}
-
-		// Create a temporary servers.json file with our test server info
-		tempServersFile := filepath.Join(os.TempDir(), "simple_test_servers.json")
-		defer os.Remove(tempServersFile)
-
-		serversData := map[string]interface{}{
-			"servers": serverInfos,
-		}
-		serversJSON, err := json.Marshal(serversData)
-		if err != nil {
-			t.Fatalf("Failed to marshal server info: %v", err)
-		}
-
-		if err := os.WriteFile(tempServersFile, serversJSON, 0644); err != nil {
-			t.Fatalf("Failed to write temporary servers file: %v", err)
-		}
-
-		// Give server time to start
+		// Give servers time to fully start
 		time.Sleep(2 * time.Second)
 
-		// Test encryption using the servers file URL
+		t.Logf("🌐 Using registry server: %s", serverManager.GetRegistryURL())
+
+		// Test encryption using the registry URL (production-like discovery!)
 		cmd := exec.Command("../../build/openadp-encrypt",
 			"-file", testFilePath,
-			"-servers-url", "file://"+tempServersFile,
+			"-servers-url", serverManager.GetRegistryURL(),
 			"-password", "test123",
 			"-user-id", "simple-test-user")
 

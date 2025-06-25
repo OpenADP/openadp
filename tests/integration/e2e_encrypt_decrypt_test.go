@@ -13,11 +13,9 @@
 package integration
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -125,12 +123,12 @@ func (suite *E2ETestSuite) setupE2ETest(t *testing.T) {
 }
 
 func (suite *E2ETestSuite) startOpenADPServers(t *testing.T) {
-	t.Log("🖥️  Starting local OpenADP servers...")
+	t.Log("🖥️  Starting local OpenADP servers with registry...")
 
-	// Start servers using the test server manager
-	servers, err := suite.serverManager.StartServers(9300, 3)
+	// Start OpenADP servers AND registry server using new enhanced method
+	servers, err := suite.serverManager.StartServersWithRegistry(9300, 3, 9390)
 	if err != nil {
-		t.Fatalf("Failed to start test servers: %v", err)
+		t.Fatalf("Failed to start test servers with registry: %v", err)
 	}
 
 	// Extract URLs and ports for backward compatibility
@@ -141,13 +139,14 @@ func (suite *E2ETestSuite) startOpenADPServers(t *testing.T) {
 		suite.serverPorts[i] = server.Port
 	}
 
-	// Get server info with public keys
+	// Get server info with public keys (already cached by registry server)
 	suite.serverInfos, err = suite.serverManager.GetServerInfos()
 	if err != nil {
 		t.Fatalf("Failed to get server info with public keys: %v", err)
 	}
 
 	t.Logf("✅ Started %d OpenADP servers", len(servers))
+	t.Logf("🌐 Registry server available at: %s", suite.serverManager.GetRegistryURL())
 }
 
 func (suite *E2ETestSuite) teardownE2ETest(t *testing.T) {
@@ -230,30 +229,18 @@ func (suite *E2ETestSuite) testServerConnectivity(t *testing.T) {
 }
 
 func (suite *E2ETestSuite) testFileEncryption(t *testing.T) {
-	t.Log("🔐 Testing File Encryption")
-	t.Log("========================================")
+	t.Log("🔐 Testing File Encryption with Registry Discovery")
+	t.Log("===================================================")
 
 	encryptTool := "../../build/openadp-encrypt"
 	suite.encryptedFilePath = suite.testFilePath + ".enc"
 
-	// Create a temporary servers.json file with our test server info
-	tempServersFile := filepath.Join(os.TempDir(), "test_servers.json")
-	defer os.Remove(tempServersFile)
+	// Use the registry server URL (production-like discovery!)
+	registryURL := suite.serverManager.GetRegistryURL()
+	t.Logf("🌐 Using registry server: %s", registryURL)
 
-	serversData := map[string]interface{}{
-		"servers": suite.serverInfos,
-	}
-	serversJSON, err := json.Marshal(serversData)
-	if err != nil {
-		t.Fatalf("Failed to marshal server info: %v", err)
-	}
-
-	if err := os.WriteFile(tempServersFile, serversJSON, 0644); err != nil {
-		t.Fatalf("Failed to write temporary servers file: %v", err)
-	}
-
-	// Run encryption using the servers file URL
-	cmd := exec.Command(encryptTool, "-file", suite.testFilePath, "-servers-url", "file://"+tempServersFile, "-password", "test-password-123", "-user-id", "test-user-e2e")
+	// Run encryption using the registry URL (tests the GetServers() code path)
+	cmd := exec.Command(encryptTool, "-file", suite.testFilePath, "-servers-url", registryURL, "-password", "test-password-123", "-user-id", "test-user-e2e")
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -394,23 +381,11 @@ to verify that guess numbers are properly tracked via listBackups calls.`
 	t.Log("\n🔐 Step 1: Encrypting file with correct password...")
 	encryptTool := "../../build/openadp-encrypt"
 
-	// Create a temporary servers.json file with our test server info
-	tempServersFile := filepath.Join(os.TempDir(), "test_servers_wrong_pass.json")
-	defer os.Remove(tempServersFile)
+	// Use the registry server URL (production-like discovery!)
+	registryURL := suite.serverManager.GetRegistryURL()
+	t.Logf("🌐 Using registry server for wrong password test: %s", registryURL)
 
-	serversData := map[string]interface{}{
-		"servers": suite.serverInfos,
-	}
-	serversJSON, err := json.Marshal(serversData)
-	if err != nil {
-		t.Fatalf("Failed to marshal server info: %v", err)
-	}
-
-	if err := os.WriteFile(tempServersFile, serversJSON, 0644); err != nil {
-		t.Fatalf("Failed to write temporary servers file: %v", err)
-	}
-
-	encryptCmd := exec.Command(encryptTool, "-file", wrongPasswordTestFilePath, "-servers-url", "file://"+tempServersFile, "-password", correctPassword, "-user-id", "test-user-wrong-pass")
+	encryptCmd := exec.Command(encryptTool, "-file", wrongPasswordTestFilePath, "-servers-url", registryURL, "-password", correctPassword, "-user-id", "test-user-wrong-pass")
 	encryptOutput, err := encryptCmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("Encryption failed: %v\nOutput: %s", err, encryptOutput)
