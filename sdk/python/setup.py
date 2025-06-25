@@ -45,7 +45,7 @@ def read_requirements():
 
 setup(
     name="openadp",
-    version="1.0.0",
+    version="0.1.1",
     author="OpenADP Team",
     author_email="contact@openadp.org",
     description="OpenADP Python SDK for distributed secret sharing and advanced data protection",

@@ -156,6 +156,17 @@
             <div class="container">
                 <h2 class="section-title">Integration Guide</h2>
                 
+                <div class="success-box">
+                    <h4>🌐 Multi-Language Support</h4>
+                    <p><strong>Consistent API across all languages!</strong> All OpenADP SDKs provide the same simple 2-function interface:</p>
+                    <ul style="margin: 10px 0; padding-left: 20px;">
+                        <li><strong>Python:</strong> <code>pip install openadp</code></li>
+                        <li><strong>Go:</strong> <code>go get github.com/OpenADP/ocrypt</code></li>
+                        <li><strong>JavaScript:</strong> <code>npm install @openadp/browser-sdk</code></li>
+                    </ul>
+                    <p>All SDKs use the same <code>register()</code> and <code>recover()</code> functions with identical parameters!</p>
+                </div>
+                
                 <div class="language-tabs">
                     <button class="tab-button active" onclick="showTab('javascript')">JavaScript</button>
                     <button class="tab-button" onclick="showTab('python')">Python</button>
@@ -164,14 +175,20 @@
 
                 <!-- JavaScript Tab -->
                 <div id="javascript" class="tab-content active">
-                                    <div class="integration-step">
-                    <span class="step-number">1</span>
-                    <h3>Setup OpenADP Browser JavaScript SDK</h3>
-                    <p>Clone the OpenADP repository and navigate to the browser JavaScript SDK:</p>
-                    <div class="code-block">git clone https://github.com/waywardgeek/openadp.git
-cd openadp/sdk/browser-javascript
-npm install</div>
-                </div>
+                    <div class="integration-step">
+                        <span class="step-number">1</span>
+                        <h3>Install OpenADP Browser JavaScript SDK</h3>
+                        <p>Install the OpenADP JavaScript package directly from NPM:</p>
+                        <div class="code-block">npm install @openadp/browser-sdk</div>
+                        <div class="success-box">
+                            <h4>🚀 Professional NPM Package!</h4>
+                            <p>The OpenADP JavaScript SDK is now available as a professional NPM package. Works in browsers with modern ES6 module support!</p>
+                        </div>
+                        <div class="warning-box">
+                            <h4>⚠️ HTTP Server Required</h4>
+                            <p>ES6 modules require an HTTP server. Never open HTML files directly (file:// protocol). Use a development server like <code>python3 -m http.server 8000</code> or similar.</p>
+                        </div>
+                    </div>
 
                 <div class="warning-box">
                     <h4>⚠️ Important: HTTP Server Required</h4>
@@ -182,7 +199,11 @@ npm install</div>
                     <div class="integration-step">
                         <span class="step-number">2</span>
                         <h3>Import Ocrypt</h3>
-                        <div class="code-block">import { register, recover } from './path/to/openadp/sdk/browser-javascript/ocrypt.js';</div>
+                        <div class="code-block">// ES6 Module Import
+import { register, recover } from '@openadp/browser-sdk';
+
+// Or via CDN
+import { register, recover } from 'https://unpkg.com/@openadp/browser-sdk@0.1.0/ocrypt.js';</div>
                     </div>
 
                     <div class="integration-step">
@@ -310,17 +331,21 @@ console.log('Recovered note:', noteContent);</div>
                 <div id="python" class="tab-content">
                     <div class="integration-step">
                         <span class="step-number">1</span>
-                        <h3>Setup OpenADP Python SDK</h3>
-                        <div class="code-block">git clone https://github.com/waywardgeek/openadp.git
-cd openadp
-pip install -e sdk/python/</div>
+                        <h3>Install OpenADP Python Package</h3>
+                        <p>Install the OpenADP Python package directly from PyPI:</p>
+                        <div class="code-block">pip install openadp</div>
+                        <div class="success-box">
+                            <h4>🎉 Easy Installation!</h4>
+                            <p>The OpenADP Python package is now available on PyPI. No need to clone repositories or build from source!</p>
+                        </div>
                     </div>
 
                     <div class="integration-step">
                         <span class="step-number">2</span>
                         <h3>Import Ocrypt</h3>
                         <div class="code-block">from openadp.ocrypt import register, recover
-import json</div>
+import json
+from datetime import datetime</div>
                     </div>
 
                     <div class="integration-step">
@@ -334,12 +359,11 @@ import json</div>
         
         # Register with OpenADP
         metadata = register(
-            user_id=user_id,
-            application='my-app',
-            master_secret=data_bytes,
-            pin=user_pin,
-            version='current',
-            max_guesses=3
+            user_id,        # User ID
+            'my-app',       # Application ID
+            data_bytes,     # Long-term secret to protect
+            user_pin,       # User's PIN
+            3               # Max wrong attempts
         )
         
         # Store metadata locally (safe to store anywhere)
@@ -364,7 +388,12 @@ import json</div>
             metadata = json.load(f)
         
         # Recover data from OpenADP network
-        recovered_bytes = recover(metadata, user_pin)
+        recovered_bytes, remaining_guesses, updated_metadata = recover(metadata, user_pin)
+        
+        # Update metadata if it changed (automatic backup refresh)
+        if updated_metadata != metadata:
+            with open(f'backup_{user_id}.json', 'w') as f:
+                json.dump(json.loads(updated_metadata.decode('utf-8')), f)
         
         # Convert back to original data
         recovered_data = json.loads(recovered_bytes.decode('utf-8'))
@@ -395,12 +424,11 @@ class CryptoWallet:
         
         try:
             metadata = register(
-                user_id=self.user_id,
-                application='crypto-wallet',
-                master_secret=json.dumps(wallet_data).encode('utf-8'),
-                pin=user_pin,
-                version='current',
-                max_guesses=3
+                self.user_id,                                    # User ID
+                'crypto-wallet',                                 # Application ID
+                json.dumps(wallet_data).encode('utf-8'),        # Wallet data as bytes
+                user_pin,                                        # User's PIN
+                3                                                # Max wrong attempts
             )
             
             # Store metadata
@@ -419,7 +447,10 @@ class CryptoWallet:
             with open(f'wallet_{self.user_id}.json', 'r') as f:
                 metadata = json.load(f)
             
-            recovered_bytes = recover(metadata, user_pin)
+            recovered_bytes, remaining_guesses, updated_metadata = recover(
+                json.dumps(metadata).encode('utf-8'), 
+                user_pin
+            )
             wallet_data = json.loads(recovered_bytes.decode('utf-8'))
             
             return wallet_data
@@ -447,10 +478,13 @@ print('Restored wallet:', restored_data)</div>
                 <div id="go" class="tab-content">
                     <div class="integration-step">
                         <span class="step-number">1</span>
-                        <h3>Setup OpenADP Go SDK</h3>
-                        <div class="code-block">git clone https://github.com/waywardgeek/openadp.git
-cd openadp
-go mod tidy</div>
+                        <h3>Install OpenADP Go Package</h3>
+                        <p>Add the OpenADP Go module to your project:</p>
+                        <div class="code-block">go get github.com/OpenADP/ocrypt@latest</div>
+                        <div class="success-box">
+                            <h4>🚀 Published Go Module!</h4>
+                            <p>The OpenADP Go package is now available as a standalone module. Simple 2-function API for easy integration!</p>
+                        </div>
                     </div>
 
                     <div class="integration-step">
@@ -464,7 +498,7 @@ import (
     "io/ioutil"
     "log"
     
-    "github.com/waywardgeek/openadp/pkg/ocrypt"
+    "github.com/OpenADP/ocrypt"
 )</div>
                     </div>
 
@@ -648,6 +682,119 @@ func main() {
                 </div>
 
                 <div class="integration-step">
+                    <span class="step-number">🧪</span>
+                    <h3>Quick Installation Test</h3>
+                    <p>Verify your installation works with these simple tests:</p>
+                    
+                    <div class="language-tabs">
+                        <button class="tab-button active" onclick="showTab('test-python')">Python Test</button>
+                        <button class="tab-button" onclick="showTab('test-go')">Go Test</button>
+                        <button class="tab-button" onclick="showTab('test-js')">JavaScript Test</button>
+                    </div>
+
+                    <div id="test-python" class="tab-content active">
+                        <div class="code-block"># test_ocrypt.py
+from openadp.ocrypt import register, recover
+
+# Test data
+test_secret = b"Hello, OpenADP!"
+test_pin = "1234"
+
+print("🧪 Testing OpenADP Python integration...")
+
+# Register
+metadata = register("test-user", "test-app", test_secret, test_pin)
+print("✅ Registration successful!")
+
+# Recover
+recovered_secret, remaining, updated_metadata = recover(metadata, test_pin)
+print(f"✅ Recovery successful! Remaining guesses: {remaining}")
+
+# Verify
+assert recovered_secret == test_secret
+print("🎉 Test passed! OpenADP is working correctly.")</div>
+                    </div>
+
+                    <div id="test-go" class="tab-content">
+                        <div class="code-block">// test_ocrypt.go
+package main
+
+import (
+    "fmt"
+    "log"
+    "github.com/OpenADP/ocrypt"
+)
+
+func main() {
+    fmt.Println("🧪 Testing OpenADP Go integration...")
+    
+    // Test data
+    testSecret := []byte("Hello, OpenADP!")
+    testPIN := "1234"
+    
+    // Register
+    metadata, err := ocrypt.Register("test-user", "test-app", testSecret, testPIN)
+    if err != nil {
+        log.Fatal("Registration failed:", err)
+    }
+    fmt.Println("✅ Registration successful!")
+    
+    // Recover
+    recoveredSecret, err := ocrypt.Recover(metadata, testPIN)
+    if err != nil {
+        log.Fatal("Recovery failed:", err)
+    }
+    fmt.Println("✅ Recovery successful!")
+    
+    // Verify
+    if string(recoveredSecret) != string(testSecret) {
+        log.Fatal("Secret mismatch!")
+    }
+    fmt.Println("🎉 Test passed! OpenADP is working correctly.")
+}</div>
+                    </div>
+
+                    <div id="test-js" class="tab-content">
+                        <div class="code-block">// test_ocrypt.js
+import { register, recover } from '@openadp/browser-sdk';
+
+async function testOcrypt() {
+    console.log('🧪 Testing OpenADP JavaScript integration...');
+    
+    // Test data
+    const testSecret = new TextEncoder().encode('Hello, OpenADP!');
+    const testPIN = '1234';
+    
+    try {
+        // Register
+        const metadata = await register('test-user', 'test-app', testSecret, testPIN);
+        console.log('✅ Registration successful!');
+        
+        // Recover
+        const recoveredSecret = await recover(metadata, testPIN);
+        console.log('✅ Recovery successful!');
+        
+        // Verify
+        const originalText = new TextDecoder().decode(testSecret);
+        const recoveredText = new TextDecoder().decode(recoveredSecret);
+        
+        if (originalText === recoveredText) {
+            console.log('🎉 Test passed! OpenADP is working correctly.');
+        } else {
+            console.error('❌ Secret mismatch!');
+        }
+    } catch (error) {
+        console.error('❌ Test failed:', error.message);
+    }
+}
+
+testOcrypt();</div>
+                    </div>
+                </div>
+
+
+
+                <div class="integration-step">
                     <span class="step-number">1</span>
                     <h3>Set Up HTTP Server</h3>
                     <p>Create a simple HTTP server to serve your application. <strong>Do not open HTML files directly</strong> - browsers block ES6 modules from file:// URLs.</p>
@@ -808,19 +955,26 @@ try {
 
     <script>
         function showTab(language) {
-            // Hide all tab contents
-            const contents = document.querySelectorAll('.tab-content');
+            // Get the parent container to only affect tabs within the same section
+            const clickedButton = event.target;
+            const tabContainer = clickedButton.closest('.container, .integration-step');
+            
+            // Hide all tab contents within this container
+            const contents = tabContainer.querySelectorAll('.tab-content');
             contents.forEach(content => content.classList.remove('active'));
             
-            // Remove active class from all buttons
-            const buttons = document.querySelectorAll('.tab-button');
+            // Remove active class from all buttons within this container
+            const buttons = tabContainer.querySelectorAll('.tab-button');
             buttons.forEach(button => button.classList.remove('active'));
             
             // Show selected tab content
-            document.getElementById(language).classList.add('active');
+            const targetTab = document.getElementById(language);
+            if (targetTab) {
+                targetTab.classList.add('active');
+            }
             
             // Add active class to clicked button
-            event.target.classList.add('active');
+            clickedButton.classList.add('active');
         }
     </script>
 </body>
