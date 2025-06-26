@@ -386,10 +386,9 @@ def recover_encryption_key(
         print(f"🔍 DEBUG: U point: x={u_point_affine.x}, y={u_point_affine.y}")
         
         # Generate random r for blinding (0 < r < Q)  
-        # DEBUG: Set r = 1 for deterministic debugging (remove this later)
-        r = 1  # secrets.randbelow(Q)
-        # if r == 0:
-        #     r = 1  # Ensure r is not zero
+        r = secrets.randbelow(Q)
+        if r == 0:
+            r = 1  # Ensure r is not zero
         
         # Compute r^-1 mod Q
         r_inv = mod_inverse(r, Q)

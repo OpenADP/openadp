@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use rand::rngs::OsRng;
 use rand::RngCore;
 use num_bigint::BigUint;
-use num_traits::One;
+use num_traits::{One, Zero};
 
 use crate::{OpenADPError, Result};
 use crate::client::{
@@ -23,7 +23,7 @@ use crate::client::{
 };
 use crate::crypto::{
     H, point_compress, ShamirSecretSharing, point_decompress, unexpand, point_mul, 
-    derive_enc_key, recover_point_secret, PointShare
+    derive_enc_key, recover_point_secret, PointShare, expand, mod_inverse
 };
 
 /// Identity represents the three-part key for OpenADP: (UID, DID, BID)
@@ -332,11 +332,6 @@ pub async fn recover_encryption_key(
     
     // Step 1.5: Compute r scalar for blinding
     let r_scalar = {
-        // TEMPORARY DEBUG: Set r = 1 for deterministic debugging (both tools should use same r)
-        BigUint::one()
-        
-        /*
-        // TODO: Use random r in production
         use rand::RngCore;
         let mut rng = OsRng;
         
@@ -349,13 +344,12 @@ pub async fn recover_encryption_key(
         let q = crate::crypto::Q.clone();
         r = r % &q;
         
-        // Ensure r != 0
+        // Ensure r != 0 since we need to compute r^-1
         if r.is_zero() {
             r = BigUint::one();
         }
         
         r
-        */
     };
     
     println!("🔍 DEBUG: r scalar: {}", hex::encode(&r_scalar.to_bytes_le()));
@@ -514,18 +508,11 @@ pub async fn recover_encryption_key(
         hex::encode(&recovered_sb_2d.y.to_bytes_le()));
     
     // Step 7: Compute original secret point: s*U = (s*b) / r = (s*b) * r^(-1)
-    // TEMPORARY DEBUG: Since r = 1, s*U = s*b directly (no need for modular inverse)
-    let original_su = recovered_sb_4d; // Since r = 1, no division needed
-    
-    /*
-    // TODO: Use this in production when r is random
     let q = crate::crypto::Q.clone();
-    let r_inv = mod_inverse(&r_scalar, &q)
-        .ok_or_else(|| OpenADPError::Crypto("Failed to compute modular inverse of r".to_string()))?;
+    let r_inv = mod_inverse(&r_scalar, &q);
     
     // Apply r^-1 to unblind: s*U = r^-1 * (s*B)
     let original_su = point_mul(&r_inv, &recovered_sb_4d);
-    */
     
     let original_su_2d = unexpand(&original_su)?;
     println!("🔍 DEBUG: Original s*U point: x={}", 

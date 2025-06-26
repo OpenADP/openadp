@@ -447,8 +447,7 @@ impl ShamirSecretSharing {
         let mut coefficients = vec![secret.clone()];
         
         for _ in 1..threshold {
-            // DEBUG: Set r = 1 for deterministic debugging (remove this later)
-            coefficients.push(Integer::from(1));  // Self::random_mod_q()
+            coefficients.push(Self::random_mod_q());
         }
         
         // Evaluate polynomial at x = 1, 2, ..., num_shares
