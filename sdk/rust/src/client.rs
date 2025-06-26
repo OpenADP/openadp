@@ -938,21 +938,37 @@ pub async fn discover_servers(registry_url: &str) -> Result<Vec<ServerInfo>> {
     }
 }
 
-/// Get fallback server URLs
+/// Get fallback server URLs (matching Go implementation)
 pub fn get_fallback_servers() -> Vec<String> {
     vec![
-        "https://server1.openadp.org:8443".to_string(),
-        "https://server2.openadp.org:8443".to_string(),
-        "https://server3.openadp.org:8443".to_string(),
+        "https://xyzzy.openadp.org".to_string(),
+        "https://sky.openadp.org".to_string(),
+        "https://akash.network".to_string(),
     ]
 }
 
-/// Get fallback server info
+/// Get fallback server info (matching Go implementation)
 pub fn get_fallback_server_info() -> Vec<ServerInfo> {
-    get_fallback_servers()
-        .into_iter()
-        .map(|url| ServerInfo::new(url))
-        .collect()
+    vec![
+        ServerInfo {
+            url: "https://xyzzy.openadp.org".to_string(),
+            public_key: "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder1XyzzyServer12345TestKey".to_string(),
+            country: "US".to_string(),
+            remaining_guesses: -1,
+        },
+        ServerInfo {
+            url: "https://sky.openadp.org".to_string(),
+            public_key: "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder2SkyServerTestKey67890Demo".to_string(),
+            country: "US".to_string(),
+            remaining_guesses: -1,
+        },
+        ServerInfo {
+            url: "https://akash.network".to_string(),
+            public_key: "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder3AkashNetworkTestKey111Demo".to_string(),
+            country: "CA".to_string(),
+            remaining_guesses: -1,
+        },
+    ]
 }
 
 /// Multi-server client managing multiple servers
@@ -964,94 +980,224 @@ pub struct MultiServerClient {
 }
 
 impl MultiServerClient {
-    /// Create new multi-server client
+    /// Create a new multi-server client with server discovery
     pub async fn new(servers_url: &str, echo_timeout_secs: u64) -> Result<Self> {
-        let server_infos = discover_servers(servers_url).await?;
+        let server_infos = get_servers(servers_url).await?;
         Self::from_server_info(server_infos, echo_timeout_secs).await
     }
-    
-    /// Create from server info list
+
+    /// Create a new multi-server client from provided server information
     pub async fn from_server_info(server_infos: Vec<ServerInfo>, echo_timeout_secs: u64) -> Result<Self> {
-        let clients = Self::test_servers_concurrently(server_infos, echo_timeout_secs).await;
+        let echo_timeout = Duration::from_secs(echo_timeout_secs);
         
-        if clients.is_empty() {
-            return Err(OpenADPError::NoServers);
+        // Test servers concurrently and keep only live ones
+        let live_clients = Self::test_servers_concurrently(server_infos, echo_timeout_secs).await;
+        
+        if live_clients.is_empty() {
+            return Err(OpenADPError::Server("No live servers found".to_string()));
         }
         
+        println!("Initialization complete: {} live servers available", live_clients.len());
+        
         Ok(Self {
-            clients,
+            clients: live_clients,
             strategy: ServerSelectionStrategy::FirstAvailable,
-            echo_timeout: Duration::from_secs(echo_timeout_secs),
+            echo_timeout,
         })
     }
-    
-    /// Test servers concurrently
+
+    /// Test servers concurrently for liveness
     async fn test_servers_concurrently(server_infos: Vec<ServerInfo>, timeout_secs: u64) -> Vec<EncryptedOpenADPClient> {
-        let futures = server_infos.into_iter().map(|server_info| {
+        let tasks: Vec<_> = server_infos.into_iter().map(|server_info| {
             async move {
-                let public_key = if !server_info.public_key.is_empty() {
-                    parse_server_public_key(&server_info.public_key).ok()
-                } else {
-                    None
-                };
-                
-                let mut client = EncryptedOpenADPClient::new(server_info.url.clone(), public_key, timeout_secs);
-                
-                match client.ping().await {
-                    Ok(_) => Some(client),
-                    Err(_) => None,
-                }
+                Self::test_single_server(server_info, timeout_secs).await
             }
-        });
-        
-        let results = join_all(futures).await;
+        }).collect();
+
+        let results = join_all(tasks).await;
         results.into_iter().filter_map(|r| r).collect()
     }
-    
-    /// Get number of live servers
+
+    /// Test a single server for liveness
+    async fn test_single_server(server_info: ServerInfo, timeout_secs: u64) -> Option<EncryptedOpenADPClient> {
+        println!("Testing server: {}", server_info.url);
+        
+        // Parse public key if available
+        let public_key = if !server_info.public_key.is_empty() {
+            match parse_server_public_key(&server_info.public_key) {
+                Ok(key) => {
+                    println!("  🔑 {}: Using Noise-NK encryption", server_info.url);
+                    Some(key)
+                }
+                Err(e) => {
+                    println!("  ⚠️  {}: Invalid public key: {}", server_info.url, e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // Create client
+        let mut client = EncryptedOpenADPClient::new(server_info.url.clone(), public_key, timeout_secs);
+        
+        // Test with echo
+        let test_message = format!("liveness_test_{}", chrono::Utc::now().timestamp());
+        
+        match timeout(Duration::from_secs(timeout_secs), client.echo(&test_message, false)).await {
+            Ok(Ok(response)) => {
+                if response == test_message {
+                    println!("  ✅ {}: Live and responding", server_info.url);
+                    Some(client)
+                } else {
+                    println!("  ❌ {}: Echo response mismatch", server_info.url);
+                    None
+                }
+            }
+            Ok(Err(e)) => {
+                println!("  ❌ {}: {}", server_info.url, e);
+                None
+            }
+            Err(_) => {
+                println!("  ❌ {}: Timeout", server_info.url);
+                None
+            }
+        }
+    }
+
     pub fn get_live_server_count(&self) -> usize {
         self.clients.len()
     }
-    
-    /// Get live server URLs
+
     pub fn get_live_server_urls(&self) -> Vec<String> {
         self.clients.iter().map(|c| c.get_server_url().to_string()).collect()
     }
-    
-    /// Set server selection strategy
+
     pub fn set_server_selection_strategy(&mut self, strategy: ServerSelectionStrategy) {
         self.strategy = strategy;
     }
-    
-    /// Select a server based on strategy
+
+    /// Select a server based on the current strategy
     fn select_server(&self) -> Result<&EncryptedOpenADPClient> {
         if self.clients.is_empty() {
-            return Err(OpenADPError::NoServers);
+            return Err(OpenADPError::Server("No live servers available".to_string()));
         }
-        
+
         match self.strategy {
             ServerSelectionStrategy::FirstAvailable => Ok(&self.clients[0]),
-            ServerSelectionStrategy::Random => {
-                use rand::seq::SliceRandom;
-                let mut rng = rand::thread_rng();
-                self.clients.choose(&mut rng).ok_or(OpenADPError::NoServers)
+            ServerSelectionStrategy::RoundRobin => {
+                // Simple round-robin based on current time
+                let index = (chrono::Utc::now().timestamp() as usize) % self.clients.len();
+                Ok(&self.clients[index])
             }
-            _ => Ok(&self.clients[0]), // Default to first for now
+            ServerSelectionStrategy::Random => {
+                use rand::Rng;
+                let mut rng = rand::thread_rng();
+                let index = rng.gen_range(0..self.clients.len());
+                Ok(&self.clients[index])
+            }
+            ServerSelectionStrategy::LowestLatency => {
+                // For now, just use first available (latency testing would require more complex implementation)
+                Ok(&self.clients[0])
+            }
         }
     }
-    
-    /// Echo to a server
-    pub async fn echo(&mut self, message: &str) -> Result<String> {
-        let _client = self.select_server()?;
-        // Note: We need mutable access but select_server returns immutable reference
-        // In a full implementation, would handle this properly
-        self.clients[0].echo(message, false).await
+
+    /// Select a mutable server reference
+    fn select_server_mut(&mut self) -> Result<&mut EncryptedOpenADPClient> {
+        if self.clients.is_empty() {
+            return Err(OpenADPError::Server("No live servers available".to_string()));
+        }
+
+        match self.strategy {
+            ServerSelectionStrategy::FirstAvailable => Ok(&mut self.clients[0]),
+            ServerSelectionStrategy::RoundRobin => {
+                let index = (chrono::Utc::now().timestamp() as usize) % self.clients.len();
+                Ok(&mut self.clients[index])
+            }
+            ServerSelectionStrategy::Random => {
+                use rand::Rng;
+                let mut rng = rand::thread_rng();
+                let index = rng.gen_range(0..self.clients.len());
+                Ok(&mut self.clients[index])
+            }
+            ServerSelectionStrategy::LowestLatency => {
+                Ok(&mut self.clients[0])
+            }
+        }
     }
-    
-    /// Ping servers (alias for echo with 'ping' message)
+
+    pub async fn echo(&mut self, message: &str) -> Result<String> {
+        let client = self.select_server_mut()?;
+        client.echo(message, false).await
+    }
+
     pub async fn ping(&mut self) -> Result<()> {
-        self.echo("ping").await?;
+        let client = self.select_server_mut()?;
+        client.ping().await
+    }
+
+    /// Refresh servers by retesting all and updating live list
+    pub async fn refresh_servers(&mut self) -> Result<()> {
+        // For now, just test existing servers
+        let mut live_clients = Vec::new();
+        
+        for mut client in self.clients.drain(..) {
+            if client.test_connection().await.is_ok() {
+                live_clients.push(client);
+            }
+        }
+        
+        self.clients = live_clients;
+        
+        if self.clients.is_empty() {
+            return Err(OpenADPError::Server("No live servers remaining after refresh".to_string()));
+        }
+        
         Ok(())
+    }
+
+    // Standardized interface methods
+
+    pub async fn register_secret_standardized(&mut self, request: RegisterSecretRequest) -> Result<RegisterSecretResponse> {
+        let client = self.select_server_mut()?;
+        client.register_secret_standardized(request).await
+    }
+
+    pub async fn recover_secret_standardized(&mut self, request: RecoverSecretRequest) -> Result<RecoverSecretResponse> {
+        let client = self.select_server_mut()?;
+        client.recover_secret_standardized(request).await
+    }
+
+    pub async fn list_backups_standardized(&mut self, request: ListBackupsRequest) -> Result<ListBackupsResponse> {
+        let client = self.select_server_mut()?;
+        client.list_backups_standardized(request).await
+    }
+
+    pub async fn get_server_info_standardized(&self) -> Result<ServerInfoResponse> {
+        let client = self.select_server()?;
+        client.get_server_info().await
+    }
+
+    pub async fn test_connection(&self) -> Result<()> {
+        let client = self.select_server()?;
+        client.test_connection().await
+    }
+
+    pub fn get_server_url(&self) -> String {
+        if let Ok(client) = self.select_server() {
+            client.get_server_url().to_string()
+        } else {
+            "No servers available".to_string()
+        }
+    }
+
+    pub fn supports_encryption(&self) -> bool {
+        if let Ok(client) = self.select_server() {
+            client.supports_encryption()
+        } else {
+            false
+        }
     }
 }
 

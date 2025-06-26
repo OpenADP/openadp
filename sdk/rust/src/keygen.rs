@@ -267,20 +267,8 @@ pub async fn generate_encryption_key(
             bytes
         };
         
-        // Compute proper share point: s_i * U where s_i is the share value
-        let share_scalar = {
-            let mut share_bytes = [0u8; 32];
-            // Convert rug::Integer to bytes
-            let mut bytes = Vec::new();
-            share_data.write_digits(&mut bytes, rug::integer::Order::MsfBe);
-            let copy_len = std::cmp::min(bytes.len(), 32);
-            share_bytes[..copy_len].copy_from_slice(&bytes[..copy_len]);
-            share_bytes
-        };
-        let share_point_4d = point_mul(&share_scalar, &u)?;
-        let share_point = unexpand(&share_point_4d)?;
-        let share_point_4d = expand(&share_point)?;
-        let y_compressed = point_compress(&share_point_4d)?;
+        // Convert share Y to string (server expects integer, not base64) - matching Go implementation
+        let y_string = share_data.to_string();
         
         let request = RegisterSecretRequest {
             auth_code: server_auth_code.clone(),
@@ -289,7 +277,7 @@ pub async fn generate_encryption_key(
             bid: identity.bid.clone(),
             version: 1,
             x: *share_id as i32,
-            y: BASE64.encode(&y_compressed),
+            y: y_string,
             max_guesses,
             expiration,
             encrypted: client.has_public_key(),
@@ -316,12 +304,14 @@ pub async fn generate_encryption_key(
     // Convert the secret to a scalar and multiply with U to get the secret point
     let secret_scalar = {
         let mut secret_bytes = [0u8; 32];
-        secret.write_digits(&mut secret_bytes, rug::integer::Order::MsfBe);
-        Scalar::from_bytes_mod_order(secret_bytes)
+        let bytes = secret.to_digits::<u8>(rug::integer::Order::MsfBe);
+        let copy_len = std::cmp::min(bytes.len(), 32);
+        secret_bytes[(32-copy_len)..].copy_from_slice(&bytes[..copy_len]);
+        secret_bytes
     };
     
     // Compute secret point: s*U
-    let secret_point = point_mul(&secret_scalar.to_bytes(), &u)?;
+    let secret_point = point_mul(&secret_scalar, &u)?;
     let encryption_key = derive_enc_key(&secret_point)?;
     
     println!("✅ Generated encryption key with {}-of-{} threshold", threshold, live_server_infos.len());
