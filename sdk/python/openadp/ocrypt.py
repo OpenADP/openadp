@@ -26,7 +26,7 @@ from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 
 # Import OpenADP functions
-from .keygen import generate_encryption_key, recover_encryption_key, AuthCodes
+from .keygen import generate_encryption_key, recover_encryption_key, AuthCodes, Identity
 from .client import get_servers, get_fallback_server_info, ServerInfo
 
 
@@ -94,14 +94,13 @@ def _register_with_bid(user_id: str, app_id: str, long_term_secret: bytes, pin: 
         print(f"🔄 Using backup ID: {backup_id}")
         
         # Step 3: OpenADP Key Generation
-        # Create synthetic filename for BID derivation
-        filename = f"{user_id}#{app_id}#{backup_id}"
+        # Create Identity object with UID, DID, BID
+        identity = Identity(uid=user_id, did=app_id, bid=backup_id)
         
         print("🔑 Generating encryption key using OpenADP servers...")
         result = generate_encryption_key(
-            filename=filename,
+            identity=identity,
             password=pin,
-            user_id=user_id,
             max_guesses=max_guesses,
             expiration=0,  # No expiration by default
             server_infos=server_infos
@@ -349,14 +348,13 @@ def _recover_without_refresh(metadata: bytes, pin: str, servers_url: str = "") -
             user_id=user_id
         )
         
-        # Reconstruct filename
-        filename = f"{user_id}#{app_id}#{backup_id}"
+        # Create Identity object for recovery
+        identity = Identity(uid=user_id, did=app_id, bid=backup_id)
         
         print("🔑 Recovering encryption key from OpenADP servers...")
         result = recover_encryption_key(
-            filename=filename,
+            identity=identity,
             password=pin,
-            user_id=user_id,
             server_infos=matched_servers,
             threshold=threshold,
             auth_codes=auth_codes
