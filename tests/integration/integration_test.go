@@ -152,8 +152,8 @@ func TestOpenADPIntegration(t *testing.T) {
 	// Step 5: Test password to PIN conversion
 	fmt.Println("\n🔢 Step 5: Testing password to PIN conversion...")
 
-	pin1 := client.PasswordToPin(password)
-	pin2 := client.PasswordToPin(password)
+	pin1 := []byte(password)
+	pin2 := []byte(password)
 
 	fmt.Printf("   Password: %s\n", password)
 	fmt.Printf("   PIN: %x\n", pin1[:8])

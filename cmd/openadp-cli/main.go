@@ -180,7 +180,7 @@ func deriveKey(filename, userID, serversStr string) {
 	fmt.Printf("   BID: %s\n", identity.BID)
 
 	// Convert password to PIN
-	pin := client.PasswordToPin(password)
+	pin := []byte(password)
 	fmt.Printf("🔢 PIN: %02x%02x\n", pin[0], pin[1])
 
 	// Generate key
@@ -220,7 +220,7 @@ func runTests() {
 		DID: "test.txt",
 		BID: "backup1",
 	}
-	pin := client.PasswordToPin("test-password")
+	pin := []byte("test-password")
 	if len(pin) != 2 || identity.UID == "" || identity.DID == "" || identity.BID == "" {
 		fmt.Println("❌ FAILED")
 		return

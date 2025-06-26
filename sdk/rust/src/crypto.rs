@@ -331,53 +331,38 @@ fn reverse_bytes(data: &[u8]) -> Vec<u8> {
 
 /// Hash-to-point function H (matching Go H function exactly)
 pub fn H(uid: &[u8], did: &[u8], bid: &[u8], pin: &[u8]) -> Result<Point4D> {
-    println!("🔍 Rust H DEBUG: uid={:?}, did={:?}, bid={:?}, pin={:?}", uid, did, bid, pin);
-    
     // Concatenate all inputs with length prefixes (matching Go implementation)
     let mut data = prefixed(uid);
     data.extend_from_slice(&prefixed(did));
     data.extend_from_slice(&prefixed(bid));
     data.extend_from_slice(pin);
     
-    println!("🔍 Rust H DEBUG: combined data={}", hex::encode(&data));
-    
     // Hash and convert to point
     let hash = sha256_hash(&data);
-    println!("🔍 Rust H DEBUG: hash_bytes={}", hex::encode(&hash));
     
     // Convert hash to big integer and extract sign bit (matching Go)
     let y_base_full = BigUint::from_bytes_le(&hash);
-    println!("🔍 Rust H DEBUG: y_base_full (from LE): {:064x}", y_base_full);
     
     let sign = if y_base_full.bit(255) { 1 } else { 0 };
     let mut y_base = y_base_full.clone();
     y_base.set_bit(255, false); // Clear sign bit
     
-    println!("🔍 Rust H DEBUG: sign={}, y_base_cleared={:064x}", sign, y_base);
-    
     for counter in 0..1000 {
         // XOR with counter to find valid point
         let y = &y_base ^ BigUint::from(counter as u32);
-        println!("🔍 Rust H DEBUG: counter={}, y={:064x}", counter, y);
         
         if let Some(x) = recover_x(&y, sign) {
-            println!("🔍 Rust H DEBUG: Found valid point at counter={}, x={:x}, y={:x}", 
-                counter, x, y);
-            
             // Force the point to be in a group of order q (multiply by 8)
             let p = expand(&Point2D { x, y });
             let p = point_mul8(&p);
             
             if is_valid_point(&p) {
-                println!("🔍 Rust H DEBUG: Final point: x={:x}, y={:x}", 
-                    p.x, p.y);
                 return Ok(p);
             }
         }
     }
     
     // Fallback to base point if no valid point found
-    println!("🔍 Rust H DEBUG: No valid point found, using base point");
     Ok(G.clone())
 }
 

@@ -436,7 +436,7 @@ func recoverEncryptionKeyWithServerInfo(filename, password, userID string, baseA
 	}
 
 	fmt.Printf("✅ Key recovered successfully\n")
-	fmt.Printf("🔍 DEBUG: Recovered encryption key: %x\n", result.EncryptionKey[:16])
+
 	return result.EncryptionKey, nil
 }
 

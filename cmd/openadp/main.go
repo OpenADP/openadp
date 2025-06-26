@@ -169,9 +169,9 @@ func testKeyGeneration() {
 	}
 	fmt.Printf("   Identity: UID=%s, DID=%s, BID=%s\n", identity.UID, identity.DID, identity.BID)
 
-	// Test password to PIN conversion
-	pin := client.PasswordToPin(password)
-	fmt.Printf("   PIN from password: %02x%02x\n", pin[0], pin[1])
+	// Test password to bytes conversion (direct UTF-8)
+	pin := []byte(password)
+	fmt.Printf("   Password as bytes: %d bytes\n", len(pin))
 
 	// Test key generation (simplified)
 	result := client.GenerateEncryptionKey(identity, password, 10, 0, client.ConvertURLsToServerInfo(serverURLs))

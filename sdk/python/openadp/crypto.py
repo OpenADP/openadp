@@ -415,8 +415,7 @@ class ShamirSecretSharing:
         # Generate random coefficients for polynomial
         coefficients = [secret]  # a0 = secret
         for _ in range(threshold - 1):
-            # DEBUG: Set r = 1 for deterministic debugging (remove this later)
-            coefficients.append(1)  # secrets.randbelow(Q)
+            coefficients.append(secrets.randbelow(Q))
         
         # Evaluate polynomial at x = 1, 2, ..., num_shares
         shares = []

@@ -155,8 +155,6 @@ pub async fn generate_encryption_key(
     expiration: i64,
     server_infos: Vec<ServerInfo>,
 ) -> Result<GenerateEncryptionKeyResult> {
-    println!("OpenADP: Identity={}", identity);
-    
     if server_infos.is_empty() {
         return Ok(GenerateEncryptionKeyResult::error("No servers available".to_string()));
     }
@@ -175,7 +173,6 @@ pub async fn generate_encryption_key(
             match parse_server_public_key(&server_info.public_key) {
                 Ok(key) => Some(key),
                 Err(e) => {
-                    println!("Warning: Invalid public key for server {}: {}", server_info.url, e);
                     None
                 }
             }
@@ -188,12 +185,10 @@ pub async fn generate_encryption_key(
         // Test server connectivity
         match client.test_connection().await {
             Ok(_) => {
-                println!("✅ Server {} is reachable", server_info.url);
                 clients.push(client);
                 live_server_infos.push(server_info);
             }
             Err(e) => {
-                println!("❌ Server {} is not reachable: {}", server_info.url, e);
             }
         }
     }
@@ -204,7 +199,6 @@ pub async fn generate_encryption_key(
     
     // Step 3: Convert password to PIN
     let pin = password.as_bytes().to_vec();
-    println!("🔍 DEBUG: password={}, pin={}", password, hex::encode(&pin));
     
     // Step 4: Generate random secret using cryptographically secure RNG
     let mut random_bytes = [0u8; 32];
@@ -232,10 +226,8 @@ pub async fn generate_encryption_key(
     // Step 6: Compute U = H(uid, did, bid, pin)
     let u = H(identity.uid.as_bytes(), identity.did.as_bytes(), identity.bid.as_bytes(), &pin)?;
     let u_2d = unexpand(&u)?;
-    println!("🔍 DEBUG: U point: x={}, y={}", hex::encode(&u_2d.x.to_bytes_le()), hex::encode(&u_2d.y.to_bytes_le()));
     
     // Step 7: Register shares with servers
-    println!("🔑 Registering shares with {} servers...", clients.len());
     
     let mut registration_errors = Vec::new();
     let mut successful_registrations = 0;
@@ -267,22 +259,16 @@ pub async fn generate_encryption_key(
             Ok(response) => {
                 if response.success {
                     let enc_status = if client.has_public_key() { "encrypted" } else { "unencrypted" };
-                    println!("OpenADP: Registered share {} with server {} ({}) [{}]", 
-                        share_id, i + 1, server_url, enc_status);
                     successful_registrations += 1;
                 } else {
                     let error_msg = format!("Server {} ({}): Registration returned false: {}", 
                         i + 1, server_url, response.message);
                     registration_errors.push(error_msg);
-                    println!("❌ Failed to register share {} with server {}: {}", 
-                        share_id, server_url, response.message);
                 }
             }
             Err(e) => {
                 let error_msg = format!("Server {} ({}): {}", i + 1, server_url, e);
                 registration_errors.push(error_msg);
-                println!("❌ Error registering share {} with server {}: {}", 
-                    share_id, server_url, e);
             }
         }
     }
@@ -304,7 +290,6 @@ pub async fn generate_encryption_key(
     let secret_point = point_mul(&secret_biguint, &u);
     let encryption_key = derive_enc_key(&secret_point)?;
     
-    println!("OpenADP: Successfully generated encryption key");
     
     Ok(GenerateEncryptionKeyResult::success(
         encryption_key,
@@ -322,13 +307,11 @@ pub async fn recover_encryption_key(
     threshold: usize,
     auth_codes: AuthCodes,
 ) -> Result<RecoverEncryptionKeyResult> {
-    println!("OpenADP: Identity={}", identity);
     
     // Step 1: Compute U = H(uid, did, bid, pin) - same as in generation
     let pin = password.as_bytes().to_vec();
     let u = H(identity.uid.as_bytes(), identity.did.as_bytes(), identity.bid.as_bytes(), &pin)?;
     let u_2d = unexpand(&u)?;
-    println!("🔍 DEBUG: U point: x={}, y={}", hex::encode(&u_2d.x.to_bytes_le()), hex::encode(&u_2d.y.to_bytes_le()));
     
     // Step 1.5: Compute r scalar for blinding
     let r_scalar = {
@@ -352,10 +335,8 @@ pub async fn recover_encryption_key(
         r
     };
     
-    println!("🔍 DEBUG: r scalar: {}", hex::encode(&r_scalar.to_bytes_le()));
     
     // Step 2: Fetch remaining guesses and select best servers
-    println!("OpenADP: Fetching remaining guesses from servers...");
     let updated_server_infos = fetch_remaining_guesses_for_servers(identity, &server_infos).await;
     let selected_server_infos = select_servers_by_remaining_guesses(&updated_server_infos, threshold);
     
@@ -366,13 +347,10 @@ pub async fn recover_encryption_key(
     // Step 3: Compute B = r * U  
     let b = point_mul(&r_scalar, &u);
     let b_2d = unexpand(&b)?;
-    println!("🔍 DEBUG: B point (r * U): x={}, y={}", hex::encode(&b_2d.x.to_bytes_le()), hex::encode(&b_2d.y.to_bytes_le()));
     
     // Compress B for transmission
     let b_compressed = point_compress(&b)?;
     let b_base64 = BASE64.encode(&b_compressed);
-    println!("🔍 DEBUG: B compressed: {}", hex::encode(&b_compressed));
-    println!("🔍 DEBUG: B base64: {}", b_base64);
 
     // Step 4: Recover shares from servers
     let mut recovered_point_shares = Vec::new();
@@ -383,7 +361,6 @@ pub async fn recover_encryption_key(
             match parse_server_public_key(&server_info.public_key) {
                 Ok(key) => Some(key),
                 Err(e) => {
-                    println!("Warning: Invalid public key for server {}: {}", server_info.url, e);
                     None
                 }
             }
@@ -414,18 +391,15 @@ pub async fn recover_encryption_key(
                        backup.did == identity.did &&
                        backup.bid == identity.bid {
                         guess_num = backup.num_guesses;
-                        println!("🔍 DEBUG: Found backup, current num_guesses: {}", guess_num);
                         break;
                     }
                 }
             }
             Err(e) => {
-                println!("Warning: Could not list backups from server {}: {}", server_info.url, e);
                 return Err(OpenADPError::Server(format!("Cannot get current guess number for idempotency: {}", e)));
             }
         }
         
-        println!("🔍 DEBUG: Sending guess_num = {} to server {}", guess_num, server_info.url);
         
         let request = RecoverSecretRequest {
             auth_code: server_auth_code.clone(),
@@ -441,50 +415,39 @@ pub async fn recover_encryption_key(
         match client.recover_secret_standardized(request).await {
             Ok(response) => {
                 if response.success {
-                    println!("✅ Recovered share from server {}", server_info.url);
                     
                     // Parse the returned share
                     if let Some(si_b) = response.si_b {
-                        println!("🔍 DEBUG: Server {} returned si_b: {}", server_info.url, si_b);
                         
                         // Decode base64 to get compressed point
                         match BASE64.decode(&si_b) {
                             Ok(si_b_bytes) => {
-                                println!("🔍 DEBUG: si_b_bytes length: {}, data: {}", si_b_bytes.len(), hex::encode(&si_b_bytes));
                                 
                                 // Decompress the point
                                 match point_decompress(&si_b_bytes) {
                                     Ok(si_b_point) => {
                                         let si_b_2d = unexpand(&si_b_point)?;
-                                        println!("🔍 DEBUG: si_b point: x={}, y={}", 
-                                            hex::encode(&si_b_2d.x.to_bytes_le()), 
-                                            hex::encode(&si_b_2d.y.to_bytes_le()));
                                         
                                         // Add to point shares for Lagrange interpolation
                                         recovered_point_shares.push(PointShare::new(response.x as usize, si_b_point));
                                     }
                                     Err(e) => {
-                                        println!("❌ Failed to decompress point from server {}: {}", server_info.url, e);
                                         return Err(e);
                                     }
                                 }
                             }
                             Err(e) => {
-                                println!("❌ Failed to decode base64 from server {}: {}", server_info.url, e);
                                 return Err(OpenADPError::Crypto(format!("Base64 decode error: {}", e)));
                             }
                         }
                     } else {
-                        println!("❌ Server {} returned success but no si_b", server_info.url);
                         return Err(OpenADPError::Server("Server returned success but no si_b".to_string()));
                     }
                 } else {
-                    println!("❌ Server {} returned error: {}", server_info.url, response.message);
                     return Err(OpenADPError::Server(format!("Server error: {}", response.message)));
                 }
             }
             Err(e) => {
-                println!("❌ Error recovering from server {}: {}", server_info.url, e);
                 return Err(e);
             }
         }
@@ -498,14 +461,10 @@ pub async fn recover_encryption_key(
         )));
     }
     
-    println!("🔍 DEBUG: Reconstructing secret from {} point shares", recovered_point_shares.len());
     
     // Step 6: Reconstruct the secret point using Lagrange interpolation
     let recovered_sb_4d = recover_point_secret(recovered_point_shares)?;
     let recovered_sb_2d = unexpand(&recovered_sb_4d)?;
-    println!("🔍 DEBUG: Recovered s*b point: x={}, y={}", 
-        hex::encode(&recovered_sb_2d.x.to_bytes_le()), 
-        hex::encode(&recovered_sb_2d.y.to_bytes_le()));
     
     // Step 7: Compute original secret point: s*U = (s*b) / r = (s*b) * r^(-1)
     let q = crate::crypto::Q.clone();
@@ -515,13 +474,10 @@ pub async fn recover_encryption_key(
     let original_su = point_mul(&r_inv, &recovered_sb_4d);
     
     let original_su_2d = unexpand(&original_su)?;
-    println!("🔍 DEBUG: Original s*U point: x={}", 
-        hex::encode(&original_su_2d.x.to_bytes_le()));
     
     // Step 8: Derive encryption key from the recovered secret point
     let encryption_key = derive_enc_key(&original_su)?;
     
-    println!("✅ Successfully recovered encryption key: {}", hex::encode(&encryption_key));
     
     Ok(RecoverEncryptionKeyResult::success(encryption_key))
 }
@@ -541,7 +497,6 @@ pub async fn fetch_remaining_guesses_for_servers(
             match parse_server_public_key(&server_info.public_key) {
                 Ok(key) => Some(key),
                 Err(e) => {
-                    println!("Warning: Invalid public key for server {}: {}", server_info.url, e);
                     None
                 }
             }
@@ -566,19 +521,15 @@ pub async fn fetch_remaining_guesses_for_servers(
                        backup.did == identity.did &&
                        backup.bid == identity.bid {
                         updated_info.remaining_guesses = Some(backup.max_guesses - backup.num_guesses);
-                        println!("📊 Server {}: {} remaining guesses", 
-                            server_info.url, updated_info.remaining_guesses.unwrap_or(0));
                         break;
                     }
                 }
                 
                 if updated_info.remaining_guesses.is_none() {
-                    println!("⚠️  Server {}: No backup found for identity", server_info.url);
                     updated_info.remaining_guesses = Some(0);
                 }
             }
             Err(e) => {
-                println!("❌ Failed to fetch guesses from server {}: {}", server_info.url, e);
                 updated_info.remaining_guesses = Some(0);
             }
         }
@@ -601,7 +552,6 @@ pub fn select_servers_by_remaining_guesses(
         .collect();
     
     if available_servers.is_empty() {
-        println!("Warning: All servers have exhausted their guesses!");
         return server_infos.to_vec(); // Return original list as fallback
     }
     
@@ -625,14 +575,12 @@ pub fn select_servers_by_remaining_guesses(
     let num_to_select = std::cmp::min(available_servers.len(), threshold + 2);
     let selected_servers = available_servers.into_iter().take(num_to_select).collect::<Vec<_>>();
     
-    println!("🎯 Selected {} servers for recovery:", selected_servers.len());
     for (i, server) in selected_servers.iter().enumerate() {
         let guesses_str = if server.remaining_guesses.unwrap_or(-1) == -1 {
             "unknown".to_string()
         } else {
             server.remaining_guesses.unwrap_or(0).to_string()
         };
-        println!("   {}. {} ({} remaining guesses)", i + 1, server.url, guesses_str);
     }
     
     selected_servers
