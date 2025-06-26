@@ -327,36 +327,42 @@ class OpenADPTestRunner:
             self.log("❌ Cross-language compatibility: FAIL", Colors.FAILURE)
             return TestResult("Cross-Language Compatibility", False, duration, stdout, stderr)
 
-    def test_cross_language_9x9_matrix(self) -> TestResult:
-        """Run comprehensive 9x9 cross-language matrix test (Go/Python/JavaScript)"""
+    def test_cross_language_16x16_matrix(self) -> TestResult:
+        """Run comprehensive 16x16 cross-language matrix test (Go/Python/JavaScript/Rust)"""
         start_time = time.time()
-        self.log("🔄 Running comprehensive 9x9 cross-language matrix test...", Colors.INFO)
+        self.log("🔄 Running comprehensive 16x16 cross-language matrix test...", Colors.INFO)
         
         # Check JavaScript dependencies first
         if not self.check_javascript_dependencies():
             duration = time.time() - start_time
-            return TestResult("9x9 Cross-Language Matrix", False, duration, 
+            return TestResult("16x16 Cross-Language Matrix", False, duration, 
                             "", "JavaScript dependencies not available")
         
         # Ensure Go tools are built
         if not self.ensure_go_tools_built():
             duration = time.time() - start_time
-            return TestResult("9x9 Cross-Language Matrix", False, duration, 
+            return TestResult("16x16 Cross-Language Matrix", False, duration, 
                             "", "Go tools not available")
         
-        # Use the enhanced 9x9 test
+        # Ensure Rust tools are built
+        if not self.ensure_rust_tools_built():
+            duration = time.time() - start_time
+            return TestResult("16x16 Cross-Language Matrix", False, duration, 
+                            "", "Rust tools not available")
+        
+        # Use the enhanced 16x16 test
         success, stdout, stderr = self.run_command([
-            "python", "tests/cross-language/test_cross_language_encrypt_decrypt_9x9.py"
+            "python", "tests/cross-language/test_cross_language_encrypt_decrypt_16x16.py"
         ], timeout=600)  # Longer timeout for comprehensive test
         
         duration = time.time() - start_time
         
         if success:
-            self.log("✅ 9x9 Cross-language matrix: PASS", Colors.SUCCESS)
-            return TestResult("9x9 Cross-Language Matrix", True, duration, stdout)
+            self.log("✅ 16x16 Cross-language matrix: PASS", Colors.SUCCESS)
+            return TestResult("16x16 Cross-Language Matrix", True, duration, stdout)
         else:
-            self.log("❌ 9x9 Cross-language matrix: FAIL", Colors.FAILURE)
-            return TestResult("9x9 Cross-Language Matrix", False, duration, stdout, stderr)
+            self.log("❌ 16x16 Cross-language matrix: FAIL", Colors.FAILURE)
+            return TestResult("16x16 Cross-Language Matrix", False, duration, stdout, stderr)
     
     def test_noise_nk_compatibility(self) -> TestResult:
         """Test Noise-NK cross-platform compatibility between Python server and JavaScript client"""
@@ -503,6 +509,34 @@ class OpenADPTestRunner:
         self.log("✅ Go tools are already built", Colors.SUCCESS)
         return True
     
+    def ensure_rust_tools_built(self) -> bool:
+        """Ensure Rust tools are built before running tests that need them"""
+        self.log("🦀 Ensuring Rust tools are built...", Colors.INFO)
+        
+        # Check if Rust tools exist in the expected location
+        rust_dir = self.root_dir / "sdk" / "rust" / "target" / "release"
+        if not rust_dir.exists():
+            self.log("📁 Rust release directory doesn't exist, building Rust tools...", Colors.WARNING)
+            success, _, _ = self.run_command(["make", "build-rust"])
+            return success
+        
+        # Check for key Rust executables
+        rust_executables = ["openadp-encrypt", "openadp-decrypt"]
+        missing_tools = []
+        
+        for exe in rust_executables:
+            exe_path = rust_dir / exe
+            if not exe_path.exists():
+                missing_tools.append(exe)
+        
+        if missing_tools:
+            self.log(f"🔨 Missing Rust tools: {missing_tools}, building Rust tools...", Colors.WARNING)
+            success, _, _ = self.run_command(["make", "build-rust"])
+            return success
+        
+        self.log("✅ Rust tools are already built", Colors.SUCCESS)
+        return True
+    
     def check_javascript_dependencies(self) -> bool:
         """Check if Node.js and JavaScript dependencies are available"""
         self.log("📦 Checking JavaScript dependencies...", Colors.INFO)
@@ -572,7 +606,7 @@ class OpenADPTestRunner:
             
             if not self.args.fast:
                 tests_to_run.append(("Cross-Language", self.test_cross_language_compatibility))
-                tests_to_run.append(("9x9 Matrix", self.test_cross_language_9x9_matrix))
+                tests_to_run.append(("16x16 Matrix", self.test_cross_language_16x16_matrix))
                 tests_to_run.append(("Noise-NK Compatibility", self.test_noise_nk_compatibility))
         
         # Run tests
