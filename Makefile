@@ -10,10 +10,13 @@ DECRYPT_BINARY_NAME=openadp-decrypt
 KEYGEN_BINARY_NAME=openadp-keygen
 SERVERINFO_BINARY_NAME=openadp-serverinfo
 TEST_RUNNER_BINARY_NAME=run-tests
+RUST_ENCRYPT_BINARY_NAME=openadp-encrypt-rust
+RUST_DECRYPT_BINARY_NAME=openadp-decrypt-rust
 VERSION=1.0.0
 BUILD_DIR=build
 PKG_DIR=pkg
 CMD_DIR=cmd
+RUST_SDK_DIR=sdk/rust
 
 # Go parameters
 GOCMD=go
@@ -24,13 +27,20 @@ GOGET=$(GOCMD) get
 GOMOD=$(GOCMD) mod
 GOFMT=$(GOCMD) fmt
 
+# Rust parameters
+CARGO=cargo
+CARGO_BUILD=$(CARGO) build
+CARGO_BUILD_RELEASE=$(CARGO) build --release
+CARGO_CLEAN=$(CARGO) clean
+CARGO_TEST=$(CARGO) test
+
 # Build flags
 LDFLAGS=-ldflags "-X main.version=$(VERSION)"
 
-.PHONY: all build build-cli build-server build-encrypt build-decrypt build-keygen build-serverinfo build-test-runner clean test test-verbose deps fmt lint help install demo server encrypt decrypt keygen serverinfo run-tests fuzz fuzz-server fuzz-crypto fuzz-api fuzz-all fuzz-quick fuzz-extended fuzz-coverage fuzz-clean fuzz-help
+.PHONY: all build build-cli build-server build-encrypt build-decrypt build-keygen build-serverinfo build-test-runner build-rust build-rust-encrypt build-rust-decrypt test-rust clean clean-rust test test-verbose deps fmt lint help install demo server encrypt decrypt rust-encrypt rust-decrypt keygen serverinfo run-tests fuzz fuzz-server fuzz-crypto fuzz-api fuzz-all fuzz-quick fuzz-extended fuzz-coverage fuzz-clean fuzz-help
 
 # Default target
-all: clean deps fmt test build build-cli build-server build-encrypt build-decrypt build-keygen build-serverinfo build-test-runner
+all: clean deps fmt test build build-cli build-server build-encrypt build-decrypt build-keygen build-serverinfo build-test-runner build-rust
 
 # Build the demo application
 build:
@@ -72,12 +82,64 @@ build-test-runner:
 	@echo "🔨 Building OpenADP test runner..."
 	$(GOBUILD) -o $(BUILD_DIR)/$(TEST_RUNNER_BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/run-tests
 
+# Build all Rust tools
+build-rust: build-rust-encrypt build-rust-decrypt
+
+# Build the Rust encryption tool
+build-rust-encrypt:
+	@echo "🦀 Building Rust OpenADP encryption tool..."
+	@mkdir -p $(BUILD_DIR)
+	@if [ -f "$(RUST_SDK_DIR)/Cargo.toml" ]; then \
+		cd $(RUST_SDK_DIR) && $(CARGO_BUILD_RELEASE) --bin openadp-encrypt; \
+		cp target/release/openadp-encrypt ../../$(BUILD_DIR)/$(RUST_ENCRYPT_BINARY_NAME); \
+		echo "✅ Rust encrypt tool built successfully"; \
+	else \
+		echo "❌ Rust SDK not found at $(RUST_SDK_DIR)"; \
+		exit 1; \
+	fi
+
+# Build the Rust decryption tool
+build-rust-decrypt:
+	@echo "🦀 Building Rust OpenADP decryption tool..."
+	@mkdir -p $(BUILD_DIR)
+	@if [ -f "$(RUST_SDK_DIR)/Cargo.toml" ]; then \
+		cd $(RUST_SDK_DIR) && $(CARGO_BUILD_RELEASE) --bin openadp-decrypt; \
+		cp target/release/openadp-decrypt ../../$(BUILD_DIR)/$(RUST_DECRYPT_BINARY_NAME); \
+		echo "✅ Rust decrypt tool built successfully"; \
+	else \
+		echo "❌ Rust SDK not found at $(RUST_SDK_DIR)"; \
+		exit 1; \
+	fi
+
+# Test Rust tools
+test-rust:
+	@echo "🦀 Testing Rust OpenADP tools..."
+	@if [ -f "$(RUST_SDK_DIR)/Cargo.toml" ]; then \
+		cd $(RUST_SDK_DIR) && $(CARGO_TEST); \
+		echo "✅ Rust tests completed"; \
+	else \
+		echo "❌ Rust SDK not found at $(RUST_SDK_DIR)"; \
+		exit 1; \
+	fi
+
 # Clean build artifacts
 clean:
 	@echo "🧹 Cleaning build artifacts..."
 	$(GOCLEAN)
 	rm -rf $(BUILD_DIR)
 	mkdir -p $(BUILD_DIR)
+	@$(MAKE) clean-rust 2>/dev/null || true
+
+# Clean Rust build artifacts
+clean-rust:
+	@echo "🦀 Cleaning Rust build artifacts..."
+	@if [ -f "$(RUST_SDK_DIR)/Cargo.toml" ]; then \
+		cd $(RUST_SDK_DIR) && $(CARGO_CLEAN); \
+		rm -f $(BUILD_DIR)/$(RUST_ENCRYPT_BINARY_NAME) $(BUILD_DIR)/$(RUST_DECRYPT_BINARY_NAME); \
+		echo "✅ Rust artifacts cleaned"; \
+	else \
+		echo "❌ Rust SDK not found at $(RUST_SDK_DIR)"; \
+	fi
 
 # Run tests using the built-in go test
 test:
@@ -145,7 +207,7 @@ lint:
 	fi
 
 # Install binaries to GOPATH/bin
-install: build build-cli build-server build-encrypt build-decrypt build-keygen build-serverinfo build-test-runner
+install: build build-cli build-server build-encrypt build-decrypt build-keygen build-serverinfo build-test-runner build-rust
 	@echo "📥 Installing binaries..."
 	cp $(BUILD_DIR)/$(BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(CLI_BINARY_NAME) $(GOPATH)/bin/
@@ -155,6 +217,11 @@ install: build build-cli build-server build-encrypt build-decrypt build-keygen b
 	cp $(BUILD_DIR)/$(KEYGEN_BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(SERVERINFO_BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(TEST_RUNNER_BINARY_NAME) $(GOPATH)/bin/
+	@if [ -f "$(BUILD_DIR)/$(RUST_ENCRYPT_BINARY_NAME)" ]; then \
+		cp $(BUILD_DIR)/$(RUST_ENCRYPT_BINARY_NAME) $(GOPATH)/bin/; \
+		cp $(BUILD_DIR)/$(RUST_DECRYPT_BINARY_NAME) $(GOPATH)/bin/; \
+		echo "✅ Installed Rust binaries to $(GOPATH)/bin/"; \
+	fi
 	@echo "✅ Installed all binaries to $(GOPATH)/bin/"
 
 # Run the demo application
@@ -186,6 +253,16 @@ decrypt: build-decrypt
 serverinfo: build-serverinfo
 	@echo "📋 Running OpenADP server info tool..."
 	./$(BUILD_DIR)/$(SERVERINFO_BINARY_NAME) -help
+
+# Run the Rust encryption tool
+rust-encrypt: build-rust-encrypt
+	@echo "🦀 Running Rust OpenADP encryption tool..."
+	./$(BUILD_DIR)/$(RUST_ENCRYPT_BINARY_NAME) --help
+
+# Run the Rust decryption tool
+rust-decrypt: build-rust-decrypt
+	@echo "🦀 Running Rust OpenADP decryption tool..."
+	./$(BUILD_DIR)/$(RUST_DECRYPT_BINARY_NAME) --help
 
 # Generate authentication code
 auth-code: build-cli
@@ -309,9 +386,13 @@ help:
 	@echo "  build-encrypt    - Build encryption tool"
 	@echo "  build-decrypt    - Build decryption tool"
 	@echo "  build-keygen     - Build key generation tool"
+	@echo "  build-rust       - Build all Rust tools"
+	@echo "  build-rust-encrypt - Build Rust encryption tool"
+	@echo "  build-rust-decrypt - Build Rust decryption tool"
 	@echo ""
 	@echo "🧪 Test Targets:"
 	@echo "  test             - Run all tests"
+	@echo "  test-rust        - Run Rust tests"
 	@echo "  test-coverage    - Run tests with coverage report"
 	@echo "  test-race        - Run tests with race detection"
 	@echo "  test-server      - Test server connectivity"
@@ -324,6 +405,8 @@ help:
 	@echo "  server           - Run server application"
 	@echo "  encrypt          - Run encryption tool"
 	@echo "  decrypt          - Run decryption tool"
+	@echo "  rust-encrypt     - Run Rust encryption tool"
+	@echo "  rust-decrypt     - Run Rust decryption tool"
 	@echo "  interactive      - Run CLI in interactive mode"
 	@echo ""
 	@echo "🏗️  Node Operator Targets:"

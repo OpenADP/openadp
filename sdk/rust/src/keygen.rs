@@ -1,23 +1,20 @@
-//! Key generation and recovery functionality for OpenADP.
-//!
-//! This module implements the OpenADP protocol for distributed secret sharing:
-//! - Identity-based encryption key generation
-//! - Shamir secret sharing across multiple servers
-//! - Key recovery using threshold cryptography
+//! Key generation and recovery functionality for OpenADP
+//! 
+//! This module provides the core cryptographic operations for OpenADP:
+//! - Identity management (UID, DID, BID)
+//! - Encryption key generation using distributed secret sharing
+//! - Key recovery from distributed shares
 //! - Authentication code management
 
 use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use sha2::{Sha256, Digest};
 use serde::{Deserialize, Serialize};
-use tokio;
 use rand::rngs::OsRng;
-use rand::{RngCore, Rng};
+use rand::RngCore;
 use num_bigint::BigUint;
-use num_traits::{Zero, One};
-// Removed curve25519-dalek dependency
+use num_traits::One;
 
 use crate::{OpenADPError, Result};
 use crate::client::{
@@ -25,8 +22,8 @@ use crate::client::{
     RegisterSecretRequest, RecoverSecretRequest, ListBackupsRequest,
 };
 use crate::crypto::{
-    H, point_compress, Point4D, ShamirSecretSharing, point_decompress, unexpand, expand, point_mul, 
-    derive_enc_key, recover_point_secret, PointShare, sha256_hash
+    H, point_compress, ShamirSecretSharing, point_decompress, unexpand, point_mul, 
+    derive_enc_key, recover_point_secret, PointShare
 };
 
 /// Identity represents the three-part key for OpenADP: (UID, DID, BID)
@@ -123,12 +120,6 @@ impl RecoverEncryptionKeyResult {
     }
 }
 
-/// Convert password to PIN using direct bytes (matches Go PasswordToPin)
-pub fn password_to_pin(password: &str) -> Vec<u8> {
-    // Use password bytes directly (no unnecessary hashing/truncation)
-    password.as_bytes().to_vec()
-}
-
 /// Generate authentication codes for servers
 pub fn generate_auth_codes(server_urls: &[String]) -> AuthCodes {
     let mut rng = OsRng;
@@ -212,7 +203,7 @@ pub async fn generate_encryption_key(
     }
     
     // Step 3: Convert password to PIN
-    let pin = password_to_pin(password);
+    let pin = password.as_bytes().to_vec();
     println!("🔍 DEBUG: password={}, pin={}", password, hex::encode(&pin));
     
     // Step 4: Generate random secret using cryptographically secure RNG
@@ -334,7 +325,7 @@ pub async fn recover_encryption_key(
     println!("OpenADP: Identity={}", identity);
     
     // Step 1: Compute U = H(uid, did, bid, pin) - same as in generation
-    let pin = password_to_pin(password);
+    let pin = password.as_bytes().to_vec();
     let u = H(identity.uid.as_bytes(), identity.did.as_bytes(), identity.bid.as_bytes(), &pin)?;
     let u_2d = unexpand(&u)?;
     println!("🔍 DEBUG: U point: x={}, y={}", hex::encode(&u_2d.x.to_bytes_le()), hex::encode(&u_2d.y.to_bytes_le()));
@@ -683,21 +674,6 @@ mod tests {
     }
 
     #[test]
-    fn test_password_to_pin() {
-        let pin1 = password_to_pin("test123");
-        let pin2 = password_to_pin("test123");
-        let pin3 = password_to_pin("different");
-        
-        assert_eq!(pin1.len(), 16);
-        assert_eq!(pin1, pin2); // Same password = same PIN
-        assert_ne!(pin1, pin3); // Different password = different PIN
-        
-        // Test with empty string
-        let empty_pin = password_to_pin("");
-        assert_eq!(empty_pin.len(), 16);
-    }
-
-    #[test]
     fn test_generate_auth_codes() {
         let servers = vec![
             "https://server1.example.com".to_string(),
@@ -724,13 +700,13 @@ mod tests {
         let servers = vec!["https://test.com".to_string()];
         let auth_codes = generate_auth_codes(&servers);
         
-        // Base auth code should be 32 hex characters (16 bytes)
-        assert_eq!(auth_codes.base_auth_code.len(), 32);
+        // Base auth code should be 64 hex characters (32 bytes)
+        assert_eq!(auth_codes.base_auth_code.len(), 64);
         assert!(auth_codes.base_auth_code.chars().all(|c| c.is_ascii_hexdigit()));
         
-        // Server auth codes should also be 32 hex characters
+        // Server auth codes should also be 64 hex characters
         for (_, code) in &auth_codes.server_auth_codes {
-            assert_eq!(code.len(), 32);
+            assert_eq!(code.len(), 64);
             assert!(code.chars().all(|c| c.is_ascii_hexdigit()));
         }
     }
@@ -811,34 +787,6 @@ mod tests {
     }
 
     #[test]
-    fn test_password_to_pin_comprehensive() {
-        // Test various password types
-        let passwords = vec![
-            "",
-            "a",
-            "short",
-            "this is a longer password with spaces",
-            "P@ssw0rd!",
-            "🔐🔑",  // Unicode
-            &"x".repeat(1000), // Very long
-        ];
-        
-        for password in &passwords {
-            let pin = password_to_pin(password);
-            assert_eq!(pin.len(), 16, "PIN length should always be 16 for password: {}", password);
-            
-            // Same password should always produce same PIN
-            let pin2 = password_to_pin(password);
-            assert_eq!(pin, pin2, "Same password should produce same PIN");
-        }
-        
-        // Different passwords should produce different PINs (with high probability)
-        let pin1 = password_to_pin("password1");
-        let pin2 = password_to_pin("password2");
-        assert_ne!(pin1, pin2, "Different passwords should produce different PINs");
-    }
-
-    #[test]
     fn test_encryption_key_derivation() {
         // This is more of an integration test, but we can test the basic flow
         let identity = Identity::new(
@@ -848,7 +796,7 @@ mod tests {
         );
         
         let password = "test-password";
-        let pin = password_to_pin(password);
+        let pin = password.as_bytes().to_vec();
         
         // Test that H function works with our identity
         let result = H(

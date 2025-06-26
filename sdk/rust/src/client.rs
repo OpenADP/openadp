@@ -953,7 +953,8 @@ pub fn get_fallback_servers() -> Vec<String> {
     vec![
         "https://xyzzy.openadp.org".to_string(),
         "https://sky.openadp.org".to_string(),
-        "https://akash.network".to_string(),
+        "https://minime.openadp.org".to_string(),
+        "https://louis.evilduckie.ca".to_string(),
     ]
 }
 
