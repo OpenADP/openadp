@@ -900,14 +900,23 @@ pub struct ServersResponse {
 
 /// Get servers from registry
 pub async fn get_servers(registry_url: &str) -> Result<Vec<ServerInfo>> {
-    let url = if registry_url.is_empty() {
-        crate::DEFAULT_REGISTRY_URL
+    let mut url = if registry_url.is_empty() {
+        crate::DEFAULT_REGISTRY_URL.to_string()
     } else {
-        registry_url
+        registry_url.to_string()
     };
     
+    // Ensure the URL ends with the correct API endpoint
+    if !url.ends_with("/api/servers.json") && !url.ends_with("/servers.json") {
+        if url.ends_with('/') {
+            url.push_str("api/servers.json");
+        } else {
+            url.push_str("/api/servers.json");
+        }
+    }
+    
     let client = Client::new();
-    let response = client.get(url).send().await.map_err(OpenADPError::Network)?;
+    let response = client.get(&url).send().await.map_err(OpenADPError::Network)?;
     
     if !response.status().is_success() {
         return Err(OpenADPError::Server(format!("HTTP {}", response.status())));
@@ -953,20 +962,26 @@ pub fn get_fallback_server_info() -> Vec<ServerInfo> {
     vec![
         ServerInfo {
             url: "https://xyzzy.openadp.org".to_string(),
-            public_key: "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder1XyzzyServer12345TestKey".to_string(),
+            public_key: "FEOkIV7ZhONfuhSOkEuTNo36pVzS2KAhqDXYwC8MySA=".to_string(),
             country: "US".to_string(),
             remaining_guesses: None,
         },
         ServerInfo {
             url: "https://sky.openadp.org".to_string(),
-            public_key: "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder2SkyServerTestKey67890Demo".to_string(),
+            public_key: "uCvcLGSdROipW6AlX1vmzezkpzHNu6M0C4O/5dc8flg=".to_string(),
             country: "US".to_string(),
             remaining_guesses: None,
         },
         ServerInfo {
-            url: "https://akash.network".to_string(),
-            public_key: "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder3AkashNetworkTestKey111Demo".to_string(),
-            country: "CA".to_string(),
+            url: "https://minime.openadp.org".to_string(),
+            public_key: "gnV5Obw3maZGgL1HHK4YW0DkyKcp7Tp+xD9f4+gus3s=".to_string(),
+            country: "US".to_string(),
+            remaining_guesses: None,
+        },
+        ServerInfo {
+            url: "https://louis.evilduckie.ca".to_string(),
+            public_key: "G2G5FPQ7WMBJMPvQpMOsn9txwXavvcTZq50txF4rryw=".to_string(),
+            country: "US".to_string(),
             remaining_guesses: None,
         },
     ]

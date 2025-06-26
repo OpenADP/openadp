@@ -133,8 +133,8 @@ pub fn password_to_pin(password: &str) -> Vec<u8> {
 pub fn generate_auth_codes(server_urls: &[String]) -> AuthCodes {
     let mut rng = OsRng;
     
-    // Generate base auth code (16 random bytes)
-    let mut base_auth_bytes = [0u8; 16];
+    // Generate base auth code (32 random bytes = 64 hex chars, matching Go)
+    let mut base_auth_bytes = [0u8; 32];
     rng.fill_bytes(&mut base_auth_bytes);
     let base_auth_code = hex::encode(base_auth_bytes);
     
@@ -146,7 +146,7 @@ pub fn generate_auth_codes(server_urls: &[String]) -> AuthCodes {
         hasher.update(b":");
         hasher.update(server_url.as_bytes());
         let hash = hasher.finalize();
-        let server_code = hex::encode(&hash[..16]);
+        let server_code = hex::encode(&hash);  // Use FULL hash (32 bytes = 64 hex chars) to match Go
         server_auth_codes.insert(server_url.clone(), server_code);
     }
     
@@ -225,9 +225,18 @@ pub async fn generate_encryption_key(
     let q = ShamirSecretSharing::get_q();
     let secret = secret_int % &q;
     
-    // Split the random secret using Shamir secret sharing
+    // Step 5: Calculate threshold (majority threshold like Go: len/2 + 1)
     let threshold = live_server_infos.len() / 2 + 1;
-    let shares = ShamirSecretSharing::split_secret(&secret, threshold, live_server_infos.len())?;
+    let num_shares = live_server_infos.len(); // Use ALL live servers, not threshold+2
+    
+    if num_shares < threshold {
+        return Ok(GenerateEncryptionKeyResult::error(format!(
+            "Need at least {} servers, only {} available", threshold, num_shares
+        )));
+    }
+    
+    // Split the random secret using Shamir secret sharing with ALL live servers
+    let shares = ShamirSecretSharing::split_secret(&secret, threshold, num_shares)?;
     
     // Step 6: Compute U = H(uid, did, bid, pin)
     let u = H(identity.uid.as_bytes(), identity.did.as_bytes(), identity.bid.as_bytes(), &pin)?;
@@ -236,6 +245,9 @@ pub async fn generate_encryption_key(
     
     // Step 7: Register shares with servers
     println!("🔑 Registering shares with {} servers...", clients.len());
+    
+    let mut registration_errors = Vec::new();
+    let mut successful_registrations = 0;
     
     for (i, mut client) in clients.into_iter().enumerate() {
         let (share_id, share_data) = &shares[i];
@@ -263,17 +275,31 @@ pub async fn generate_encryption_key(
         match client.register_secret_standardized(request).await {
             Ok(response) => {
                 if response.success {
-                    println!("✅ Registered share {} with server {}", share_id, server_url);
+                    let enc_status = if client.has_public_key() { "encrypted" } else { "unencrypted" };
+                    println!("OpenADP: Registered share {} with server {} ({}) [{}]", 
+                        share_id, i + 1, server_url, enc_status);
+                    successful_registrations += 1;
                 } else {
+                    let error_msg = format!("Server {} ({}): Registration returned false: {}", 
+                        i + 1, server_url, response.message);
+                    registration_errors.push(error_msg);
                     println!("❌ Failed to register share {} with server {}: {}", 
                         share_id, server_url, response.message);
                 }
             }
             Err(e) => {
+                let error_msg = format!("Server {} ({}): {}", i + 1, server_url, e);
+                registration_errors.push(error_msg);
                 println!("❌ Error registering share {} with server {}: {}", 
                     share_id, server_url, e);
             }
         }
+    }
+    
+    if successful_registrations == 0 {
+        return Ok(GenerateEncryptionKeyResult::error(format!(
+            "Failed to register any shares: {:?}", registration_errors
+        )));
     }
     
     // Step 8: Derive encryption key from secret point s*U
@@ -287,7 +313,7 @@ pub async fn generate_encryption_key(
     let secret_point = point_mul(&secret_biguint, &u);
     let encryption_key = derive_enc_key(&secret_point)?;
     
-    println!("✅ Generated encryption key with {}-of-{} threshold", threshold, live_server_infos.len());
+    println!("OpenADP: Successfully generated encryption key");
     
     Ok(GenerateEncryptionKeyResult::success(
         encryption_key,
