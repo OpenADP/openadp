@@ -842,17 +842,24 @@ impl EncryptedOpenADPClient {
                 request.guess_num
             ]));
             
-            let result = self.make_encrypted_request("RecoverSecret", params).await?;
-            
-            println!("🔍 DEBUG: Raw server result: {:?}", result);
-            
+            let response = self.make_encrypted_request("RecoverSecret", params).await?;
+
+            println!("🔍 DEBUG: Raw JSON response from server: {}", serde_json::to_string_pretty(&response).unwrap_or_else(|_| format!("{:?}", response)));
+
+            let version = response.get("version").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
+            let x = response.get("x").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            let si_b = response.get("si_b").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let num_guesses = response.get("num_guesses").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            let max_guesses = response.get("max_guesses").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            let expiration = response.get("expiration").and_then(|v| v.as_i64()).unwrap_or(0);
+
             Ok(RecoverSecretResponse {
-                version: result.get("version").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-                x: result.get("x").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-                si_b: result.get("si_b").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                num_guesses: result.get("num_guesses").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-                max_guesses: result.get("max_guesses").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
-                expiration: result.get("expiration").and_then(|v| v.as_i64()).unwrap_or(0),
+                version,
+                x,
+                si_b,
+                num_guesses,
+                max_guesses,
+                expiration,
             })
         } else {
             // Use unencrypted request

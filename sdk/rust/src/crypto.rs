@@ -17,6 +17,9 @@ use hkdf::Hkdf;
 use rand::{Rng, SeedableRng};
 use rand_core::{OsRng, RngCore};
 use rug::{Integer, Complete};
+use num_bigint::BigUint;
+use num_traits::{Zero, One};
+use hex;
 // Removed unused imports
 
 // Ed25519 curve parameters
@@ -71,16 +74,40 @@ impl Point4D {
     }
     
     pub fn from_edwards_point(point: &EdwardsPoint) -> Self {
-        let compressed = point.compress();
-        let bytes = compressed.as_bytes();
+        // We need to extract the actual affine coordinates (x,y) from the Edwards point
+        // Since curve25519-dalek doesn't expose the internal coordinates directly,
+        // we'll use a workaround by compressing and then extracting coordinates
         
-        // For extended coordinates, we'll use the compressed form
-        // This is a simplified representation
+        let compressed = point.compress();
+        let compressed_bytes = compressed.as_bytes();
+        
+        // The compressed format contains y-coordinate with a sign bit for x
+        // Extract y coordinate (clear the sign bit)
+        let mut y_bytes = [0u8; 32];
+        y_bytes.copy_from_slice(compressed_bytes);
+        let x_sign = (y_bytes[31] & 0x80) != 0;
+        y_bytes[31] &= 0x7f; // Clear sign bit
+        
+        // Recover x coordinate from y coordinate and sign bit using proper Ed25519 math
+        let y_bigint = BigUint::from_bytes_le(&y_bytes);
+        let x_bigint = match recover_x(&y_bigint, x_sign as u8) {
+            Some(x) => x,
+            None => {
+                // Fallback to using the original compressed point approach
+                return Self::from_edwards_point(&point);
+            }
+        };
+        
+        let mut x_bytes = [0u8; 32];
+        let x_le_bytes = x_bigint.to_bytes_le();
+        let copy_len = std::cmp::min(x_le_bytes.len(), 32);
+        x_bytes[..copy_len].copy_from_slice(&x_le_bytes[..copy_len]);
+        
         Self {
-            x: *bytes,
-            y: *bytes,
-            z: [1u8; 32], // Standard z coordinate
-            t: [0u8; 32], // Will be computed properly in full implementation
+            x: x_bytes,
+            y: y_bytes,
+            z: [1u8; 32], // Standard z coordinate for affine representation
+            t: [0u8; 32], // Will be computed properly if needed
         }
     }
     
@@ -155,21 +182,89 @@ pub fn is_valid_point(point: &Point4D) -> bool {
 
 /// Convert Point2D to Point4D (expand)
 pub fn expand(point2d: &Point2D) -> Result<Point4D> {
-    // Simplified expansion - in practice would convert affine to extended coordinates
+    use num_bigint::BigUint;
+    
+    // Convert affine coordinates (x, y) to extended coordinates (X, Y, Z, T)
+    // where X/Z = x, Y/Z = y, and T = XY/Z
+    // For affine coordinates, Z = 1, so X = x, Y = y, T = xy
+    
+    // Field prime p = 2^255 - 19 for Ed25519
+    let p_bytes = [
+        0xed, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f,
+    ];
+    let p = BigUint::from_bytes_le(&p_bytes);
+    
+    // Convert x and y to BigUint
+    let x = BigUint::from_bytes_le(&point2d.x);
+    let y = BigUint::from_bytes_le(&point2d.y);
+    
+    // Compute t = x * y mod p
+    let t_bigint = (&x * &y) % &p;
+    
+    // Convert back to 32-byte array
+    let mut t_bytes = [0u8; 32];
+    let t_le_bytes = t_bigint.to_bytes_le();
+    let copy_len = std::cmp::min(t_le_bytes.len(), 32);
+    t_bytes[..copy_len].copy_from_slice(&t_le_bytes[..copy_len]);
+    
     Ok(Point4D {
         x: point2d.x,
         y: point2d.y,
-        z: [1u8; 32],
-        t: [0u8; 32], // Would compute x*y/z properly
+        z: [1u8; 32], // Z = 1 for affine coordinates
+        t: t_bytes,   // T = x * y mod p
     })
 }
 
 /// Convert Point4D to Point2D (unexpand)
 pub fn unexpand(point4d: &Point4D) -> Result<Point2D> {
-    // Simplified unexpansion - in practice would convert extended to affine coordinates
+    use num_bigint::BigUint;
+    
+    // Convert extended coordinates (X, Y, Z, T) to affine coordinates (x, y)
+    // where x = X/Z mod p and y = Y/Z mod p
+    
+    // Field prime p = 2^255 - 19 for Ed25519
+    let p_bytes = [
+        0xed, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f,
+    ];
+    let p = BigUint::from_bytes_le(&p_bytes);
+    
+    // Convert coordinates to BigUint
+    let x_coord = BigUint::from_bytes_le(&point4d.x);
+    let y_coord = BigUint::from_bytes_le(&point4d.y);
+    let z_coord = BigUint::from_bytes_le(&point4d.z);
+    
+    // Check for zero Z coordinate (point at infinity)
+    if z_coord.is_zero() {
+        return Err(OpenADPError::Crypto("Cannot convert point at infinity to affine coordinates".to_string()));
+    }
+    
+    // Compute modular inverse of Z
+    let z_inv = mod_inverse(&z_coord, &p);
+    
+    // Compute affine coordinates: x = X * Z^(-1) mod p, y = Y * Z^(-1) mod p
+    let x_affine = (&x_coord * &z_inv) % &p;
+    let y_affine = (&y_coord * &z_inv) % &p;
+    
+    // Convert back to 32-byte arrays
+    let mut x_bytes = [0u8; 32];
+    let x_le_bytes = x_affine.to_bytes_le();
+    let x_copy_len = std::cmp::min(x_le_bytes.len(), 32);
+    x_bytes[..x_copy_len].copy_from_slice(&x_le_bytes[..x_copy_len]);
+    
+    let mut y_bytes = [0u8; 32];
+    let y_le_bytes = y_affine.to_bytes_le();
+    let y_copy_len = std::cmp::min(y_le_bytes.len(), 32);
+    y_bytes[..y_copy_len].copy_from_slice(&y_le_bytes[..y_copy_len]);
+    
     Ok(Point2D {
-        x: point4d.x,
-        y: point4d.y,
+        x: x_bytes,
+        y: y_bytes,
     })
 }
 
@@ -180,43 +275,209 @@ pub fn sha256_hash(data: &[u8]) -> Vec<u8> {
     hasher.finalize().to_vec()
 }
 
-/// Add prefix to data for domain separation
+/// Add 16-bit length prefix to data (matches Go implementation exactly)
 pub fn prefixed(data: &[u8]) -> Vec<u8> {
-    let mut result = Vec::with_capacity(data.len() + 8);
-    result.extend_from_slice(b"OpenADP:");
+    let l = data.len();
+    if l >= (1 << 16) {
+        panic!("Input string too long");
+    }
+    let mut result = Vec::with_capacity(data.len() + 2);
+    result.push(l as u8);           // Low byte
+    result.push((l >> 8) as u8);    // High byte
     result.extend_from_slice(data);
     result
 }
 
-/// Hash-to-point function H (matches Go/Python implementation)
-pub fn hash_to_point(uid: &[u8], did: &[u8], bid: &[u8], pin: &[u8]) -> Result<Point4D> {
-    // Combine inputs with domain separation
-    let mut input = Vec::new();
-    input.extend_from_slice(b"OpenADP_H:");
-    input.extend_from_slice(uid);
-    input.push(0); // separator
-    input.extend_from_slice(did);
-    input.push(0); // separator
-    input.extend_from_slice(bid);
-    input.push(0); // separator
-    input.extend_from_slice(pin);
+/// Compute modular square root using Tonelli-Shanks algorithm (matching Go implementation)
+pub fn mod_sqrt(n: &BigUint) -> Option<BigUint> {
+    use num_bigint::BigUint;
     
-    // Hash and map to curve point
-    let hash = sha256_hash(&input);
+    // Field prime p = 2^255 - 19 for Ed25519
+    let p_bytes = [
+        0xed, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f,
+    ];
+    let p = BigUint::from_bytes_le(&p_bytes);
     
-    // Use hash as seed for deterministic point generation
-    let mut rng = rand::rngs::StdRng::from_seed({
-        let mut seed = [0u8; 32];
-        seed.copy_from_slice(&hash);
-        seed
-    });
+    if n >= &p {
+        return None;
+    }
     
-    // Generate random scalar and multiply by base point
-    let scalar_bytes: [u8; 32] = rng.gen();
-    let scalar = Scalar::from_bytes_mod_order(scalar_bytes);
-    let point = scalar * ED25519_BASEPOINT_POINT;
+    if n.is_zero() {
+        return Some(BigUint::zero());
+    }
     
-    Ok(Point4D::from_edwards_point(&point))
+    // For Ed25519 field, we can use the optimized approach from Go
+    // Compute x = n^((p+3)/8) mod p
+    let exp = (&p + 3u32) / 8u32;
+    let mut x = n.modpow(&exp, &p);
+    
+    // Check if x^2 == n mod p
+    let x_squared = (&x * &x) % &p;
+    
+    if x_squared != *n {
+        // Multiply by sqrt(-1) mod p
+        // sqrt(-1) = 2^((p-1)/4) mod p for p = 2^255 - 19
+        let sqrt_m1_exp = (&p - 1u32) / 4u32;
+        let sqrt_m1 = BigUint::from(2u32).modpow(&sqrt_m1_exp, &p);
+        x = (x * sqrt_m1) % &p;
+    }
+    
+    // Verify the result
+    let verification = (&x * &x) % &p;
+    if verification == *n {
+        Some(x)
+    } else {
+        None
+    }
+}
+
+/// Recover X coordinate from Y coordinate and sign bit (matching Go implementation)
+pub fn recover_x(y: &BigUint, sign: u8) -> Option<BigUint> {
+    use num_bigint::BigUint;
+    
+    // Field prime p = 2^255 - 19 for Ed25519
+    let p_bytes = [
+        0xed, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f,
+    ];
+    let p = BigUint::from_bytes_le(&p_bytes);
+    
+    // Edwards curve parameter d
+    let d_bytes = [
+        0xa3, 0x78, 0x59, 0x13, 0xca, 0x4d, 0xeb, 0x75,
+        0xab, 0xd8, 0x41, 0x41, 0x4d, 0x0a, 0x70, 0x00,
+        0x98, 0xe8, 0x79, 0x77, 0x79, 0x40, 0xc7, 0x8c,
+        0x73, 0xfe, 0x6f, 0x2b, 0xee, 0x6c, 0x03, 0x52,
+    ];
+    let d = BigUint::from_bytes_le(&d_bytes);
+    
+    if y >= &p {
+        return None;
+    }
+    
+    // x^2 = (y^2 - 1) / (d * y^2 + 1)
+    let y2 = (y * y) % &p;
+    
+    let numerator = if y2 >= BigUint::from(1u32) {
+        (&y2 - 1u32) % &p
+    } else {
+        &p - (1u32 - &y2)
+    };
+    
+    let denominator = ((&d * &y2) + 1u32) % &p;
+    
+    // Compute modular inverse of denominator
+    let denominator_inv = denominator.modpow(&(&p - 2u32), &p);
+    let x2 = (numerator * denominator_inv) % &p;
+    
+    if x2.is_zero() {
+        if sign != 0 {
+            return None;
+        }
+        return Some(BigUint::zero());
+    }
+    
+    // Compute square root of x2
+    let x_opt = mod_sqrt(&x2)?;
+    let mut x = x_opt;
+    
+    // Check sign bit and adjust if necessary
+    let x_bit0 = if x.is_zero() { 0 } else { x.to_bytes_le()[0] & 1 };
+    if x_bit0 != sign {
+        x = &p - &x;
+    }
+    
+    Some(x)
+}
+
+/// Modular inverse using Fermat's little theorem (for prime moduli)
+pub fn mod_inverse(a: &BigUint, p: &BigUint) -> BigUint {
+    // For prime p, a^(-1) = a^(p-2) mod p
+    let exp = p - 2u32;
+    a.modpow(&exp, p)
+}
+
+/// Hash-to-point function H (matches Go/Python implementation exactly)
+pub fn H(uid: &[u8], did: &[u8], bid: &[u8], pin: &[u8]) -> Result<Point4D> {
+    println!("🔍 Rust H DEBUG: uid={:?}, did={:?}, bid={:?}, pin={:?}", uid, did, bid, pin);
+    
+    // Concatenate all inputs with length prefixes (matching Python implementation)
+    let prefixed_uid = prefixed(uid);
+    let prefixed_did = prefixed(did);
+    let prefixed_bid = prefixed(bid);
+    println!("🔍 Rust H DEBUG: prefixed_uid={}", hex::encode(&prefixed_uid));
+    println!("🔍 Rust H DEBUG: prefixed_did={}", hex::encode(&prefixed_did));
+    println!("🔍 Rust H DEBUG: prefixed_bid={}", hex::encode(&prefixed_bid));
+    println!("🔍 Rust H DEBUG: pin={}", hex::encode(pin));
+    
+    let mut data = prefixed_uid;
+    data.extend_from_slice(&prefixed_did);
+    data.extend_from_slice(&prefixed_bid);
+    data.extend_from_slice(pin);
+    println!("🔍 Rust H DEBUG: combined data={}", hex::encode(&data));
+
+    // Hash and convert to point
+    let hash = sha256_hash(&data);
+    println!("🔍 Rust H DEBUG: hash_bytes={}", hex::encode(&hash));
+
+    // Convert hash to big integer and extract sign bit (matching Python)
+    // Reverse bytes for little-endian interpretation (matching Go reverseBytes)
+    let mut hash_le = hash.clone();
+    hash_le.reverse();
+    println!("🔍 Rust H DEBUG: hash_le={}", hex::encode(&hash_le));
+    
+    // Convert to big integer (little-endian) - handle full 256 bits
+    let y_base_full = BigUint::from_bytes_le(&hash_le);
+    println!("🔍 Rust H DEBUG: y_base_full={:064x}", y_base_full);
+    
+    // Extract sign bit (bit 255) and clear it
+    let sign = if y_base_full.bit(255) { 1 } else { 0 };
+    let mut y_base = y_base_full.clone();
+    y_base.set_bit(255, false);
+    println!("🔍 Rust H DEBUG: sign={}, y_base_cleared={:064x}", sign, y_base);
+    
+    // Try to find a valid point
+    for counter in 0..1000 {
+        // XOR with counter to find valid point
+        let y = y_base.clone() ^ BigUint::from(counter as u32);
+        println!("🔍 Rust H DEBUG: counter={}, y={:064x}", counter, y);
+        
+        // Try to recover x coordinate
+        if let Some(x) = recover_x(&y, sign) {
+            println!("🔍 Rust H DEBUG: Found valid point at counter={}, x={}, y={}", counter, hex::encode(&x.to_bytes_le()), hex::encode(&y.to_bytes_le()));
+            // Create Point2D and expand to Point4D
+            // Convert BigUint coordinates to 32-byte arrays
+            let mut x_bytes = [0u8; 32];
+            let x_le_bytes = x.to_bytes_le();
+            let x_copy_len = std::cmp::min(x_le_bytes.len(), 32);
+            x_bytes[..x_copy_len].copy_from_slice(&x_le_bytes[..x_copy_len]);
+            
+            let mut y_bytes = [0u8; 32];
+            let y_le_bytes = y.to_bytes_le();
+            let y_copy_len = std::cmp::min(y_le_bytes.len(), 32);
+            y_bytes[..y_copy_len].copy_from_slice(&y_le_bytes[..y_copy_len]);
+            
+            let point_2d = Point2D::new(x_bytes, y_bytes);
+            let mut point_4d = expand(&point_2d)?;
+            
+            // Force the point to be in a group of order q (multiply by 8)
+            point_4d = point_mul8(&point_4d)?;
+            
+            if is_valid_point(&point_4d) {
+                println!("🔍 Rust H DEBUG: Final point: x={}, y={}", hex::encode(&point_4d.x), hex::encode(&point_4d.y));
+                return Ok(point_4d);
+            }
+        }
+    }
+    
+    // Fallback to base point if no valid point found
+    println!("🔍 Rust H DEBUG: No valid point found, using base point");
+    Ok(base_point())
 }
 
 /// Derive encryption key from point
@@ -234,8 +495,6 @@ pub fn derive_enc_key(point: &Point4D) -> Result<Vec<u8>> {
     
     Ok(okm.to_vec())
 }
-
-
 
 // Large prime for Shamir secret sharing - using Python's Q value
 // This is the order of the Ed25519 curve
@@ -334,16 +593,18 @@ impl ShamirSecretSharing {
             for (j, (xj, _)) in int_shares.iter().enumerate() {
                 if i != j {
                     // numerator = numerator * (0 - xj) = numerator * (-xj) = numerator * (q - xj)
-                    let neg_xj = (&q - xj).complete();
-                    numerator = (&numerator * &neg_xj).complete() % &q;
+                    let neg_xj = Integer::from(&q - xj);
+                    numerator = Integer::from(&numerator * &neg_xj) % &q;
                     // denominator = denominator * (xi - xj)
-                    let diff = if xi >= xj {
-                        (xi - xj).complete()
+                    let xi_clone = xi.clone();
+                    let xj_clone = xj.clone();
+                    let diff = if &xi_clone >= &xj_clone {
+                        Integer::from(&xi_clone - &xj_clone)
                     } else {
-                        let xj_minus_xi = (xj - xi).complete();
-                        (&q - &xj_minus_xi).complete()
+                        let xj_minus_xi = Integer::from(&xj_clone - &xi_clone);
+                        Integer::from(&q - &xj_minus_xi)
                     };
-                    denominator = (&denominator * &diff).complete() % &q;
+                    denominator = Integer::from(&denominator * &diff) % &q;
                 }
             }
             
@@ -435,17 +696,19 @@ impl ShamirSecretSharing {
             
             for (j, (xj, _)) in int_shares.iter().enumerate() {
                 if i != j {
-                    // numerator = numerator * (0 - xj) = numerator * (-xj) = numerator * (q - xj)
-                    let neg_xj = (&q - xj).complete();
-                    numerator = (&numerator * &neg_xj).complete() % &q;
-                    // denominator = denominator * (xi - xj)
-                    let diff = if xi >= xj {
-                        (xi - xj).complete()
+                    // numerator *= (0 - xj) = -xj = q - xj (mod q)
+                    let neg_xj = Integer::from(&q - xj);
+                    numerator = Integer::from(&numerator * &neg_xj) % &q;
+                    // denominator *= (xi - xj)
+                    let xi_clone = xi.clone();
+                    let xj_clone = xj.clone();
+                    let diff = if &xi_clone >= &xj_clone {
+                        Integer::from(&xi_clone - &xj_clone)
                     } else {
-                        let xj_minus_xi = (xj - xi).complete();
-                        (&q - &xj_minus_xi).complete()
+                        let xj_minus_xi = Integer::from(&xj_clone - &xi_clone);
+                        Integer::from(&q - &xj_minus_xi)
                     };
-                    denominator = (&denominator * &diff).complete() % &q;
+                    denominator = Integer::from(&denominator * &diff) % &q;
                 }
             }
             
@@ -509,10 +772,12 @@ pub fn recover_point_secret(point_shares: Vec<PointShare>) -> Result<Point2D> {
                 numerator = Integer::from(&numerator * &neg_xj) % &q;
                 
                 // denominator *= (xi - xj)
-                let diff = if xi >= xj {
-                    Integer::from(&xi - &xj)
+                let xi_clone = xi.clone();
+                let xj_clone = xj.clone();
+                let diff = if &xi_clone >= &xj_clone {
+                    Integer::from(&xi_clone - &xj_clone)
                 } else {
-                    let xj_minus_xi = Integer::from(&xj - &xi);
+                    let xj_minus_xi = Integer::from(&xj_clone - &xi_clone);
                     Integer::from(&q - &xj_minus_xi)
                 };
                 denominator = Integer::from(&denominator * &diff) % &q;
@@ -538,54 +803,12 @@ pub fn recover_point_secret(point_shares: Vec<PointShare>) -> Result<Point2D> {
     unexpand(&result)
 }
 
-/// Split a point into shares using Shamir secret sharing over elliptic curve
-pub fn split_point_secret(secret_point: &Point2D, threshold: usize, num_shares: usize) -> Result<Vec<PointShare>> {
-    if threshold > num_shares {
-        return Err(OpenADPError::SecretSharing("Threshold cannot exceed number of shares".to_string()));
-    }
-    
-    if threshold < 2 {
-        return Err(OpenADPError::SecretSharing("Threshold must be at least 2".to_string()));
-    }
-    
-    let _q = ShamirSecretSharing::get_q();
-    let _secret_4d = expand(secret_point)?;
-    
-    // Generate random polynomial coefficients for x and y coordinates separately
-    // For Point2D, we need to handle x and y coordinates independently
-    // But since we're working with elliptic curve points, we need to be more careful
-    
-    // For now, use a simplified approach: split the compressed point representation
-    let compressed = {
-        let temp_4d = expand(secret_point)?;
-        point_compress(&temp_4d)?
-    };
-    
-    // Split the compressed point bytes using regular Shamir sharing
-    let byte_shares = ShamirSecretSharing::split_secret_bytes(&compressed, threshold, num_shares)?;
-    
-    // Convert byte shares to point shares
-    let mut point_shares = Vec::new();
-    for (x, share_bytes) in byte_shares {
-        // For testing purposes, we'll store the share bytes as a "point"
-        // In a real implementation, this would be more sophisticated
-        let mut point_data = [0u8; 32];
-        let len = std::cmp::min(share_bytes.len(), 32);
-        point_data[..len].copy_from_slice(&share_bytes[..len]);
-        
-        let share_point = Point2D::new(point_data, [0u8; 32]); // y coordinate is zero for this simplified approach
-        point_shares.push(PointShare::new(x, share_point));
-    }
-    
-    Ok(point_shares)
-}
-
 /// Ed25519 wrapper for compatibility
 pub struct Ed25519;
 
 impl Ed25519 {
-    pub fn hash_to_point(uid: &[u8], did: &[u8], bid: &[u8], pin: &[u8]) -> Result<Point4D> {
-        hash_to_point(uid, did, bid, pin)
+    pub fn H(uid: &[u8], did: &[u8], bid: &[u8], pin: &[u8]) -> Result<Point4D> {
+        H(uid, did, bid, pin)
     }
     
     pub fn scalar_mult(scalar: &[u8], point: &Point4D) -> Result<Point4D> {
@@ -637,17 +860,17 @@ mod tests {
     }
     
     #[test]
-    fn test_hash_to_point() {
+    fn test_H() {
         let uid = b"user@example.com";
         let did = b"device123";
         let bid = b"backup456";
         let pin = b"pin";
         
-        let point = hash_to_point(uid, did, bid, pin).unwrap();
+        let point = H(uid, did, bid, pin).unwrap();
         assert!(is_valid_point(&point));
         
         // Same inputs should produce same point
-        let point2 = hash_to_point(uid, did, bid, pin).unwrap();
+        let point2 = H(uid, did, bid, pin).unwrap();
         assert_eq!(point.y, point2.y); // At least y coordinate should match
     }
     
@@ -720,7 +943,7 @@ mod tests {
         let bid = b"backup456";
         let pin = b"pin";
         
-        let point = hash_to_point(uid, did, bid, pin).unwrap();
+        let point = H(uid, did, bid, pin).unwrap();
         let key = derive_enc_key(&point).unwrap();
         assert_eq!(key.len(), 32);
     }

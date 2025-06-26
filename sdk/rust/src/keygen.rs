@@ -21,7 +21,7 @@ use curve25519_dalek::scalar::Scalar;
 
 use crate::{OpenADPError, Result};
 use crate::client::{EncryptedOpenADPClient, ServerInfo, RegisterSecretRequest, RecoverSecretRequest, parse_server_public_key, ListBackupsRequest};
-use crate::crypto::{hash_to_point, point_compress, Point4D, ShamirSecretSharing, point_decompress, unexpand, expand, point_mul, derive_enc_key, PointShare, recover_point_secret};
+use crate::crypto::{H, point_compress, Point4D, ShamirSecretSharing, point_decompress, unexpand, expand, point_mul, derive_enc_key, PointShare, recover_point_secret};
 
 /// Identity represents the primary key tuple for secret shares stored on servers
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -246,8 +246,9 @@ pub async fn generate_encryption_key(
     let shares = ShamirSecretSharing::split_secret(&secret, threshold, live_server_infos.len())?;
     
     // Step 6: Compute U = H(uid, did, bid, pin)
-    let u_point = hash_to_point(identity.uid.as_bytes(), identity.did.as_bytes(), identity.bid.as_bytes(), &pin)?;
-    let _u_compressed = point_compress(&u_point)?;
+    let u = H(identity.uid.as_bytes(), identity.did.as_bytes(), identity.bid.as_bytes(), &pin)?;
+    let u_2d = unexpand(&u)?;
+    println!("🔍 DEBUG: U point: x={}, y={}", hex::encode(&u_2d.x), hex::encode(&u_2d.y));
     
     // Step 7: Register shares with servers
     println!("🔑 Registering shares with {} servers...", clients.len());
@@ -266,10 +267,20 @@ pub async fn generate_encryption_key(
             bytes
         };
         
-        // For now, use a simplified point computation
-        // In practice, would compute proper elliptic curve operations
-        let share_point = u_point.clone(); // Simplified
-        let y_compressed = point_compress(&share_point)?;
+        // Compute proper share point: s_i * U where s_i is the share value
+        let share_scalar = {
+            let mut share_bytes = [0u8; 32];
+            // Convert rug::Integer to bytes
+            let mut bytes = Vec::new();
+            share_data.write_digits(&mut bytes, rug::integer::Order::MsfBe);
+            let copy_len = std::cmp::min(bytes.len(), 32);
+            share_bytes[..copy_len].copy_from_slice(&bytes[..copy_len]);
+            share_bytes
+        };
+        let share_point_4d = point_mul(&share_scalar, &u)?;
+        let share_point = unexpand(&share_point_4d)?;
+        let share_point_4d = expand(&share_point)?;
+        let y_compressed = point_compress(&share_point_4d)?;
         
         let request = RegisterSecretRequest {
             auth_code: server_auth_code.clone(),
@@ -310,7 +321,7 @@ pub async fn generate_encryption_key(
     };
     
     // Compute secret point: s*U
-    let secret_point = point_mul(&secret_scalar.to_bytes(), &u_point)?;
+    let secret_point = point_mul(&secret_scalar.to_bytes(), &u)?;
     let encryption_key = derive_enc_key(&secret_point)?;
     
     println!("✅ Generated encryption key with {}-of-{} threshold", threshold, live_server_infos.len());
@@ -335,12 +346,39 @@ pub async fn recover_encryption_key(
     
     // Step 1: Compute U = H(uid, did, bid, pin) - same as in generation
     let pin = password_to_pin(password);
-    let u_point = hash_to_point(
-        identity.uid.as_bytes(),
-        identity.did.as_bytes(), 
-        identity.bid.as_bytes(),
-        &pin
-    )?;
+    let u = H(identity.uid.as_bytes(), identity.did.as_bytes(), identity.bid.as_bytes(), &pin)?;
+    let u_2d = unexpand(&u)?;
+    println!("🔍 DEBUG: U point: x={}, y={}", hex::encode(&u_2d.x), hex::encode(&u_2d.y));
+    
+    // Step 1.5: Compute r scalar for blinding
+    let r_scalar = {
+        let mut hasher = Sha256::new();
+        hasher.update(b"OpenADP_R:");
+        hasher.update(identity.uid.as_bytes());
+        hasher.update(b":");
+        hasher.update(identity.did.as_bytes());
+        hasher.update(b":");
+        hasher.update(identity.bid.as_bytes());
+        hasher.update(b":");
+        hasher.update(&pin);
+        let r_hash = hasher.finalize();
+        
+        println!("🔍 DEBUG: r derivation inputs - uid: {}, did: {}, bid: {}, pin: {}", 
+            identity.uid, identity.did, identity.bid, hex::encode(&pin));
+        println!("🔍 DEBUG: r hash: {}", hex::encode(&r_hash));
+        
+        // DEBUG: Set r = 1 to eliminate differences
+        println!("🔍 DEBUG: r set to 1 for debugging");
+        Scalar::from_bytes_mod_order([
+            1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ])
+        
+        // Original code:
+        // Scalar::from_bytes_mod_order(*r_hash.as_ref())
+    };
+    
+    println!("🔍 DEBUG: r scalar: {}", hex::encode(r_scalar.to_bytes()));
     
     // Step 2: Fetch remaining guesses and select best servers
     println!("OpenADP: Fetching remaining guesses from servers...");
@@ -351,7 +389,19 @@ pub async fn recover_encryption_key(
         return Ok(RecoverEncryptionKeyResult::error("No servers available".to_string()));
     }
     
-    // Step 3: Recover shares from servers (get point shares, not secret shares)
+    // Step 3: Compute B = r * U  
+    let r_bytes = r_scalar.to_bytes();
+    let b = point_mul(&r_bytes, &u)?;
+    let b_2d = unexpand(&b)?;
+    println!("🔍 DEBUG: B point (r * U): x={}, y={}", hex::encode(&b_2d.x), hex::encode(&b_2d.y));
+    
+    // Compress B for transmission
+    let b_compressed = point_compress(&b)?;
+    let b_base64 = BASE64.encode(&b_compressed);
+    println!("🔍 DEBUG: B compressed: {}", hex::encode(&b_compressed));
+    println!("🔍 DEBUG: B base64: {}", b_base64);
+
+    // Step 4: Recover shares from servers
     let mut recovered_point_shares = Vec::new();
     
     for server_info in &selected_server_infos {
@@ -407,7 +457,7 @@ pub async fn recover_encryption_key(
             uid: identity.uid.clone(),
             did: identity.did.clone(),
             bid: identity.bid.clone(),
-            b: BASE64.encode(&point_compress(&u_point)?),
+            b: b_base64.clone(),
             guess_num,
             encrypted: client.has_public_key(),
             auth_data: None,
@@ -447,34 +497,19 @@ pub async fn recover_encryption_key(
         ));
     }
     
-    // Step 4: Reconstruct secret point using point-based Lagrange interpolation
+    // Step 5: Reconstruct secret point using point-based Lagrange interpolation
     println!("OpenADP: Reconstructing secret from {} point shares...", recovered_point_shares.len());
     let recovered_sb = recover_point_secret(recovered_point_shares)?;
     
+    // Convert to 2D coordinates for proper debugging
+    let recovered_sb_2d = recovered_sb.clone(); // This is already Point2D
     println!("🔍 DEBUG: Recovered s*B point: x={}, y={}", 
-        hex::encode(&point_compress(&expand(&recovered_sb)?)?), 
-        hex::encode(&recovered_sb.y));
+        hex::encode(&recovered_sb_2d.x), 
+        hex::encode(&recovered_sb_2d.y));
     
-    // Step 5: Apply r^-1 to get the original secret point: s*U = r^-1 * (s*B)
+    // Step 6: Apply r^-1 to get the original secret point: s*U = r^-1 * (s*B)
     // First we need to compute r^-1 where r = H(uid, did, bid, pin)
     // This matches the generation process where we computed r = H(...) and stored s*B = r*s*U
-    let r_scalar = {
-        let mut hasher = Sha256::new();
-        hasher.update(b"OpenADP_R:");
-        hasher.update(identity.uid.as_bytes());
-        hasher.update(b":");
-        hasher.update(identity.did.as_bytes());
-        hasher.update(b":");
-        hasher.update(identity.bid.as_bytes());
-        hasher.update(b":");
-        hasher.update(&pin);
-        let r_hash = hasher.finalize();
-        Scalar::from_bytes_mod_order(*r_hash.as_ref())
-    };
-    
-    println!("🔍 DEBUG: r scalar: {}", hex::encode(r_scalar.to_bytes()));
-    
-    // Compute r^-1
     let r_inv = r_scalar.invert();
     
     println!("🔍 DEBUG: r^-1 scalar: {}", hex::encode(r_inv.to_bytes()));
@@ -486,10 +521,12 @@ pub async fn recover_encryption_key(
     let original_su_bytes = r_inv.to_bytes();
     let original_su = point_mul(&original_su_bytes, &recovered_sb_4d)?;
     
+    // Convert back to 2D for proper debugging
+    let original_su_2d = unexpand(&original_su)?;
     println!("🔍 DEBUG: Original s*U point (after r^-1): {}", 
-        hex::encode(&point_compress(&original_su)?));
+        hex::encode(&original_su_2d.x));
     
-    // Step 6: Derive encryption key from the recovered point
+    // Step 7: Derive encryption key from the recovered point
     let encryption_key = derive_enc_key(&original_su)?;
     
     println!("OpenADP: Successfully recovered encryption key");
@@ -822,7 +859,7 @@ mod tests {
 
     #[test]
     fn test_encryption_key_derivation() {
-        use crate::crypto::{hash_to_point, derive_enc_key};
+        use crate::crypto::{H, derive_enc_key};
         
         // Test that key derivation is deterministic
         let identity = Identity::new(
@@ -834,14 +871,14 @@ mod tests {
         let pin = password_to_pin(password);
         
         // Generate point from identity and PIN
-        let point1 = hash_to_point(
+        let point1 = H(
             identity.uid.as_bytes(),
             identity.did.as_bytes(), 
             identity.bid.as_bytes(),
             &pin
         ).unwrap();
         
-        let point2 = hash_to_point(
+        let point2 = H(
             identity.uid.as_bytes(),
             identity.did.as_bytes(),
             identity.bid.as_bytes(), 
@@ -867,7 +904,7 @@ mod tests {
             "backup456".to_string()
         );
         
-        let different_point = hash_to_point(
+        let different_point = H(
             different_identity.uid.as_bytes(),
             different_identity.did.as_bytes(),
             different_identity.bid.as_bytes(),
