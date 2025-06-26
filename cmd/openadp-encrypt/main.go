@@ -286,9 +286,16 @@ The encrypted file will be saved as <filename>.enc
 func encryptFile(inputFilename, password, userID string, serverInfos []client.ServerInfo, serversURL string) error {
 	outputFilename := inputFilename + ".enc"
 
+	// Create Identity struct for the new API
+	identity := &client.Identity{
+		UID: userID,
+		DID: getHostname(),                            // Use hostname as device ID
+		BID: "file://" + filepath.Base(inputFilename), // Use file path as backup ID
+	}
+
 	// Generate encryption key using OpenADP with full distributed protocol
 	fmt.Println("🔄 Generating encryption key using OpenADP servers...")
-	result := client.GenerateEncryptionKey(inputFilename, password, userID, 10, 0, serverInfos)
+	result := client.GenerateEncryptionKey(identity, password, 10, 0, serverInfos)
 	if result.Error != "" {
 		return fmt.Errorf("failed to generate encryption key: %s", result.Error)
 	}
@@ -300,7 +307,7 @@ func encryptFile(inputFilename, password, userID string, serverInfos []client.Se
 	threshold := result.Threshold
 
 	fmt.Printf("🔑 Generated authentication codes for %d servers\n", len(authCodes.ServerAuthCodes))
-	fmt.Printf("🔑 Key generated successfully (UID=%s, DID=%s, BID=%s)\n", userID, getHostname(), "file://"+filepath.Base(inputFilename))
+	fmt.Printf("🔑 Key generated successfully (UID=%s, DID=%s, BID=%s)\n", identity.UID, identity.DID, identity.BID)
 
 	// Show which servers were actually used for key generation
 	if len(actualServerURLs) > 0 && len(actualServerURLs) != len(serverInfos) {

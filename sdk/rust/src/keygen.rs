@@ -17,10 +17,11 @@ use hex;
 use rug::Integer;
 use rand::rngs::OsRng;
 use rand::{RngCore, Rng};
+use curve25519_dalek::scalar::Scalar;
 
 use crate::{OpenADPError, Result};
 use crate::client::{EncryptedOpenADPClient, ServerInfo, RegisterSecretRequest, RecoverSecretRequest, parse_server_public_key, ListBackupsRequest};
-use crate::crypto::{hash_to_point, point_compress, Point4D, ShamirSecretSharing};
+use crate::crypto::{hash_to_point, point_compress, Point4D, ShamirSecretSharing, point_decompress, unexpand, expand, point_mul, derive_enc_key, PointShare, recover_point_secret};
 
 /// Identity represents the primary key tuple for secret shares stored on servers
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -300,14 +301,17 @@ pub async fn generate_encryption_key(
         }
     }
     
-    // Step 8: Derive encryption key from secret and U
-    // Convert Integer secret to bytes
-    let secret_bytes = {
-        let mut bytes = vec![0u8; 32];
-        secret.write_digits(&mut bytes, rug::integer::Order::MsfBe);
-        bytes
+    // Step 8: Derive encryption key from secret point s*U
+    // Convert the secret to a scalar and multiply with U to get the secret point
+    let secret_scalar = {
+        let mut secret_bytes = [0u8; 32];
+        secret.write_digits(&mut secret_bytes, rug::integer::Order::MsfBe);
+        Scalar::from_bytes_mod_order(secret_bytes)
     };
-    let encryption_key = derive_encryption_key_from_secret(&secret_bytes, &u_point)?;
+    
+    // Compute secret point: s*U
+    let secret_point = point_mul(&secret_scalar.to_bytes(), &u_point)?;
+    let encryption_key = derive_enc_key(&secret_point)?;
     
     println!("✅ Generated encryption key with {}-of-{} threshold", threshold, live_server_infos.len());
     
@@ -327,126 +331,170 @@ pub async fn recover_encryption_key(
     threshold: usize,
     auth_codes: AuthCodes,
 ) -> Result<RecoverEncryptionKeyResult> {
-    // Input validation
-    if identity.uid.is_empty() {
-        return Ok(RecoverEncryptionKeyResult::error("UID cannot be empty".to_string()));
-    }
+    println!("OpenADP: Identity={}", identity);
     
-    if identity.did.is_empty() {
-        return Ok(RecoverEncryptionKeyResult::error("DID cannot be empty".to_string()));
-    }
+    // Step 1: Compute U = H(uid, did, bid, pin) - same as in generation
+    let pin = password_to_pin(password);
+    let u_point = hash_to_point(
+        identity.uid.as_bytes(),
+        identity.did.as_bytes(), 
+        identity.bid.as_bytes(),
+        &pin
+    )?;
     
-    if identity.bid.is_empty() {
-        return Ok(RecoverEncryptionKeyResult::error("BID cannot be empty".to_string()));
-    }
-
-    if server_infos.is_empty() {
+    // Step 2: Fetch remaining guesses and select best servers
+    println!("OpenADP: Fetching remaining guesses from servers...");
+    let updated_server_infos = fetch_remaining_guesses_for_servers(identity, &server_infos).await;
+    let selected_server_infos = select_servers_by_remaining_guesses(&updated_server_infos, threshold);
+    
+    if selected_server_infos.is_empty() {
         return Ok(RecoverEncryptionKeyResult::error("No servers available".to_string()));
     }
-
-    println!("OpenADP: Identity={}", identity);
-
-    // Step 1: Convert password to PIN
-    let pin = password_to_pin(password);
-
-    // Step 2: Fetch remaining guesses for all servers and select the best ones
-    println!("OpenADP: Fetching remaining guesses from servers...");
-    let server_infos_with_guesses = fetch_remaining_guesses_for_servers(identity, &server_infos).await;
     
-    // Calculate threshold for server selection
-    let calculated_threshold = server_infos_with_guesses.len() / 2 + 1; // Standard majority threshold: floor(N/2) + 1
-    
-    // Select servers intelligently based on remaining guesses
-    let selected_server_infos = select_servers_by_remaining_guesses(&server_infos_with_guesses, calculated_threshold);
-
-    // Step 3: Compute U = H(uid, did, bid, pin)
-    let u_point = hash_to_point(identity.uid.as_bytes(), identity.did.as_bytes(), identity.bid.as_bytes(), &pin)?;
-    let u_compressed = point_compress(&u_point)?;
-    
-    // Step 4: Initialize clients and recover shares from selected servers
-    let _clients: Vec<EncryptedOpenADPClient> = Vec::new();
-    let mut recovered_shares = Vec::new();
+    // Step 3: Recover shares from servers (get point shares, not secret shares)
+    let mut recovered_point_shares = Vec::new();
     
     for server_info in &selected_server_infos {
+        // Parse public key if available
         let public_key = if !server_info.public_key.is_empty() {
-            parse_server_public_key(&server_info.public_key).ok()
+            match parse_server_public_key(&server_info.public_key) {
+                Ok(key) => Some(key),
+                Err(e) => {
+                    println!("Warning: Invalid public key for server {}: {}", server_info.url, e);
+                    None
+                }
+            }
         } else {
             None
         };
         
         let mut client = EncryptedOpenADPClient::new(server_info.url.clone(), public_key, 30);
         
-        if let Some(server_auth_code) = auth_codes.get_server_code(&server_info.url) {
-            let request = RecoverSecretRequest {
-                auth_code: server_auth_code.clone(),
-                uid: identity.uid.clone(),
-                did: identity.did.clone(),
-                bid: identity.bid.clone(),
-                b: BASE64.encode(&u_compressed),
-                guess_num: 1,
-                encrypted: client.has_public_key(),
-                auth_data: None,
-            };
-            
-            match client.recover_secret_standardized(request).await {
-                Ok(response) => {
-                    let guesses_str = if server_info.remaining_guesses == -1 {
-                        "unknown".to_string()
-                    } else {
-                        server_info.remaining_guesses.to_string()
-                    };
-                    println!("✅ Recovered share from server {} ({} remaining guesses)", server_info.url, guesses_str);
-                    // Convert response back to share data - we need to convert the response to bytes
-                    let share_bytes = response.x.to_be_bytes().to_vec();
-                    recovered_shares.push((response.x as usize, share_bytes));
-                    
-                    if recovered_shares.len() >= threshold {
-                        break; // We have enough shares
+        // Get server auth code
+        let server_auth_code = auth_codes.get_server_code(&server_info.url)
+            .ok_or_else(|| OpenADPError::Authentication("No auth code for server".to_string()))?;
+        
+        // Get current guess number for idempotency (prevents replay attacks)
+        let mut guess_num = 0; // Default fallback
+        let list_request = ListBackupsRequest {
+            uid: identity.uid.clone(),
+            auth_code: String::new(),
+            encrypted: false,
+            auth_data: None,
+        };
+        
+        match client.list_backups_standardized(list_request).await {
+            Ok(response) => {
+                // Find our backup in the list using the complete primary key (UID, DID, BID)
+                for backup in &response.backups {
+                    if backup.uid == identity.uid && 
+                       backup.did == identity.did &&
+                       backup.bid == identity.bid {
+                        guess_num = backup.num_guesses;
+                        println!("🔍 DEBUG: Found backup, current num_guesses: {}", guess_num);
+                        break;
                     }
                 }
-                Err(e) => {
-                    println!("❌ Failed to recover from server {}: {}", server_info.url, e);
-                }
+            }
+            Err(e) => {
+                println!("Warning: Could not list backups from server {}: {}", server_info.url, e);
+                return Err(OpenADPError::Server(format!("Cannot get current guess number for idempotency: {}", e)));
+            }
+        }
+        
+        let request = RecoverSecretRequest {
+            auth_code: server_auth_code.clone(),
+            uid: identity.uid.clone(),
+            did: identity.did.clone(),
+            bid: identity.bid.clone(),
+            b: BASE64.encode(&point_compress(&u_point)?),
+            guess_num,
+            encrypted: client.has_public_key(),
+            auth_data: None,
+        };
+        
+        match client.recover_secret_standardized(request).await {
+            Ok(response) => {
+                println!("🔍 DEBUG: Server response - x: {}, si_b: {}", response.x, response.si_b);
+                println!("🔍 DEBUG: si_b length: {}", response.si_b.len());
+                
+                // Parse the recovered point from base64
+                let si_b_bytes = BASE64.decode(&response.si_b)
+                    .map_err(|e| OpenADPError::Crypto(format!("Invalid base64 share: {}", e)))?;
+                
+                println!("🔍 DEBUG: Decoded si_b bytes length: {}", si_b_bytes.len());
+                println!("🔍 DEBUG: Decoded si_b bytes: {}", hex::encode(&si_b_bytes));
+                
+                let si_b_point = point_decompress(&si_b_bytes)?;
+                let si_b_2d = unexpand(&si_b_point)?;
+                
+                println!("✅ Recovered share from server {} ({} remaining guesses)", 
+                    server_info.url, 
+                    std::cmp::max(0, response.max_guesses - response.num_guesses));
+                
+                // Create point share for reconstruction
+                recovered_point_shares.push(PointShare::new(response.x as usize, si_b_2d));
+            }
+            Err(e) => {
+                return Err(OpenADPError::Server(format!("RecoverSecret failed: {}", e)));
             }
         }
     }
     
-    if recovered_shares.len() < threshold {
+    if recovered_point_shares.len() < threshold {
         return Ok(RecoverEncryptionKeyResult::error(
-            format!("Insufficient shares recovered: {}/{}", recovered_shares.len(), threshold)
+            format!("Insufficient shares recovered: {}/{}", recovered_point_shares.len(), threshold)
         ));
     }
     
-    // Step 4: Reconstruct secret from shares
-    let secret = ShamirSecretSharing::recover_secret_bytes(recovered_shares)?;
+    // Step 4: Reconstruct secret point using point-based Lagrange interpolation
+    println!("OpenADP: Reconstructing secret from {} point shares...", recovered_point_shares.len());
+    let recovered_sb = recover_point_secret(recovered_point_shares)?;
     
-    // Step 5: Derive encryption key
-    let secret_bytes = {
-        let mut bytes = [0u8; 32];
-        let len = std::cmp::min(secret.len(), 32);
-        bytes[..len].copy_from_slice(&secret[..len]);
-        bytes
+    println!("🔍 DEBUG: Recovered s*B point: x={}, y={}", 
+        hex::encode(&point_compress(&expand(&recovered_sb)?)?), 
+        hex::encode(&recovered_sb.y));
+    
+    // Step 5: Apply r^-1 to get the original secret point: s*U = r^-1 * (s*B)
+    // First we need to compute r^-1 where r = H(uid, did, bid, pin)
+    // This matches the generation process where we computed r = H(...) and stored s*B = r*s*U
+    let r_scalar = {
+        let mut hasher = Sha256::new();
+        hasher.update(b"OpenADP_R:");
+        hasher.update(identity.uid.as_bytes());
+        hasher.update(b":");
+        hasher.update(identity.did.as_bytes());
+        hasher.update(b":");
+        hasher.update(identity.bid.as_bytes());
+        hasher.update(b":");
+        hasher.update(&pin);
+        let r_hash = hasher.finalize();
+        Scalar::from_bytes_mod_order(*r_hash.as_ref())
     };
     
-    let encryption_key = derive_encryption_key_from_secret(&secret_bytes, &u_point)?;
+    println!("🔍 DEBUG: r scalar: {}", hex::encode(r_scalar.to_bytes()));
     
-    println!("✅ Successfully recovered encryption key");
+    // Compute r^-1
+    let r_inv = r_scalar.invert();
+    
+    println!("🔍 DEBUG: r^-1 scalar: {}", hex::encode(r_inv.to_bytes()));
+    
+    // Convert recovered 2D point to 4D for multiplication
+    let recovered_sb_4d = expand(&recovered_sb)?;
+    
+    // Apply r^-1: original_su = r^-1 * recovered_sb
+    let original_su_bytes = r_inv.to_bytes();
+    let original_su = point_mul(&original_su_bytes, &recovered_sb_4d)?;
+    
+    println!("🔍 DEBUG: Original s*U point (after r^-1): {}", 
+        hex::encode(&point_compress(&original_su)?));
+    
+    // Step 6: Derive encryption key from the recovered point
+    let encryption_key = derive_enc_key(&original_su)?;
+    
+    println!("OpenADP: Successfully recovered encryption key");
     
     Ok(RecoverEncryptionKeyResult::success(encryption_key))
-}
-
-/// Derive encryption key from secret and point
-fn derive_encryption_key_from_secret(secret: &[u8], u_point: &Point4D) -> Result<Vec<u8>> {
-    // Combine secret with point to derive final key
-    let mut hasher = Sha256::new();
-    hasher.update(b"OpenADP_FinalKey:");
-    hasher.update(secret);
-    
-    let u_compressed = point_compress(u_point)?;
-    hasher.update(&u_compressed);
-    
-    let key_hash = hasher.finalize();
-    Ok(key_hash.to_vec())
 }
 
 /// Fetch remaining guesses for each server and update ServerInfo objects.

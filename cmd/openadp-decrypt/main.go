@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -405,9 +406,13 @@ func decryptFile(inputFilename, password, userID string, overrideServers []strin
 }
 
 func recoverEncryptionKeyWithServerInfo(filename, password, userID string, baseAuthCode string, serverInfos []client.ServerInfo, threshold int) ([]byte, error) {
-	// Derive identifiers (same as during encryption)
-	uid, did, bid := client.DeriveIdentifiers(filename, userID, "")
-	fmt.Printf("🔑 Recovering with UID=%s, DID=%s, BID=%s\n", uid, did, bid)
+	// Create Identity struct for the new API
+	identity := &client.Identity{
+		UID: userID,
+		DID: getHostname(),                       // Use hostname as device ID (should match encryption)
+		BID: "file://" + filepath.Base(filename), // Use file path as backup ID (should match encryption)
+	}
+	fmt.Printf("🔑 Recovering with UID=%s, DID=%s, BID=%s\n", identity.UID, identity.DID, identity.BID)
 
 	// Regenerate server auth codes from base auth code
 	serverAuthCodes := make(map[string]string)
@@ -418,20 +423,20 @@ func recoverEncryptionKeyWithServerInfo(filename, password, userID string, baseA
 		serverAuthCodes[serverInfo.URL] = fmt.Sprintf("%x", hash[:])
 	}
 
-	// Create AuthCodes structure from metadata
+	// Create AuthCodes structure from metadata (without UserID field)
 	authCodes := &client.AuthCodes{
 		BaseAuthCode:    baseAuthCode,
 		ServerAuthCodes: serverAuthCodes,
-		UserID:          userID,
 	}
 
-	// Recover encryption key using the full distributed protocol
-	result := client.RecoverEncryptionKeyWithServerInfo(filename, password, userID, serverInfos, threshold, authCodes)
+	// Recover encryption key using the full distributed protocol with new API
+	result := client.RecoverEncryptionKeyWithServerInfo(identity, password, serverInfos, threshold, authCodes)
 	if result.Error != "" {
 		return nil, fmt.Errorf("key recovery failed: %s", result.Error)
 	}
 
 	fmt.Printf("✅ Key recovered successfully\n")
+	fmt.Printf("🔍 DEBUG: Recovered encryption key: %x\n", result.EncryptionKey[:16])
 	return result.EncryptionKey, nil
 }
 
@@ -449,4 +454,12 @@ func getAuthCodesFromMetadata(metadata Metadata) (string, string, error) {
 
 func readUint32LE(data []byte) uint32 {
 	return uint32(data[0]) | uint32(data[1])<<8 | uint32(data[2])<<16 | uint32(data[3])<<24
+}
+
+func getHostname() string {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "unknown"
+	}
+	return hostname
 }

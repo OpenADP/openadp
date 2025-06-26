@@ -64,6 +64,12 @@ futures-util = "0.3"
 # Big integer arithmetic (GMP bindings for high performance)
 rug = { version = "1.27", features = ["integer", "std"] }
 
+# Command line interface
+clap = { version = "4.4", features = ["derive"] }
+rpassword = "7.3"
+gethostname = "0.4"
+chrono = "0.4"
+
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3.8"
@@ -71,6 +77,14 @@ tempfile = "3.8"
 [lib]
 name = "openadp_ocrypt"
 path = "src/lib.rs"
+
+[[bin]]
+name = "openadp-encrypt"
+path = "src/bin/openadp-encrypt.rs"
+
+[[bin]]
+name = "openadp-decrypt"
+path = "src/bin/openadp-decrypt.rs"
 
 [[example]]
 name = "basic_usage"

@@ -168,12 +168,16 @@ func deriveKey(filename, userID, serversStr string) {
 		}
 	}
 
-	// Derive identifiers
-	uid, did, bid := client.DeriveIdentifiers(filename, userID, "")
-	fmt.Printf("📋 Identifiers:\n")
-	fmt.Printf("   UID: %s\n", uid)
-	fmt.Printf("   DID: %s\n", did)
-	fmt.Printf("   BID: %s\n", bid)
+	// Create Identity struct
+	identity := &client.Identity{
+		UID: userID,
+		DID: filename,  // Use filename as device ID
+		BID: "backup1", // Use a simple backup ID
+	}
+	fmt.Printf("📋 Identity:\n")
+	fmt.Printf("   UID: %s\n", identity.UID)
+	fmt.Printf("   DID: %s\n", identity.DID)
+	fmt.Printf("   BID: %s\n", identity.BID)
 
 	// Convert password to PIN
 	pin := client.PasswordToPin(password)
@@ -181,7 +185,7 @@ func deriveKey(filename, userID, serversStr string) {
 
 	// Generate key
 	fmt.Printf("🔄 Generating encryption key using %d servers...\n", len(serverURLs))
-	result := client.GenerateEncryptionKey(filename, password, userID, 10, 0, client.ConvertURLsToServerInfo(serverURLs))
+	result := client.GenerateEncryptionKey(identity, password, 10, 0, client.ConvertURLsToServerInfo(serverURLs))
 
 	if result.Error != "" {
 		fmt.Printf("❌ Key generation failed: %s\n", result.Error)
@@ -211,9 +215,13 @@ func runTests() {
 
 	// Test 2: Key derivation
 	fmt.Print("2. Key Derivation... ")
-	uid, did, bid := client.DeriveIdentifiers("test.txt", "test-user", "")
+	identity := &client.Identity{
+		UID: "test-user",
+		DID: "test.txt",
+		BID: "backup1",
+	}
 	pin := client.PasswordToPin("test-password")
-	if len(pin) != 2 || uid == "" || did == "" || bid == "" {
+	if len(pin) != 2 || identity.UID == "" || identity.DID == "" || identity.BID == "" {
 		fmt.Println("❌ FAILED")
 		return
 	}

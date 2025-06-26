@@ -470,6 +470,8 @@ func (s *Server) handleRecoverSecret(params []interface{}) (interface{}, error) 
 	// Debug: Print what we're about to recover
 	fmt.Printf("SERVER %d RECOVERING: uid=%s, did=%s, bid=%s, guess_num=%d\n",
 		s.port, uid, did, bid, guessNum)
+	fmt.Printf("SERVER %d DEBUG: b parameter (base64): %s\n", s.port, bStr)
+	fmt.Printf("SERVER %d DEBUG: auth_code: %s\n", s.port, authCode[:16]+"...")
 
 	// Recover the secret using auth code and primary key
 	response, err := server.RecoverSecretWithAuthCode(s.db, authCode, uid, did, bid, b, guessNum)

@@ -223,10 +223,13 @@ pub fn hash_to_point(uid: &[u8], did: &[u8], bid: &[u8], pin: &[u8]) -> Result<P
 pub fn derive_enc_key(point: &Point4D) -> Result<Vec<u8>> {
     let point_bytes = point_compress(point)?;
     
-    // Use HKDF to derive 32-byte encryption key
-    let hk = Hkdf::<Sha256>::new(None, &point_bytes);
+    // Use HKDF with proper salt and info to match Go/Python/JavaScript implementations
+    let salt = b"OpenADP-EncKey-v1";
+    let info = b"AES-256-GCM";
+    
+    let hk = Hkdf::<Sha256>::new(Some(salt), &point_bytes);
     let mut okm = [0u8; 32];
-    hk.expand(b"OpenADP_EncKey", &mut okm)
+    hk.expand(info, &mut okm)
         .map_err(|e| OpenADPError::Crypto(format!("HKDF expansion failed: {}", e)))?;
     
     Ok(okm.to_vec())

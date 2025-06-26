@@ -23,6 +23,7 @@ use rand::RngCore;
 use snow::{Builder, HandshakeState, TransportState, Keypair as SnowKeypair};
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::constants::X25519_BASEPOINT;
+use chrono;
 
 // Error codes matching Go implementation
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -154,6 +155,7 @@ pub struct ListBackupsRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackupInfo {
     pub uid: String,
+    pub did: String,
     pub bid: String,
     pub version: i32,
     pub num_guesses: i32,
@@ -170,7 +172,8 @@ pub struct ListBackupsResponse {
 /// Standardized response for GetServerInfo operation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerInfoResponse {
-    pub server_version: String,
+    #[serde(alias = "server_version")]
+    pub version: String,
     #[serde(default)]
     pub noise_nk_public_key: String,
     #[serde(default)]
@@ -353,9 +356,22 @@ impl OpenADPClient {
     
     /// List backups for a user
     pub async fn list_backups_standardized(&self, request: ListBackupsRequest) -> Result<ListBackupsResponse> {
-        let params = serde_json::to_value(request)?;
-        let result = self.make_request("ListBackups", Some(params)).await?;
-        serde_json::from_value(result).map_err(|e| OpenADPError::Json(e))
+        // Server expects just the UID as a single parameter in array format: [uid]
+        let params = Some(json!([request.uid]));
+        let result = self.make_request("ListBackups", params).await?;
+        
+        // Convert the result array to ListBackupsResponse format
+        if let Some(backups_array) = result.as_array() {
+            let mut backups = Vec::new();
+            for backup_value in backups_array {
+                if let Ok(backup_info) = serde_json::from_value::<BackupInfo>(backup_value.clone()) {
+                    backups.push(backup_info);
+                }
+            }
+            Ok(ListBackupsResponse { backups })
+        } else {
+            Err(OpenADPError::InvalidFormat("Expected array of backups".to_string()))
+        }
     }
     
     /// Test connection
@@ -580,6 +596,7 @@ pub struct EncryptedOpenADPClient {
     basic_client: OpenADPClient,
     noise: Option<NoiseNK>,
     server_public_key: Option<Vec<u8>>,
+    session_id: Option<String>,
 }
 
 impl EncryptedOpenADPClient {
@@ -590,6 +607,7 @@ impl EncryptedOpenADPClient {
             basic_client,
             noise: None,
             server_public_key,
+            session_id: None,
         }
     }
     
@@ -615,17 +633,22 @@ impl EncryptedOpenADPClient {
         }
         
         if let Some(noise) = &mut self.noise {
-            // Step 1: Perform Noise-NK handshake
+            // Step 1: Perform Noise-NK handshake if not already done
             if !noise.handshake_complete {
+                // Generate session ID
+                let session_id = format!("session_{}", chrono::Utc::now().timestamp_micros());
+                self.session_id = Some(session_id.clone());
+                
                 // Send first handshake message (-> e, es)
-                let message1 = noise.write_message(b"")?;
+                let message1 = noise.write_message(b"test")?; // Use "test" payload like Python
                 let message1_b64 = BASE64.encode(&message1);
                 
-                // Send handshake request
+                // Send handshake request with session field
                 let handshake_request = json!({
                     "jsonrpc": "2.0",
                     "method": "noise_handshake",
                     "params": [{
+                        "session": session_id,
                         "message": message1_b64
                     }],
                     "id": 1
@@ -670,8 +693,13 @@ impl EncryptedOpenADPClient {
                 println!("✅ Noise-NK handshake completed successfully");
             }
             
-            // Step 2: Send encrypted JSON-RPC request
+            // Step 2: Send encrypted JSON-RPC request using the session
+            let session_id = self.session_id.as_ref()
+                .ok_or_else(|| OpenADPError::Crypto("No session ID available".to_string()))?;
+            
             let request = JsonRpcRequest::new(method.to_string(), params);
+            println!("🔍 DEBUG: Sending encrypted request: method={}, params={:?}", method, request.params);
+            
             let request_json = serde_json::to_vec(&request.to_dict())?;
             
             let encrypted_request = noise.encrypt(&request_json)?;
@@ -681,6 +709,7 @@ impl EncryptedOpenADPClient {
                 "jsonrpc": "2.0",
                 "method": "encrypted_call",
                 "params": [{
+                    "session": session_id,
                     "data": encrypted_request_b64
                 }],
                 "id": request.id
@@ -720,7 +749,19 @@ impl EncryptedOpenADPClient {
             let decrypted_response = noise.decrypt(&encrypted_data)?;
             let response_json: Value = serde_json::from_slice(&decrypted_response)?;
             
-            Ok(response_json)
+            // Check if the decrypted response is itself a JSON-RPC error
+            if let Some(error_obj) = response_json.get("error") {
+                if let Some(message) = error_obj.get("message").and_then(|m| m.as_str()) {
+                    return Err(OpenADPError::Server(format!("RPC Error: {}", message)));
+                }
+            }
+            
+            // If it has a result field, return that; otherwise return the whole response
+            if let Some(result) = response_json.get("result") {
+                Ok(result.clone())
+            } else {
+                Ok(response_json)
+            }
         } else {
             Err(OpenADPError::Crypto("Noise not initialized".to_string()))
         }
@@ -753,15 +794,37 @@ impl EncryptedOpenADPClient {
     }
     
     /// Register secret with optional encryption
-    /// TODO: Implement proper Noise-NK encryption using the `snow` crate
-    /// For now, this always uses unencrypted requests as the simplified Noise-NK implementation
-    /// doesn't generate proper handshake messages that the servers expect
     pub async fn register_secret_standardized(&mut self, mut request: RegisterSecretRequest) -> Result<RegisterSecretResponse> {
-        // TODO: Implement proper Noise-NK encryption
-        // The current simplified implementation doesn't generate proper handshake messages
-        // Need to use a proper Noise-NK library like `snow` crate to match Python's noiseprotocol
         request.encrypted = self.has_public_key();
-        self.basic_client.register_secret_standardized(request).await
+        
+        if request.encrypted && self.has_public_key() {
+            // Use encrypted request - server expects array of parameters
+            let params = Some(json!([
+                request.auth_code,
+                request.uid,
+                request.did,
+                request.bid,
+                request.version,
+                request.x,
+                request.y,
+                request.max_guesses,
+                request.expiration
+            ]));
+            
+            let result = self.make_encrypted_request("RegisterSecret", params).await?;
+            
+            if let Some(success) = result.as_bool() {
+                Ok(RegisterSecretResponse {
+                    success,
+                    message: String::new(),
+                })
+            } else {
+                Err(OpenADPError::InvalidResponse)
+            }
+        } else {
+            // Use unencrypted request
+            self.basic_client.register_secret_standardized(request).await
+        }
     }
     
     /// Recover secret with optional encryption
@@ -769,19 +832,19 @@ impl EncryptedOpenADPClient {
         request.encrypted = self.has_public_key();
         
         if request.encrypted && self.has_public_key() {
-            // Use encrypted request
-            let params = Some(json!({
-                "auth_code": request.auth_code,
-                "uid": request.uid,
-                "did": request.did,
-                "bid": request.bid,
-                "b": request.b,
-                "guess_num": request.guess_num,
-                "encrypted": true,
-                "auth_data": request.auth_data
-            }));
+            // Use encrypted request - server expects array of parameters
+            let params = Some(json!([
+                request.auth_code,
+                request.uid,
+                request.did,
+                request.bid,
+                request.b,
+                request.guess_num
+            ]));
             
             let result = self.make_encrypted_request("RecoverSecret", params).await?;
+            
+            println!("🔍 DEBUG: Raw server result: {:?}", result);
             
             Ok(RecoverSecretResponse {
                 version: result.get("version").and_then(|v| v.as_i64()).unwrap_or(0) as i32,

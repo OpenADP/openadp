@@ -59,6 +59,22 @@
 //! }
 //! ```
 
+use std::path::Path;
+
+/// Derive identifiers from filename, user_id, and hostname
+/// This matches the Go DeriveIdentifiers function behavior
+pub fn derive_identifiers(filename: &str, user_id: &str, hostname: &str) -> (String, String, String) {
+    let hostname = if hostname.is_empty() {
+        gethostname::gethostname().to_string_lossy().to_string()
+    } else {
+        hostname.to_string()
+    };
+    
+    let bid = format!("file://{}", Path::new(filename).file_name().unwrap_or_default().to_string_lossy());
+    
+    (user_id.to_string(), hostname, bid)
+}
+
 pub mod crypto;
 pub mod client;
 pub mod keygen;
@@ -110,6 +126,12 @@ pub enum OpenADPError {
     
     #[error("Secret sharing failed: {0}")]
     SecretSharing(String),
+    
+    #[error("I/O error: {0}")]
+    Io(String),
+    
+    #[error("Invalid format: {0}")]
+    InvalidFormat(String),
 }
 
 pub type Result<T> = std::result::Result<T, OpenADPError>;

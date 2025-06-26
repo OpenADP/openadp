@@ -103,7 +103,14 @@ func TestOpenADPIntegration(t *testing.T) {
 		}
 	}
 
-	keyResult := client.GenerateEncryptionKey(bid, password, uid, 10, expiration, serverInfos)
+	// Create Identity struct for the new API
+	identity := &client.Identity{
+		UID: uid,
+		DID: did,
+		BID: bid,
+	}
+
+	keyResult := client.GenerateEncryptionKey(identity, password, 10, expiration, serverInfos)
 	if keyResult.Error != "" {
 		t.Fatalf("Failed to generate encryption key: %s", keyResult.Error)
 	}
@@ -123,7 +130,7 @@ func TestOpenADPIntegration(t *testing.T) {
 	}
 
 	// Use the same server info with public keys for recovery
-	recoveryResult := client.RecoverEncryptionKeyWithServerInfo(bid, password, uid, serverInfos, keyResult.Threshold, authCodes)
+	recoveryResult := client.RecoverEncryptionKeyWithServerInfo(identity, password, serverInfos, keyResult.Threshold, authCodes)
 	if recoveryResult.Error != "" {
 		t.Fatalf("Failed to recover encryption key: %s", recoveryResult.Error)
 	}

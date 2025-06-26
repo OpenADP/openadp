@@ -161,16 +161,20 @@ func testKeyGeneration() {
 	fmt.Printf("   User ID: %s\n", userID)
 	fmt.Printf("   Servers: %d\n", len(serverURLs))
 
-	// Test identifier derivation
-	uid, did, bid := client.DeriveIdentifiers(filename, userID, "")
-	fmt.Printf("   Derived identifiers: UID=%s, DID=%s, BID=%s\n", uid, did, bid)
+	// Create Identity struct directly
+	identity := &client.Identity{
+		UID: userID,
+		DID: filename,  // Use filename as device ID for this demo
+		BID: "backup1", // Use a simple backup ID
+	}
+	fmt.Printf("   Identity: UID=%s, DID=%s, BID=%s\n", identity.UID, identity.DID, identity.BID)
 
 	// Test password to PIN conversion
 	pin := client.PasswordToPin(password)
 	fmt.Printf("   PIN from password: %02x%02x\n", pin[0], pin[1])
 
 	// Test key generation (simplified)
-	result := client.GenerateEncryptionKey(filename, password, userID, 10, 0, client.ConvertURLsToServerInfo(serverURLs))
+	result := client.GenerateEncryptionKey(identity, password, 10, 0, client.ConvertURLsToServerInfo(serverURLs))
 	if result.Error != "" {
 		// This is expected since we don't have real servers
 		fmt.Printf("   Key generation (simulated): %s\n", result.Error)
