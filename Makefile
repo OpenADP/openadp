@@ -10,6 +10,8 @@ DECRYPT_BINARY_NAME=openadp-decrypt
 KEYGEN_BINARY_NAME=openadp-keygen
 SERVERINFO_BINARY_NAME=openadp-serverinfo
 TEST_RUNNER_BINARY_NAME=run-tests
+OCRYPT_REGISTER_BINARY_NAME=ocrypt-register
+OCRYPT_RECOVER_BINARY_NAME=ocrypt-recover
 RUST_ENCRYPT_BINARY_NAME=openadp-encrypt-rust
 RUST_DECRYPT_BINARY_NAME=openadp-decrypt-rust
 VERSION=1.0.0
@@ -37,10 +39,10 @@ CARGO_TEST=$(CARGO) test
 # Build flags
 LDFLAGS=-ldflags "-X main.version=$(VERSION)"
 
-.PHONY: all build build-cli build-server build-encrypt build-decrypt build-keygen build-serverinfo build-test-runner build-rust build-rust-encrypt build-rust-decrypt test-rust clean clean-rust test test-verbose deps fmt lint help install demo server encrypt decrypt rust-encrypt rust-decrypt keygen serverinfo run-tests fuzz fuzz-server fuzz-crypto fuzz-api fuzz-all fuzz-quick fuzz-extended fuzz-coverage fuzz-clean fuzz-help
+.PHONY: all build build-cli build-server build-encrypt build-decrypt build-keygen build-serverinfo build-test-runner build-ocrypt-register build-ocrypt-recover build-rust build-rust-encrypt build-rust-decrypt test-rust clean clean-rust test test-verbose deps fmt lint help install demo server encrypt decrypt rust-encrypt rust-decrypt keygen serverinfo run-tests ocrypt-register ocrypt-recover fuzz fuzz-server fuzz-crypto fuzz-api fuzz-all fuzz-quick fuzz-extended fuzz-coverage fuzz-clean fuzz-help
 
 # Default target
-all: clean deps fmt test build build-cli build-server build-encrypt build-decrypt build-keygen build-serverinfo build-test-runner build-rust
+all: clean deps fmt test build build-cli build-server build-encrypt build-decrypt build-keygen build-serverinfo build-test-runner build-ocrypt-register build-ocrypt-recover build-rust
 
 # Build the demo application
 build:
@@ -81,6 +83,16 @@ build-serverinfo:
 build-test-runner:
 	@echo "🔨 Building OpenADP test runner..."
 	$(GOBUILD) -o $(BUILD_DIR)/$(TEST_RUNNER_BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/run-tests
+
+# Build the ocrypt register tool
+build-ocrypt-register:
+	@echo "🔨 Building Ocrypt register tool..."
+	$(GOBUILD) -o $(BUILD_DIR)/$(OCRYPT_REGISTER_BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/ocrypt-register
+
+# Build the ocrypt recover tool
+build-ocrypt-recover:
+	@echo "🔨 Building Ocrypt recover tool..."
+	$(GOBUILD) -o $(BUILD_DIR)/$(OCRYPT_RECOVER_BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/ocrypt-recover
 
 # Build all Rust tools
 build-rust: build-rust-encrypt build-rust-decrypt
@@ -136,6 +148,7 @@ clean-rust:
 	@if [ -f "$(RUST_SDK_DIR)/Cargo.toml" ]; then \
 		cd $(RUST_SDK_DIR) && $(CARGO_CLEAN); \
 		rm -f $(BUILD_DIR)/$(RUST_ENCRYPT_BINARY_NAME) $(BUILD_DIR)/$(RUST_DECRYPT_BINARY_NAME); \
+		rm -f $(BUILD_DIR)/$(OCRYPT_REGISTER_BINARY_NAME) $(BUILD_DIR)/$(OCRYPT_RECOVER_BINARY_NAME); \
 		echo "✅ Rust artifacts cleaned"; \
 	else \
 		echo "❌ Rust SDK not found at $(RUST_SDK_DIR)"; \
@@ -253,6 +266,16 @@ decrypt: build-decrypt
 serverinfo: build-serverinfo
 	@echo "📋 Running OpenADP server info tool..."
 	./$(BUILD_DIR)/$(SERVERINFO_BINARY_NAME) -help
+
+# Run the ocrypt register tool
+ocrypt-register: build-ocrypt-register
+	@echo "🔐 Running Ocrypt register tool..."
+	./$(BUILD_DIR)/$(OCRYPT_REGISTER_BINARY_NAME) --help
+
+# Run the ocrypt recover tool
+ocrypt-recover: build-ocrypt-recover
+	@echo "🔓 Running Ocrypt recover tool..."
+	./$(BUILD_DIR)/$(OCRYPT_RECOVER_BINARY_NAME) --help
 
 # Run the Rust encryption tool
 rust-encrypt: build-rust-encrypt
@@ -386,6 +409,8 @@ help:
 	@echo "  build-encrypt    - Build encryption tool"
 	@echo "  build-decrypt    - Build decryption tool"
 	@echo "  build-keygen     - Build key generation tool"
+	@echo "  build-ocrypt-register - Build Ocrypt register tool"
+	@echo "  build-ocrypt-recover - Build Ocrypt recover tool"
 	@echo "  build-rust       - Build all Rust tools"
 	@echo "  build-rust-encrypt - Build Rust encryption tool"
 	@echo "  build-rust-decrypt - Build Rust decryption tool"
@@ -405,6 +430,8 @@ help:
 	@echo "  server           - Run server application"
 	@echo "  encrypt          - Run encryption tool"
 	@echo "  decrypt          - Run decryption tool"
+	@echo "  ocrypt-register  - Run Ocrypt register tool"
+	@echo "  ocrypt-recover   - Run Ocrypt recover tool"
 	@echo "  rust-encrypt     - Run Rust encryption tool"
 	@echo "  rust-decrypt     - Run Rust decryption tool"
 	@echo "  interactive      - Run CLI in interactive mode"
