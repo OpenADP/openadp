@@ -123,12 +123,10 @@ impl RecoverEncryptionKeyResult {
     }
 }
 
-/// Convert password to PIN using SHA-256 (first 16 bytes)
+/// Convert password to PIN using direct bytes (matches Go PasswordToPin)
 pub fn password_to_pin(password: &str) -> Vec<u8> {
-    let mut hasher = Sha256::new();
-    hasher.update(password.as_bytes());
-    let hash = hasher.finalize();
-    hash[..16].to_vec()
+    // Use password bytes directly (no unnecessary hashing/truncation)
+    password.as_bytes().to_vec()
 }
 
 /// Generate authentication codes for servers

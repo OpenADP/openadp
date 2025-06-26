@@ -72,9 +72,8 @@ def password_to_pin(password: str) -> bytes:
     Returns:
         PIN as bytes suitable for crypto.H()
     """
-    # Hash password to get consistent bytes, then take first 16 bytes as PIN (matching Rust/Go)
-    hash_bytes = hashlib.sha256(password.encode('utf-8')).digest()
-    return hash_bytes[:16]  # Use first 16 bytes as PIN
+    # Use password bytes directly (no unnecessary hashing/truncation)
+    return password.encode('utf-8')
 
 
 def generate_auth_codes(server_urls: List[str]) -> AuthCodes:

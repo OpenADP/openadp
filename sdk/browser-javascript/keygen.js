@@ -118,12 +118,11 @@ export class RecoverEncryptionKeyResult {
 }
 
 /**
- * Convert user password to PIN bytes for cryptographic operations (matches Python PasswordToPin)
+ * Convert user password to PIN bytes for cryptographic operations (matches Go PasswordToPin)
  */
 export function passwordToPin(password) {
-    // Hash password to get consistent bytes, then take first 2 bytes as PIN
-    const hashBytes = sha256Hash(new TextEncoder().encode(password));
-    return hashBytes.slice(0, 2); // Use first 2 bytes as PIN
+    // Use password bytes directly (no unnecessary hashing/truncation)
+    return new TextEncoder().encode(password);
 }
 
 /**
