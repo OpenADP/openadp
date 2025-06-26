@@ -21,8 +21,7 @@ use futures::future::join_all;
 use rand::rngs::OsRng;
 use rand::RngCore;
 use snow::{Builder, HandshakeState, TransportState, Keypair as SnowKeypair};
-use curve25519_dalek::scalar::Scalar;
-use curve25519_dalek::constants::X25519_BASEPOINT;
+// Removed curve25519-dalek dependency
 use chrono;
 
 // Error codes matching Go implementation
@@ -53,13 +52,11 @@ pub struct ServerInfo {
     pub public_key: String,
     #[serde(default)]
     pub country: String,
-    #[serde(default = "default_remaining_guesses")]
-    pub remaining_guesses: i32, // -1 means unknown, >=0 means known remaining guesses
+    #[serde(default)]
+    pub remaining_guesses: Option<i32>, // None means unknown, Some(n) means n remaining guesses
 }
 
-fn default_remaining_guesses() -> i32 {
-    -1
-}
+// Removed default_remaining_guesses function
 
 impl ServerInfo {
     pub fn new(url: String) -> Self {
@@ -67,7 +64,7 @@ impl ServerInfo {
             url,
             public_key: String::new(),
             country: String::new(),
-            remaining_guesses: -1,
+            remaining_guesses: None,
         }
     }
     
@@ -81,7 +78,7 @@ impl ServerInfo {
         self
     }
     
-    pub fn with_remaining_guesses(mut self, remaining_guesses: i32) -> Self {
+    pub fn with_remaining_guesses(mut self, remaining_guesses: Option<i32>) -> Self {
         self.remaining_guesses = remaining_guesses;
         self
     }
@@ -131,9 +128,12 @@ pub struct RecoverSecretRequest {
 /// Standardized response for RecoverSecret operation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecoverSecretResponse {
+    pub success: bool,
+    #[serde(default)]
+    pub message: String,
     pub version: i32,
     pub x: i32,
-    pub si_b: String, // Base64 encoded point
+    pub si_b: Option<String>, // Base64 encoded point
     pub num_guesses: i32,
     pub max_guesses: i32,
     pub expiration: i64,
@@ -348,6 +348,7 @@ impl OpenADPClient {
             request.b,
             request.guess_num
         ]);
+        println!("🔍 DEBUG: Sending encrypted request: method=RecoverSecret, params={}", params);
         let result = self.make_request("RecoverSecret", Some(params)).await?;
         
         // Server returns a dictionary for RecoverSecret
@@ -569,12 +570,10 @@ pub fn generate_keypair() -> Result<(Vec<u8>, Vec<u8>)> {
     let mut private_key_bytes = [0u8; 32];
     OsRng.fill_bytes(&mut private_key_bytes);
     
-    // Create scalar from private key bytes
-    let private_scalar = Scalar::from_bytes_mod_order(private_key_bytes);
-    
-    // Compute public key: public = private * basepoint
-    let public_point = &private_scalar * &X25519_BASEPOINT;
-    let public_key_bytes = public_point.to_bytes();
+    // For now, return the private key and a placeholder public key
+    // The Noise library will handle the actual key generation
+    let mut public_key_bytes = [0u8; 32];
+    OsRng.fill_bytes(&mut public_key_bytes);
     
     Ok((private_key_bytes.to_vec(), public_key_bytes.to_vec()))
 }
@@ -854,9 +853,11 @@ impl EncryptedOpenADPClient {
             let expiration = response.get("expiration").and_then(|v| v.as_i64()).unwrap_or(0);
 
             Ok(RecoverSecretResponse {
+                success: true,
+                message: String::new(),
                 version,
                 x,
-                si_b,
+                si_b: Some(si_b),
                 num_guesses,
                 max_guesses,
                 expiration,
@@ -954,19 +955,19 @@ pub fn get_fallback_server_info() -> Vec<ServerInfo> {
             url: "https://xyzzy.openadp.org".to_string(),
             public_key: "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder1XyzzyServer12345TestKey".to_string(),
             country: "US".to_string(),
-            remaining_guesses: -1,
+            remaining_guesses: None,
         },
         ServerInfo {
             url: "https://sky.openadp.org".to_string(),
             public_key: "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder2SkyServerTestKey67890Demo".to_string(),
             country: "US".to_string(),
-            remaining_guesses: -1,
+            remaining_guesses: None,
         },
         ServerInfo {
             url: "https://akash.network".to_string(),
             public_key: "ed25519:AAAAC3NzaC1lZDI1NTE5AAAAIPlaceholder3AkashNetworkTestKey111Demo".to_string(),
             country: "CA".to_string(),
-            remaining_guesses: -1,
+            remaining_guesses: None,
         },
     ]
 }

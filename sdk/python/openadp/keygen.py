@@ -72,9 +72,9 @@ def password_to_pin(password: str) -> bytes:
     Returns:
         PIN as bytes suitable for crypto.H()
     """
-    # Hash password to get consistent bytes, then take first 2 bytes as PIN
+    # Hash password to get consistent bytes, then take first 16 bytes as PIN (matching Rust/Go)
     hash_bytes = hashlib.sha256(password.encode('utf-8')).digest()
-    return hash_bytes[:2]  # Use first 2 bytes as PIN
+    return hash_bytes[:16]  # Use first 16 bytes as PIN
 
 
 def generate_auth_codes(server_urls: List[str]) -> AuthCodes:
@@ -384,11 +384,13 @@ def recover_encryption_key(
         
         # Debug: Show the U point that we're using for recovery
         u_point_affine = unexpand(U)
+        print(f"🔍 DEBUG: U point: x={u_point_affine.x}, y={u_point_affine.y}")
         
         # Generate random r for blinding (0 < r < Q)  
-        r = secrets.randbelow(Q)
-        if r == 0:
-            r = 1  # Ensure r is not zero
+        # DEBUG: Set r = 1 for deterministic debugging (remove this later)
+        r = 1  # secrets.randbelow(Q)
+        # if r == 0:
+        #     r = 1  # Ensure r is not zero
         
         # Compute r^-1 mod Q
         r_inv = mod_inverse(r, Q)
@@ -398,6 +400,12 @@ def recover_encryption_key(
         b_point_affine = unexpand(b_point)
         b_compressed = point_compress(b_point)
         b_base64_format = base64.b64encode(b_compressed).decode('ascii')
+        
+        print(f"🔍 DEBUG: r scalar: {r}")
+        print(f"🔍 DEBUG: r^-1 scalar: {r_inv}")
+        print(f"🔍 DEBUG: B point (r * U): x={b_point_affine.x}, y={b_point_affine.y}")
+        print(f"🔍 DEBUG: B compressed: {b_compressed.hex()}")
+        print(f"🔍 DEBUG: B base64: {b_base64_format}")
         
         # Step 5: Recover shares from servers (use all available servers, already intelligently selected)
         print("OpenADP: Recovering shares from servers...")
@@ -435,6 +443,9 @@ def recover_encryption_key(
                     )
                     result_map = result if isinstance(result, dict) else result.__dict__
                     
+                    print(f"🔍 DEBUG: Server {i+1} response - x: {result_map.get('x')}, si_b: {result_map.get('si_b')}")
+                    print(f"🔍 DEBUG: si_b length: {len(result_map.get('si_b', ''))}")
+                    
                     guesses_str = "unknown" if server_info.remaining_guesses == -1 else f"{server_info.remaining_guesses}"
                     print(f"OpenADP: ✓ Recovered share from server {i+1} ({server_url}, {guesses_str} remaining guesses)")
                     
@@ -448,6 +459,9 @@ def recover_encryption_key(
                             continue
                         
                         si_b_bytes = base64.b64decode(si_b_base64)
+                        print(f"🔍 DEBUG: Decoded si_b bytes length: {len(si_b_bytes)}")
+                        print(f"🔍 DEBUG: Decoded si_b bytes: {si_b_bytes.hex()}")
+                        
                         si_b = point_decompress(si_b_bytes)
                         
                         valid_shares.append(PointShare(x_coord, si_b))
@@ -515,13 +529,20 @@ def recover_encryption_key(
         # Use ALL available shares, not just threshold (matches Go implementation)
         recovered_sb = recover_point_secret(valid_shares)
         
+        print(f"🔍 DEBUG: Recovered s*B point: x={recovered_sb.x}, y={recovered_sb.y}")
+        
         # Apply r^-1 to get the original secret point: s*U = r^-1 * (s*B)
         # This matches Go: rec_s_point = crypto.point_mul(r_inv, crypto.expand(rec_sb))
         recovered_sb_4d = expand(recovered_sb)
         original_su = point_mul(r_inv, recovered_sb_4d)
+        original_su_2d = unexpand(original_su)
+        
+        print(f"🔍 DEBUG: Original s*U point (after r^-1): x={original_su_2d.x}, y={original_su_2d.y}")
         
         # Step 7: Derive same encryption key
         encryption_key = derive_enc_key(original_su)
+        
+        print(f"🔍 DEBUG: Final encryption key: {encryption_key.hex()}")
         print("OpenADP: Successfully recovered encryption key")
         
         return RecoverEncryptionKeyResult(encryption_key=encryption_key)

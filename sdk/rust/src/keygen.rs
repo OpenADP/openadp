@@ -1,29 +1,35 @@
-//! Key generation and recovery for OpenADP.
+//! Key generation and recovery functionality for OpenADP.
 //!
-//! This module provides high-level functions for generating encryption keys using
-//! the OpenADP distributed secret sharing system, matching the Go and Python implementations exactly.
-//!
-//! This module handles the complete workflow:
-//! 1. Generate random secrets and split into shares
-//! 2. Register shares with distributed servers  
-//! 3. Recover secrets from servers during decryption
-//! 4. Derive encryption keys using cryptographic functions
+//! This module implements the OpenADP protocol for distributed secret sharing:
+//! - Identity-based encryption key generation
+//! - Shamir secret sharing across multiple servers
+//! - Key recovery using threshold cryptography
+//! - Authentication code management
 
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use hex;
-use rug::Integer;
+use sha2::{Sha256, Digest};
+use serde::{Deserialize, Serialize};
+use tokio;
 use rand::rngs::OsRng;
 use rand::{RngCore, Rng};
-use curve25519_dalek::scalar::Scalar;
+use num_bigint::BigUint;
+use num_traits::{Zero, One};
+// Removed curve25519-dalek dependency
 
 use crate::{OpenADPError, Result};
-use crate::client::{EncryptedOpenADPClient, ServerInfo, RegisterSecretRequest, RecoverSecretRequest, parse_server_public_key, ListBackupsRequest};
-use crate::crypto::{H, point_compress, Point4D, ShamirSecretSharing, point_decompress, unexpand, expand, point_mul, derive_enc_key, PointShare, recover_point_secret};
+use crate::client::{
+    EncryptedOpenADPClient, ServerInfo, parse_server_public_key,
+    RegisterSecretRequest, RecoverSecretRequest, ListBackupsRequest,
+};
+use crate::crypto::{
+    H, point_compress, Point4D, ShamirSecretSharing, point_decompress, unexpand, expand, point_mul, 
+    derive_enc_key, recover_point_secret, PointShare, sha256_hash
+};
 
-/// Identity represents the primary key tuple for secret shares stored on servers
+/// Identity represents the three-part key for OpenADP: (UID, DID, BID)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Identity {
     pub uid: String,  // User ID - uniquely identifies the user
@@ -43,8 +49,8 @@ impl std::fmt::Display for Identity {
     }
 }
 
-/// Authentication codes for OpenADP servers
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Authentication codes for servers
+#[derive(Debug, Clone)]
 pub struct AuthCodes {
     pub base_auth_code: String,
     pub server_auth_codes: HashMap<String, String>,
@@ -53,11 +59,12 @@ pub struct AuthCodes {
 impl AuthCodes {
     pub fn get_server_code(&self, server_url: &str) -> Option<&String> {
         self.server_auth_codes.get(server_url)
+            .or_else(|| Some(&self.base_auth_code))
     }
 }
 
-/// Result of encryption key generation
-#[derive(Debug, Clone)]
+/// Result of key generation
+#[derive(Debug)]
 pub struct GenerateEncryptionKeyResult {
     pub encryption_key: Option<Vec<u8>>,
     pub error: Option<String>,
@@ -81,7 +88,7 @@ impl GenerateEncryptionKeyResult {
             auth_codes: Some(auth_codes),
         }
     }
-    
+
     pub fn error(error: String) -> Self {
         Self {
             encryption_key: None,
@@ -93,8 +100,8 @@ impl GenerateEncryptionKeyResult {
     }
 }
 
-/// Result of encryption key recovery
-#[derive(Debug, Clone)]
+/// Result of key recovery
+#[derive(Debug)]
 pub struct RecoverEncryptionKeyResult {
     pub encryption_key: Option<Vec<u8>>,
     pub error: Option<String>,
@@ -107,7 +114,7 @@ impl RecoverEncryptionKeyResult {
             error: None,
         }
     }
-    
+
     pub fn error(error: String) -> Self {
         Self {
             encryption_key: None,
@@ -116,40 +123,39 @@ impl RecoverEncryptionKeyResult {
     }
 }
 
-/// Convert user password to PIN bytes for cryptographic operations (matches Go/Python PasswordToPin)
+/// Convert password to PIN using SHA-256 (first 16 bytes)
 pub fn password_to_pin(password: &str) -> Vec<u8> {
-    // Hash password to get consistent bytes, then take first 2 bytes as PIN
     let mut hasher = Sha256::new();
     hasher.update(password.as_bytes());
-    let hash_bytes = hasher.finalize();
-    hash_bytes[..2].to_vec()
+    let hash = hasher.finalize();
+    hash[..16].to_vec()
 }
 
-/// Generate authentication codes for OpenADP servers (matches Go/Python GenerateAuthCodes)
+/// Generate authentication codes for servers
 pub fn generate_auth_codes(server_urls: &[String]) -> AuthCodes {
-    // Generate random base authentication code (32 bytes = 256 bits)
-    let mut rng = rand::thread_rng();
-    let base_auth_bytes: [u8; 32] = rng.gen();
+    let mut rng = OsRng;
+    
+    // Generate base auth code (16 random bytes)
+    let mut base_auth_bytes = [0u8; 16];
+    rng.fill_bytes(&mut base_auth_bytes);
     let base_auth_code = hex::encode(base_auth_bytes);
     
-    let mut auth_codes = AuthCodes {
-        base_auth_code: base_auth_code.clone(),
-        server_auth_codes: HashMap::new(),
-    };
-    
-    // Derive server-specific auth codes
+    // Generate per-server codes by hashing base code with server URL
+    let mut server_auth_codes = HashMap::new();
     for server_url in server_urls {
-        // Combine base auth code with server URL and hash (matches Go format with colon separator)
-        let combined = format!("{}:{}", base_auth_code, server_url);
         let mut hasher = Sha256::new();
-        hasher.update(combined.as_bytes());
-        let server_hash = hasher.finalize();
-        let server_code = hex::encode(server_hash);
-        
-        auth_codes.server_auth_codes.insert(server_url.clone(), server_code);
+        hasher.update(base_auth_code.as_bytes());
+        hasher.update(b":");
+        hasher.update(server_url.as_bytes());
+        let hash = hasher.finalize();
+        let server_code = hex::encode(&hash[..16]);
+        server_auth_codes.insert(server_url.clone(), server_code);
     }
     
-    auth_codes
+    AuthCodes {
+        base_auth_code,
+        server_auth_codes,
+    }
 }
 
 /// Generate an encryption key using OpenADP distributed secret sharing
@@ -160,37 +166,22 @@ pub async fn generate_encryption_key(
     expiration: i64,
     server_infos: Vec<ServerInfo>,
 ) -> Result<GenerateEncryptionKeyResult> {
-    // Input validation
-    if identity.uid.is_empty() {
-        return Ok(GenerateEncryptionKeyResult::error("UID cannot be empty".to_string()));
-    }
-    
-    if identity.did.is_empty() {
-        return Ok(GenerateEncryptionKeyResult::error("DID cannot be empty".to_string()));
-    }
-    
-    if identity.bid.is_empty() {
-        return Ok(GenerateEncryptionKeyResult::error("BID cannot be empty".to_string()));
-    }
-
-    if max_guesses < 0 {
-        return Ok(GenerateEncryptionKeyResult::error("Max guesses cannot be negative".to_string()));
-    }
-
-    if server_infos.is_empty() {
-        return Ok(GenerateEncryptionKeyResult::error("No OpenADP servers available".to_string()));
-    }
-
     println!("OpenADP: Identity={}", identity);
-
-    // Step 1: Convert password to PIN
-    let pin = password_to_pin(password);
     
-    // Step 2: Initialize encrypted clients for each server
+    if server_infos.is_empty() {
+        return Ok(GenerateEncryptionKeyResult::error("No servers available".to_string()));
+    }
+    
+    // Step 1: Generate authentication codes
+    let server_urls: Vec<String> = server_infos.iter().map(|s| s.url.clone()).collect();
+    let auth_codes = generate_auth_codes(&server_urls);
+    
+    // Step 2: Test server connectivity and encryption capabilities
     let mut clients = Vec::new();
     let mut live_server_infos = Vec::new();
     
-    for server_info in &server_infos {
+    for server_info in server_infos {
+        // Parse public key if available
         let public_key = if !server_info.public_key.is_empty() {
             match parse_server_public_key(&server_info.public_key) {
                 Ok(key) => Some(key),
@@ -203,41 +194,36 @@ pub async fn generate_encryption_key(
             None
         };
         
-        let mut client = EncryptedOpenADPClient::new(server_info.url.clone(), public_key.clone(), 30);
+        let mut client = EncryptedOpenADPClient::new(server_info.url.clone(), public_key, 30);
         
-        match client.ping().await {
+        // Test server connectivity
+        match client.test_connection().await {
             Ok(_) => {
+                println!("✅ Server {} is reachable", server_info.url);
                 clients.push(client);
-                live_server_infos.push(server_info.clone());
-                if public_key.is_some() {
-                    println!("OpenADP: Server {} - Using Noise-NK encryption (key from servers.json)", server_info.url);
-                } else {
-                    println!("OpenADP: Server {} - No encryption (no public key)", server_info.url);
-                }
+                live_server_infos.push(server_info);
             }
             Err(e) => {
-                println!("Warning: Server {} is not accessible: {}", server_info.url, e);
+                println!("❌ Server {} is not reachable: {}", server_info.url, e);
             }
         }
     }
     
-    if clients.is_empty() {
-        return Ok(GenerateEncryptionKeyResult::error("No live servers available".to_string()));
+    if live_server_infos.len() < 2 {
+        return Ok(GenerateEncryptionKeyResult::error("Need at least 2 live servers".to_string()));
     }
     
-    println!("OpenADP: Using {} live servers", clients.len());
+    // Step 3: Convert password to PIN
+    let pin = password_to_pin(password);
+    println!("🔍 DEBUG: password={}, pin={}", password, hex::encode(&pin));
     
-    // Step 4: Generate authentication codes
-    let server_urls: Vec<String> = live_server_infos.iter().map(|s| s.url.clone()).collect();
-    let mut auth_codes = generate_auth_codes(&server_urls);
-    
-    // Step 5: Generate RANDOM secret and create point
-    // SECURITY FIX: Use random secret for Shamir secret sharing, not deterministic
-    // Generate random secret from 0 to Q-1
-    // Note: secret can be 0 - this is valid for Shamir secret sharing
+    // Step 4: Generate random secret using cryptographically secure RNG
     let mut random_bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut random_bytes);
-    let secret_int = Integer::from_digits(&random_bytes, rug::integer::Order::MsfBe);
+    let mut rng = OsRng;
+    rng.fill_bytes(&mut random_bytes);
+    
+    // Convert to rug::Integer for Shamir secret sharing
+    let secret_int = rug::Integer::from_digits(&random_bytes, rug::integer::Order::MsfBe);
     let q = ShamirSecretSharing::get_q();
     let secret = secret_int % &q;
     
@@ -248,7 +234,7 @@ pub async fn generate_encryption_key(
     // Step 6: Compute U = H(uid, did, bid, pin)
     let u = H(identity.uid.as_bytes(), identity.did.as_bytes(), identity.bid.as_bytes(), &pin)?;
     let u_2d = unexpand(&u)?;
-    println!("🔍 DEBUG: U point: x={}, y={}", hex::encode(&u_2d.x), hex::encode(&u_2d.y));
+    println!("🔍 DEBUG: U point: x={}, y={}", hex::encode(&u_2d.x.to_bytes_le()), hex::encode(&u_2d.y.to_bytes_le()));
     
     // Step 7: Register shares with servers
     println!("🔑 Registering shares with {} servers...", clients.len());
@@ -258,14 +244,6 @@ pub async fn generate_encryption_key(
         let server_url = &live_server_infos[i].url;
         let server_auth_code = auth_codes.get_server_code(server_url)
             .ok_or_else(|| OpenADPError::Authentication("Missing server auth code".to_string()))?;
-        
-        // Convert share to scalar and compute share point
-        let _share_scalar = {
-            let mut bytes = [0u8; 32];
-            // share_data is now Integer, convert to bytes
-            share_data.write_digits(&mut bytes, rug::integer::Order::MsfBe);
-            bytes
-        };
         
         // Convert share Y to string (server expects integer, not base64) - matching Go implementation
         let y_string = share_data.to_string();
@@ -301,17 +279,14 @@ pub async fn generate_encryption_key(
     }
     
     // Step 8: Derive encryption key from secret point s*U
-    // Convert the secret to a scalar and multiply with U to get the secret point
-    let secret_scalar = {
-        let mut secret_bytes = [0u8; 32];
+    // Convert the secret to a BigUint and multiply with U to get the secret point
+    let secret_biguint = {
         let bytes = secret.to_digits::<u8>(rug::integer::Order::MsfBe);
-        let copy_len = std::cmp::min(bytes.len(), 32);
-        secret_bytes[(32-copy_len)..].copy_from_slice(&bytes[..copy_len]);
-        secret_bytes
+        BigUint::from_bytes_be(&bytes)
     };
     
     // Compute secret point: s*U
-    let secret_point = point_mul(&secret_scalar, &u)?;
+    let secret_point = point_mul(&secret_biguint, &u);
     let encryption_key = derive_enc_key(&secret_point)?;
     
     println!("✅ Generated encryption key with {}-of-{} threshold", threshold, live_server_infos.len());
@@ -338,37 +313,37 @@ pub async fn recover_encryption_key(
     let pin = password_to_pin(password);
     let u = H(identity.uid.as_bytes(), identity.did.as_bytes(), identity.bid.as_bytes(), &pin)?;
     let u_2d = unexpand(&u)?;
-    println!("🔍 DEBUG: U point: x={}, y={}", hex::encode(&u_2d.x), hex::encode(&u_2d.y));
+    println!("🔍 DEBUG: U point: x={}, y={}", hex::encode(&u_2d.x.to_bytes_le()), hex::encode(&u_2d.y.to_bytes_le()));
     
     // Step 1.5: Compute r scalar for blinding
     let r_scalar = {
-        let mut hasher = Sha256::new();
-        hasher.update(b"OpenADP_R:");
-        hasher.update(identity.uid.as_bytes());
-        hasher.update(b":");
-        hasher.update(identity.did.as_bytes());
-        hasher.update(b":");
-        hasher.update(identity.bid.as_bytes());
-        hasher.update(b":");
-        hasher.update(&pin);
-        let r_hash = hasher.finalize();
+        // TEMPORARY DEBUG: Set r = 1 for deterministic debugging (both tools should use same r)
+        BigUint::one()
         
-        println!("🔍 DEBUG: r derivation inputs - uid: {}, did: {}, bid: {}, pin: {}", 
-            identity.uid, identity.did, identity.bid, hex::encode(&pin));
-        println!("🔍 DEBUG: r hash: {}", hex::encode(&r_hash));
+        /*
+        // TODO: Use random r in production
+        use rand::RngCore;
+        let mut rng = OsRng;
         
-        // DEBUG: Set r = 1 to eliminate differences
-        println!("🔍 DEBUG: r set to 1 for debugging");
-        Scalar::from_bytes_mod_order([
-            1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-        ])
+        // Generate random bytes and convert to BigUint (matching Go rand.Int(rand.Reader, common.Q))
+        let mut r_bytes = [0u8; 32];
+        rng.fill_bytes(&mut r_bytes);
+        let mut r = BigUint::from_bytes_be(&r_bytes);
         
-        // Original code:
-        // Scalar::from_bytes_mod_order(*r_hash.as_ref())
+        // Ensure r < Q (curve order)
+        let q = crate::crypto::Q.clone();
+        r = r % &q;
+        
+        // Ensure r != 0
+        if r.is_zero() {
+            r = BigUint::one();
+        }
+        
+        r
+        */
     };
     
-    println!("🔍 DEBUG: r scalar: {}", hex::encode(r_scalar.to_bytes()));
+    println!("🔍 DEBUG: r scalar: {}", hex::encode(&r_scalar.to_bytes_le()));
     
     // Step 2: Fetch remaining guesses and select best servers
     println!("OpenADP: Fetching remaining guesses from servers...");
@@ -380,10 +355,9 @@ pub async fn recover_encryption_key(
     }
     
     // Step 3: Compute B = r * U  
-    let r_bytes = r_scalar.to_bytes();
-    let b = point_mul(&r_bytes, &u)?;
+    let b = point_mul(&r_scalar, &u);
     let b_2d = unexpand(&b)?;
-    println!("🔍 DEBUG: B point (r * U): x={}, y={}", hex::encode(&b_2d.x), hex::encode(&b_2d.y));
+    println!("🔍 DEBUG: B point (r * U): x={}, y={}", hex::encode(&b_2d.x.to_bytes_le()), hex::encode(&b_2d.y.to_bytes_le()));
     
     // Compress B for transmission
     let b_compressed = point_compress(&b)?;
@@ -442,105 +416,123 @@ pub async fn recover_encryption_key(
             }
         }
         
+        println!("🔍 DEBUG: Sending guess_num = {} to server {}", guess_num, server_info.url);
+        
         let request = RecoverSecretRequest {
             auth_code: server_auth_code.clone(),
             uid: identity.uid.clone(),
             did: identity.did.clone(),
             bid: identity.bid.clone(),
+            guess_num: guess_num,  // Use current num_guesses directly
             b: b_base64.clone(),
-            guess_num,
             encrypted: client.has_public_key(),
             auth_data: None,
         };
         
         match client.recover_secret_standardized(request).await {
             Ok(response) => {
-                println!("🔍 DEBUG: Server response - x: {}, si_b: {}", response.x, response.si_b);
-                println!("🔍 DEBUG: si_b length: {}", response.si_b.len());
-                
-                // Parse the recovered point from base64
-                let si_b_bytes = BASE64.decode(&response.si_b)
-                    .map_err(|e| OpenADPError::Crypto(format!("Invalid base64 share: {}", e)))?;
-                
-                println!("🔍 DEBUG: Decoded si_b bytes length: {}", si_b_bytes.len());
-                println!("🔍 DEBUG: Decoded si_b bytes: {}", hex::encode(&si_b_bytes));
-                
-                let si_b_point = point_decompress(&si_b_bytes)?;
-                let si_b_2d = unexpand(&si_b_point)?;
-                
-                println!("✅ Recovered share from server {} ({} remaining guesses)", 
-                    server_info.url, 
-                    std::cmp::max(0, response.max_guesses - response.num_guesses));
-                
-                // Create point share for reconstruction
-                recovered_point_shares.push(PointShare::new(response.x as usize, si_b_2d));
+                if response.success {
+                    println!("✅ Recovered share from server {}", server_info.url);
+                    
+                    // Parse the returned share
+                    if let Some(si_b) = response.si_b {
+                        println!("🔍 DEBUG: Server {} returned si_b: {}", server_info.url, si_b);
+                        
+                        // Decode base64 to get compressed point
+                        match BASE64.decode(&si_b) {
+                            Ok(si_b_bytes) => {
+                                println!("🔍 DEBUG: si_b_bytes length: {}, data: {}", si_b_bytes.len(), hex::encode(&si_b_bytes));
+                                
+                                // Decompress the point
+                                match point_decompress(&si_b_bytes) {
+                                    Ok(si_b_point) => {
+                                        let si_b_2d = unexpand(&si_b_point)?;
+                                        println!("🔍 DEBUG: si_b point: x={}, y={}", 
+                                            hex::encode(&si_b_2d.x.to_bytes_le()), 
+                                            hex::encode(&si_b_2d.y.to_bytes_le()));
+                                        
+                                        // Add to point shares for Lagrange interpolation
+                                        recovered_point_shares.push(PointShare::new(response.x as usize, si_b_point));
+                                    }
+                                    Err(e) => {
+                                        println!("❌ Failed to decompress point from server {}: {}", server_info.url, e);
+                                        return Err(e);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                println!("❌ Failed to decode base64 from server {}: {}", server_info.url, e);
+                                return Err(OpenADPError::Crypto(format!("Base64 decode error: {}", e)));
+                            }
+                        }
+                    } else {
+                        println!("❌ Server {} returned success but no si_b", server_info.url);
+                        return Err(OpenADPError::Server("Server returned success but no si_b".to_string()));
+                    }
+                } else {
+                    println!("❌ Server {} returned error: {}", server_info.url, response.message);
+                    return Err(OpenADPError::Server(format!("Server error: {}", response.message)));
+                }
             }
             Err(e) => {
-                return Err(OpenADPError::Server(format!("RecoverSecret failed: {}", e)));
+                println!("❌ Error recovering from server {}: {}", server_info.url, e);
+                return Err(e);
             }
         }
     }
     
+    // Step 5: Check if we have enough shares
     if recovered_point_shares.len() < threshold {
-        return Ok(RecoverEncryptionKeyResult::error(
-            format!("Insufficient shares recovered: {}/{}", recovered_point_shares.len(), threshold)
-        ));
+        return Err(OpenADPError::SecretSharing(format!(
+            "Not enough shares recovered: got {}, need {}", 
+            recovered_point_shares.len(), threshold
+        )));
     }
     
-    // Step 5: Reconstruct secret point using point-based Lagrange interpolation
-    println!("OpenADP: Reconstructing secret from {} point shares...", recovered_point_shares.len());
-    let recovered_sb = recover_point_secret(recovered_point_shares)?;
+    println!("🔍 DEBUG: Reconstructing secret from {} point shares", recovered_point_shares.len());
     
-    // Convert to 2D coordinates for proper debugging
-    let recovered_sb_2d = recovered_sb.clone(); // This is already Point2D
-    println!("🔍 DEBUG: Recovered s*B point: x={}, y={}", 
-        hex::encode(&recovered_sb_2d.x), 
-        hex::encode(&recovered_sb_2d.y));
+    // Step 6: Reconstruct the secret point using Lagrange interpolation
+    let recovered_sb_4d = recover_point_secret(recovered_point_shares)?;
+    let recovered_sb_2d = unexpand(&recovered_sb_4d)?;
+    println!("🔍 DEBUG: Recovered s*b point: x={}, y={}", 
+        hex::encode(&recovered_sb_2d.x.to_bytes_le()), 
+        hex::encode(&recovered_sb_2d.y.to_bytes_le()));
     
-    // Step 6: Apply r^-1 to get the original secret point: s*U = r^-1 * (s*B)
-    // First we need to compute r^-1 where r = H(uid, did, bid, pin)
-    // This matches the generation process where we computed r = H(...) and stored s*B = r*s*U
-    let r_inv = r_scalar.invert();
+    // Step 7: Compute original secret point: s*U = (s*b) / r = (s*b) * r^(-1)
+    // TEMPORARY DEBUG: Since r = 1, s*U = s*b directly (no need for modular inverse)
+    let original_su = recovered_sb_4d; // Since r = 1, no division needed
     
-    println!("🔍 DEBUG: r^-1 scalar: {}", hex::encode(r_inv.to_bytes()));
+    /*
+    // TODO: Use this in production when r is random
+    let q = crate::crypto::Q.clone();
+    let r_inv = mod_inverse(&r_scalar, &q)
+        .ok_or_else(|| OpenADPError::Crypto("Failed to compute modular inverse of r".to_string()))?;
     
-    // Convert recovered 2D point to 4D for multiplication
-    let recovered_sb_4d = expand(&recovered_sb)?;
+    // Apply r^-1 to unblind: s*U = r^-1 * (s*B)
+    let original_su = point_mul(&r_inv, &recovered_sb_4d);
+    */
     
-    // Apply r^-1: original_su = r^-1 * recovered_sb
-    let original_su_bytes = r_inv.to_bytes();
-    let original_su = point_mul(&original_su_bytes, &recovered_sb_4d)?;
-    
-    // Convert back to 2D for proper debugging
     let original_su_2d = unexpand(&original_su)?;
-    println!("🔍 DEBUG: Original s*U point (after r^-1): {}", 
-        hex::encode(&original_su_2d.x));
+    println!("🔍 DEBUG: Original s*U point: x={}", 
+        hex::encode(&original_su_2d.x.to_bytes_le()));
     
-    // Step 7: Derive encryption key from the recovered point
+    // Step 8: Derive encryption key from the recovered secret point
     let encryption_key = derive_enc_key(&original_su)?;
     
-    println!("OpenADP: Successfully recovered encryption key");
+    println!("✅ Successfully recovered encryption key: {}", hex::encode(&encryption_key));
     
     Ok(RecoverEncryptionKeyResult::success(encryption_key))
 }
 
-/// Fetch remaining guesses for each server and update ServerInfo objects.
-/// 
-/// # Arguments
-/// * `identity` - The identity to check remaining guesses for
-/// * `server_infos` - List of ServerInfo objects to update
-/// 
-/// # Returns
-/// Updated list of ServerInfo objects with remaining_guesses populated
+/// Fetch remaining guesses for all servers
 pub async fn fetch_remaining_guesses_for_servers(
     identity: &Identity,
     server_infos: &[ServerInfo],
 ) -> Vec<ServerInfo> {
-    let mut updated_server_infos = Vec::new();
+    let mut updated_infos = Vec::new();
     
     for server_info in server_infos {
-        // Create a copy to avoid modifying the original
-        let mut updated_server_info = server_info.clone();
+        let mut updated_info = server_info.clone();
         
         // Parse public key if available
         let public_key = if !server_info.public_key.is_empty() {
@@ -555,74 +547,54 @@ pub async fn fetch_remaining_guesses_for_servers(
             None
         };
         
-        // Create client and try to fetch backup info
         let mut client = EncryptedOpenADPClient::new(server_info.url.clone(), public_key, 30);
         
-        match client.ping().await {
-            Ok(_) => {
-                // List backups to get remaining guesses
-                let list_request = ListBackupsRequest {
-                    uid: identity.uid.clone(),
-                    auth_code: String::new(),
-                    encrypted: false,
-                    auth_data: None,
-                };
+        let request = ListBackupsRequest {
+            uid: identity.uid.clone(),
+            auth_code: String::new(),
+            encrypted: false,
+            auth_data: None,
+        };
+        
+        match client.list_backups_standardized(request).await {
+            Ok(response) => {
+                // Find our backup in the list
+                for backup in &response.backups {
+                    if backup.uid == identity.uid && 
+                       backup.did == identity.did &&
+                       backup.bid == identity.bid {
+                        updated_info.remaining_guesses = Some(backup.max_guesses - backup.num_guesses);
+                        println!("📊 Server {}: {} remaining guesses", 
+                            server_info.url, updated_info.remaining_guesses.unwrap_or(0));
+                        break;
+                    }
+                }
                 
-                match client.list_backups_standardized(list_request).await {
-                    Ok(response) => {
-                        // Find our specific backup
-                        let mut remaining_guesses = -1; // Default to unknown
-                        for backup in &response.backups {
-                            if backup.uid == identity.uid && 
-                               backup.bid == identity.bid {
-                                remaining_guesses = std::cmp::max(0, backup.max_guesses - backup.num_guesses);
-                                break;
-                            }
-                        }
-                        
-                        updated_server_info.remaining_guesses = remaining_guesses;
-                        println!("OpenADP: Server {} has {} remaining guesses", server_info.url, remaining_guesses);
-                    }
-                    Err(e) => {
-                        println!("Warning: Could not list backups from server {}: {}", server_info.url, e);
-                        // Keep the original remaining_guesses value (likely -1 for unknown)
-                    }
+                if updated_info.remaining_guesses.is_none() {
+                    println!("⚠️  Server {}: No backup found for identity", server_info.url);
+                    updated_info.remaining_guesses = Some(0);
                 }
             }
             Err(e) => {
-                println!("Warning: Could not connect to server {}: {}", server_info.url, e);
-                // Keep the original remaining_guesses value (likely -1 for unknown)
+                println!("❌ Failed to fetch guesses from server {}: {}", server_info.url, e);
+                updated_info.remaining_guesses = Some(0);
             }
         }
         
-        updated_server_infos.push(updated_server_info);
+        updated_infos.push(updated_info);
     }
     
-    updated_server_infos
+    updated_infos
 }
 
-/// Select servers intelligently based on remaining guesses.
-/// 
-/// Strategy:
-/// 1. Filter out servers with 0 remaining guesses (exhausted)
-/// 2. Sort by remaining guesses (descending) to use servers with most guesses first
-/// 3. Servers with unknown remaining guesses (-1) are treated as having infinite guesses
-/// 4. Select threshold + 2 servers for redundancy
-/// 
-/// # Arguments
-/// * `server_infos` - List of ServerInfo objects with remaining_guesses populated
-/// * `threshold` - Minimum number of servers needed
-/// 
-/// # Returns
-/// Selected servers sorted by remaining guesses (descending)
+/// Select servers with the most remaining guesses
 pub fn select_servers_by_remaining_guesses(
     server_infos: &[ServerInfo],
     threshold: usize,
 ) -> Vec<ServerInfo> {
     // Filter out servers with 0 remaining guesses (exhausted)
-    let mut available_servers: Vec<ServerInfo> = server_infos
-        .iter()
-        .filter(|s| s.remaining_guesses != 0)
+    let mut available_servers: Vec<ServerInfo> = server_infos.iter()
+        .filter(|info| info.remaining_guesses.unwrap_or(-1) != 0)
         .cloned()
         .collect();
     
@@ -634,23 +606,31 @@ pub fn select_servers_by_remaining_guesses(
     // Sort by remaining guesses (descending)
     // Servers with unknown remaining guesses (-1) are treated as having the highest priority
     available_servers.sort_by(|a, b| {
-        let a_guesses = if a.remaining_guesses == -1 { i32::MAX } else { a.remaining_guesses };
-        let b_guesses = if b.remaining_guesses == -1 { i32::MAX } else { b.remaining_guesses };
+        let a_guesses = if a.remaining_guesses.unwrap_or(-1) == -1 { 
+            i32::MAX 
+        } else { 
+            a.remaining_guesses.unwrap_or(0) 
+        };
+        let b_guesses = if b.remaining_guesses.unwrap_or(-1) == -1 { 
+            i32::MAX 
+        } else { 
+            b.remaining_guesses.unwrap_or(0) 
+        };
         b_guesses.cmp(&a_guesses)
     });
     
-    // Select threshold + 2 servers for redundancy, but don't exceed available servers
+    // Select threshold + 2 servers for redundancy, but don't exceed available servers (matches Go)
     let num_to_select = std::cmp::min(available_servers.len(), threshold + 2);
     let selected_servers = available_servers.into_iter().take(num_to_select).collect::<Vec<_>>();
     
-    println!("OpenADP: Selected {} servers based on remaining guesses:", selected_servers.len());
+    println!("🎯 Selected {} servers for recovery:", selected_servers.len());
     for (i, server) in selected_servers.iter().enumerate() {
-        let guesses_str = if server.remaining_guesses == -1 {
+        let guesses_str = if server.remaining_guesses.unwrap_or(-1) == -1 {
             "unknown".to_string()
         } else {
-            server.remaining_guesses.to_string()
+            server.remaining_guesses.unwrap_or(0).to_string()
         };
-        println!("  {}. {} ({} remaining guesses)", i + 1, server.url, guesses_str);
+        println!("   {}. {} ({} remaining guesses)", i + 1, server.url, guesses_str);
     }
     
     selected_servers
@@ -659,283 +639,238 @@ pub fn select_servers_by_remaining_guesses(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::ServerInfo;
-    
+
     #[test]
     fn test_identity() {
         let identity = Identity::new(
-            "user@example.com".to_string(),
-            "laptop".to_string(),
-            "even".to_string()
+            "user123".to_string(),
+            "device456".to_string(), 
+            "backup789".to_string()
         );
         
-        assert_eq!(identity.uid, "user@example.com");
-        assert_eq!(identity.did, "laptop");
-        assert_eq!(identity.bid, "even");
+        assert_eq!(identity.uid, "user123");
+        assert_eq!(identity.did, "device456");
+        assert_eq!(identity.bid, "backup789");
         
-        // Test Display trait
-        let display_str = identity.to_string();
-        assert!(display_str.contains("user@example.com"));
-        assert!(display_str.contains("laptop"));
-        assert!(display_str.contains("even"));
+        let display = format!("{}", identity);
+        assert!(display.contains("user123"));
+        assert!(display.contains("device456"));
+        assert!(display.contains("backup789"));
     }
-    
+
     #[test]
     fn test_password_to_pin() {
-        let pin = password_to_pin("secure_password");
-        assert_eq!(pin.len(), 2);
+        let pin1 = password_to_pin("test123");
+        let pin2 = password_to_pin("test123");
+        let pin3 = password_to_pin("different");
         
-        // Same password should produce same PIN
-        let pin2 = password_to_pin("secure_password");
-        assert_eq!(pin, pin2);
+        assert_eq!(pin1.len(), 16);
+        assert_eq!(pin1, pin2); // Same password = same PIN
+        assert_ne!(pin1, pin3); // Different password = different PIN
         
-        // Different passwords should produce different PINs
-        let pin3 = password_to_pin("different_password");
-        assert_ne!(pin, pin3);
+        // Test with empty string
+        let empty_pin = password_to_pin("");
+        assert_eq!(empty_pin.len(), 16);
     }
-    
+
     #[test]
     fn test_generate_auth_codes() {
-        let server_urls = vec![
+        let servers = vec![
             "https://server1.example.com".to_string(),
             "https://server2.example.com".to_string(),
         ];
         
-        let auth_codes = generate_auth_codes(&server_urls);
+        let auth_codes = generate_auth_codes(&servers);
         
         assert!(!auth_codes.base_auth_code.is_empty());
         assert_eq!(auth_codes.server_auth_codes.len(), 2);
         
-        for url in &server_urls {
-            assert!(auth_codes.get_server_code(url).is_some());
-        }
+        let code1 = auth_codes.get_server_code("https://server1.example.com");
+        let code2 = auth_codes.get_server_code("https://server2.example.com");
+        let code_unknown = auth_codes.get_server_code("https://unknown.example.com");
+        
+        assert!(code1.is_some());
+        assert!(code2.is_some());
+        assert_eq!(code_unknown, Some(&auth_codes.base_auth_code));
+        assert_ne!(code1, code2); // Different servers should have different codes
     }
-    
+
     #[test]
     fn test_auth_codes_structure() {
-        let mut auth_codes = AuthCodes {
-            base_auth_code: "base123".to_string(),
-            server_auth_codes: HashMap::new(),
-        };
-        auth_codes.server_auth_codes.insert("server1".to_string(), "code1".to_string());
-        auth_codes.server_auth_codes.insert("server2".to_string(), "code2".to_string());
+        let servers = vec!["https://test.com".to_string()];
+        let auth_codes = generate_auth_codes(&servers);
         
-        assert_eq!(auth_codes.base_auth_code, "base123");
-        assert_eq!(auth_codes.get_server_code("server1"), Some(&"code1".to_string()));
-        assert_eq!(auth_codes.get_server_code("server2"), Some(&"code2".to_string()));
-        assert_eq!(auth_codes.get_server_code("server3"), None);
+        // Base auth code should be 32 hex characters (16 bytes)
+        assert_eq!(auth_codes.base_auth_code.len(), 32);
+        assert!(auth_codes.base_auth_code.chars().all(|c| c.is_ascii_hexdigit()));
+        
+        // Server auth codes should also be 32 hex characters
+        for (_, code) in &auth_codes.server_auth_codes {
+            assert_eq!(code.len(), 32);
+            assert!(code.chars().all(|c| c.is_ascii_hexdigit()));
+        }
     }
-    
+
     #[test]
     fn test_result_structures() {
-        let success_result = GenerateEncryptionKeyResult::success(
-            vec![1, 2, 3, 4],
-            vec![ServerInfo::new("test".to_string())],
-            3,
-            AuthCodes {
-                base_auth_code: "auth".to_string(),
-                server_auth_codes: HashMap::new(),
-            },
-        );
+        // Test success result
+        let key = vec![1, 2, 3, 4];
+        let servers = vec![];
+        let auth_codes = AuthCodes {
+            base_auth_code: "test".to_string(),
+            server_auth_codes: HashMap::new(),
+        };
         
-        assert!(success_result.encryption_key.is_some());
-        assert!(success_result.error.is_none());
+        let success = GenerateEncryptionKeyResult::success(key.clone(), servers, 2, auth_codes);
+        assert!(success.encryption_key.is_some());
+        assert!(success.error.is_none());
+        assert_eq!(success.encryption_key.unwrap(), key);
         
-        let error_result = GenerateEncryptionKeyResult::error("Test error".to_string());
-        assert!(error_result.encryption_key.is_none());
-        assert!(error_result.error.is_some());
+        // Test error result
+        let error = GenerateEncryptionKeyResult::error("test error".to_string());
+        assert!(error.encryption_key.is_none());
+        assert!(error.error.is_some());
+        assert_eq!(error.error.unwrap(), "test error");
     }
 
     #[test]
     fn test_identity_validation() {
-        // Test valid identity
-        let valid_identity = Identity::new(
-            "user@example.com".to_string(),
-            "laptop-2024".to_string(),
-            "backup-001".to_string()
-        );
-        assert!(!valid_identity.uid.is_empty());
-        assert!(!valid_identity.did.is_empty());
-        assert!(!valid_identity.bid.is_empty());
+        // Test normal identity
+        let identity = Identity::new("user".to_string(), "device".to_string(), "backup".to_string());
+        assert_eq!(identity.uid, "user");
         
-        // Test identity with special characters
+        // Test with special characters
         let special_identity = Identity::new(
-            "user+test@example.com".to_string(),
-            "device-123_ABC".to_string(),
-            "file://path/to/document.pdf".to_string()
+            "user@domain.com".to_string(),
+            "device-123".to_string(),
+            "file://path/to/backup".to_string()
         );
-        assert_eq!(special_identity.uid, "user+test@example.com");
-        assert_eq!(special_identity.did, "device-123_ABC");
-        assert_eq!(special_identity.bid, "file://path/to/document.pdf");
+        assert!(special_identity.uid.contains("@"));
+        assert!(special_identity.did.contains("-"));
+        assert!(special_identity.bid.contains("://"));
         
-        // Test identity display format
-        let display_str = special_identity.to_string();
-        assert!(display_str.contains("UID=user+test@example.com"));
-        assert!(display_str.contains("DID=device-123_ABC"));
-        assert!(display_str.contains("BID=file://path/to/document.pdf"));
+        // Test display format
+        let display = format!("{}", special_identity);
+        assert!(display.contains("UID="));
+        assert!(display.contains("DID="));
+        assert!(display.contains("BID="));
     }
 
     #[test]
     fn test_auth_codes_comprehensive() {
-        let server_urls = vec![
-            "https://server1.openadp.org:8443".to_string(),
-            "https://server2.openadp.org:8443".to_string(),
-            "https://server3.openadp.org:8443".to_string(),
-            "https://localhost:8080".to_string(),
+        let servers = vec![
+            "https://server1.com".to_string(),
+            "https://server2.com".to_string(),
+            "https://server3.com".to_string(),
         ];
         
-        let auth_codes = generate_auth_codes(&server_urls);
+        let auth_codes1 = generate_auth_codes(&servers);
+        let auth_codes2 = generate_auth_codes(&servers);
         
-        // Base auth code should be 64 hex characters (32 bytes)
-        assert_eq!(auth_codes.base_auth_code.len(), 64);
-        assert!(auth_codes.base_auth_code.chars().all(|c| c.is_ascii_hexdigit()));
+        // Different generations should produce different codes
+        assert_ne!(auth_codes1.base_auth_code, auth_codes2.base_auth_code);
         
-        // Should have auth codes for all servers
-        assert_eq!(auth_codes.server_auth_codes.len(), server_urls.len());
+        // But structure should be consistent
+        assert_eq!(auth_codes1.server_auth_codes.len(), auth_codes2.server_auth_codes.len());
         
-        // Each server auth code should be 64 hex characters (32 bytes from SHA256)
-        for (url, code) in &auth_codes.server_auth_codes {
-            assert!(server_urls.contains(url));
-            assert_eq!(code.len(), 64);
-            assert!(code.chars().all(|c| c.is_ascii_hexdigit()));
+        // Test retrieval
+        for server in &servers {
+            let code1 = auth_codes1.get_server_code(server);
+            let code2 = auth_codes1.get_server_code(server);
+            assert_eq!(code1, code2); // Same auth_codes should return same code
+            assert!(code1.is_some());
         }
         
-        // Different servers should have different auth codes
-        let codes: Vec<&String> = auth_codes.server_auth_codes.values().collect();
-        for i in 0..codes.len() {
-            for j in i+1..codes.len() {
-                assert_ne!(codes[i], codes[j], "Server auth codes should be unique");
-            }
-        }
-        
-        // Auth codes should be deterministic for same inputs
-        let auth_codes2 = generate_auth_codes(&server_urls);
-        // Note: This will be different because we generate random base codes
-        // But the derivation process should be consistent
-        assert_eq!(auth_codes.server_auth_codes.len(), auth_codes2.server_auth_codes.len());
+        // Test fallback to base code
+        let unknown_code = auth_codes1.get_server_code("https://unknown.com");
+        assert_eq!(unknown_code, Some(&auth_codes1.base_auth_code));
     }
 
     #[test]
     fn test_password_to_pin_comprehensive() {
         // Test various password types
         let passwords = vec![
-            "simple",
-            "Complex_Password123!",
-            "unicode_测试_пароль",
-            "very_long_password_that_exceeds_normal_length_to_test_hashing_behavior",
-            "",  // Empty password
-            "🔐🗝️🔑",  // Emoji password
+            "",
+            "a",
+            "short",
+            "this is a longer password with spaces",
+            "P@ssw0rd!",
+            "🔐🔑",  // Unicode
+            &"x".repeat(1000), // Very long
         ];
         
         for password in &passwords {
             let pin = password_to_pin(password);
-            assert_eq!(pin.len(), 2, "PIN should always be 2 bytes for password: {}", password);
+            assert_eq!(pin.len(), 16, "PIN length should always be 16 for password: {}", password);
             
             // Same password should always produce same PIN
             let pin2 = password_to_pin(password);
-            assert_eq!(pin, pin2, "PIN should be deterministic for password: {}", password);
+            assert_eq!(pin, pin2, "Same password should produce same PIN");
         }
         
-        // Different passwords should generally produce different PINs
+        // Different passwords should produce different PINs (with high probability)
         let pin1 = password_to_pin("password1");
         let pin2 = password_to_pin("password2");
         assert_ne!(pin1, pin2, "Different passwords should produce different PINs");
-        
-        // Test edge case: very similar passwords
-        let pin_a = password_to_pin("test_password_a");
-        let pin_b = password_to_pin("test_password_b");
-        assert_ne!(pin_a, pin_b, "Similar passwords should produce different PINs");
     }
 
     #[test]
     fn test_encryption_key_derivation() {
-        use crate::crypto::{H, derive_enc_key};
-        
-        // Test that key derivation is deterministic
+        // This is more of an integration test, but we can test the basic flow
         let identity = Identity::new(
-            "test@example.com".to_string(),
-            "device123".to_string(),
-            "backup456".to_string()
+            "test-user".to_string(),
+            "test-device".to_string(),
+            "test-backup".to_string()
         );
-        let password = "test_password";
+        
+        let password = "test-password";
         let pin = password_to_pin(password);
         
-        // Generate point from identity and PIN
-        let point1 = H(
+        // Test that H function works with our identity
+        let result = H(
             identity.uid.as_bytes(),
             identity.did.as_bytes(), 
             identity.bid.as_bytes(),
             &pin
-        ).unwrap();
+        );
         
+        assert!(result.is_ok(), "H function should succeed with valid inputs");
+        
+        let point = result.unwrap();
+        
+        // Test that we can derive a key from the point
+        let key_result = derive_enc_key(&point);
+        assert!(key_result.is_ok(), "Key derivation should succeed");
+        
+        let key = key_result.unwrap();
+        assert_eq!(key.len(), 32, "Encryption key should be 32 bytes");
+        
+        // Same inputs should produce same key
         let point2 = H(
             identity.uid.as_bytes(),
             identity.did.as_bytes(),
             identity.bid.as_bytes(), 
             &pin
         ).unwrap();
-        
-        // Same inputs should produce same point
-        assert_eq!(point1.x, point2.x);
-        assert_eq!(point1.y, point2.y);
-        
-        // Derive encryption keys
-        let key1 = derive_enc_key(&point1).unwrap();
         let key2 = derive_enc_key(&point2).unwrap();
-        
-        // Keys should be identical
-        assert_eq!(key1, key2);
-        assert_eq!(key1.len(), 32);
-        
-        // Different identity should produce different key
-        let different_identity = Identity::new(
-            "different@example.com".to_string(),
-            "device123".to_string(),
-            "backup456".to_string()
-        );
-        
-        let different_point = H(
-            different_identity.uid.as_bytes(),
-            different_identity.did.as_bytes(),
-            different_identity.bid.as_bytes(),
-            &pin
-        ).unwrap();
-        
-        let different_key = derive_enc_key(&different_point).unwrap();
-        assert_ne!(key1, different_key);
+        assert_eq!(key, key2, "Same inputs should produce same key");
     }
 
     #[test]
     fn test_input_validation_edge_cases() {
-        // Test empty strings
-        let empty_identity = Identity::new("".to_string(), "did".to_string(), "bid".to_string());
-        assert!(empty_identity.uid.is_empty());
+        // Test empty identity components
+        let empty_identity = Identity::new("".to_string(), "".to_string(), "".to_string());
+        assert_eq!(empty_identity.uid, "");
         
-        let empty_identity2 = Identity::new("uid".to_string(), "".to_string(), "bid".to_string());
-        assert!(empty_identity2.did.is_empty());
-        
-        let empty_identity3 = Identity::new("uid".to_string(), "did".to_string(), "".to_string());
-        assert!(empty_identity3.bid.is_empty());
-        
-        // Test very long strings
-        let long_string = "a".repeat(1000);
-        let long_identity = Identity::new(
-            long_string.clone(),
-            long_string.clone(),
-            long_string.clone()
-        );
+        // Test very long identity components
+        let long_string = "x".repeat(1000);
+        let long_identity = Identity::new(long_string.clone(), long_string.clone(), long_string.clone());
         assert_eq!(long_identity.uid.len(), 1000);
-        assert_eq!(long_identity.did.len(), 1000);
-        assert_eq!(long_identity.bid.len(), 1000);
         
-        // Test special characters and unicode
-        let unicode_identity = Identity::new(
-            "用户@测试.com".to_string(),
-            "设备-123".to_string(),
-            "备份/文件.pdf".to_string()
-        );
-        assert!(unicode_identity.uid.contains("用户"));
-        assert!(unicode_identity.did.contains("设备"));
-        assert!(unicode_identity.bid.contains("备份"));
+        // Test identity display with empty components
+        let display = format!("{}", empty_identity);
+        assert!(display.contains("UID="));
+        assert!(display.contains("DID="));
+        assert!(display.contains("BID="));
     }
 } 

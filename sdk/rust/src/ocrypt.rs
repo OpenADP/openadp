@@ -267,7 +267,7 @@ async fn recover_without_refresh(
             url: url.clone(),
             public_key: String::new(),
             country: String::new(),
-            remaining_guesses: -1,
+            remaining_guesses: None,
         }).collect()
     } else {
         // Use custom registry
