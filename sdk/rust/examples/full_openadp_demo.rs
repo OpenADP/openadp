@@ -165,7 +165,7 @@ async fn demo_ocrypt_api() -> Result<()> {
     println!("👤 User: payment_service");
     println!("📱 App: ecommerce_platform");
     
-    // Simulate a Stripe API key
+    // Simulate a Stripe API key (example - not a real key)
     let stripe_api_key = b"sk_live_EXAMPLE_NOT_REAL_KEY_FOR_DEMO_PURPOSES_ONLY_123456789";
     let user_pin = "secure_admin_pin_2024";
     

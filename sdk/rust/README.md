@@ -80,7 +80,7 @@ use openadp_ocrypt::{register, recover};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Protect a Stripe API key
+    // Protect a Stripe API key (example - not a real key)
     let api_key = b"sk_live_EXAMPLE_NOT_REAL_KEY_FOR_DEMO_PURPOSES_ONLY_123456789";
     
     // Register with distributed protection
