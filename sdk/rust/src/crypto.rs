@@ -361,16 +361,16 @@ pub fn H(uid: &[u8], did: &[u8], bid: &[u8], pin: &[u8]) -> Result<Point4D> {
         println!("🔍 Rust H DEBUG: counter={}, y={:064x}", counter, y);
         
         if let Some(x) = recover_x(&y, sign) {
-            println!("🔍 Rust H DEBUG: Found valid point at counter={}, x={}, y={}", 
-                counter, hex::encode(&x.to_bytes_le()), hex::encode(&y.to_bytes_le()));
+            println!("🔍 Rust H DEBUG: Found valid point at counter={}, x={:x}, y={:x}", 
+                counter, x, y);
             
             // Force the point to be in a group of order q (multiply by 8)
             let p = expand(&Point2D { x, y });
             let p = point_mul8(&p);
             
             if is_valid_point(&p) {
-                println!("🔍 Rust H DEBUG: Final point: x={}, y={}", 
-                    hex::encode(&p.x.to_bytes_le()), hex::encode(&p.y.to_bytes_le()));
+                println!("🔍 Rust H DEBUG: Final point: x={:x}, y={:x}", 
+                    p.x, p.y);
                 return Ok(p);
             }
         }
