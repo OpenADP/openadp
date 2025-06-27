@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "openadp/utils.hpp"
 #include "openadp/types.hpp"
+#include <fstream>
+#include <filesystem>
 
 namespace openadp {
 namespace test {
@@ -138,6 +140,163 @@ TEST_F(HexTest, EmptyStringConversions) {
     
     EXPECT_EQ(utils::string_to_bytes(empty_str), empty_bytes);
     EXPECT_EQ(utils::bytes_to_string(empty_bytes), empty_str);
+}
+
+// NEW TESTS FOR UNCOVERED FUNCTIONS
+
+TEST_F(HexTest, ReadFile) {
+    // Create a temporary test file
+    std::string test_filename = "test_read_file.tmp";
+    Bytes test_data = {0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64}; // "Hello World"
+    
+    // Write test data to file
+    std::ofstream file(test_filename, std::ios::binary);
+    file.write(reinterpret_cast<const char*>(test_data.data()), test_data.size());
+    file.close();
+    
+    // Test reading the file
+    Bytes read_data = utils::read_file(test_filename);
+    EXPECT_EQ(test_data, read_data);
+    
+    // Clean up
+    std::filesystem::remove(test_filename);
+}
+
+TEST_F(HexTest, ReadFileNonExistent) {
+    // Test reading a non-existent file
+    EXPECT_THROW(utils::read_file("non_existent_file.tmp"), OpenADPError);
+}
+
+TEST_F(HexTest, WriteFile) {
+    // Test writing a file
+    std::string test_filename = "test_write_file.tmp";
+    Bytes test_data = {0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64}; // "Hello World"
+    
+    // Write data using utils::write_file
+    utils::write_file(test_filename, test_data);
+    
+    // Verify by reading back
+    std::ifstream file(test_filename, std::ios::binary);
+    EXPECT_TRUE(file.is_open());
+    
+    file.seekg(0, std::ios::end);
+    size_t size = file.tellg();
+    file.seekg(0, std::ios::beg);
+    
+    Bytes read_data(size);
+    file.read(reinterpret_cast<char*>(read_data.data()), size);
+    file.close();
+    
+    EXPECT_EQ(test_data, read_data);
+    
+    // Clean up
+    std::filesystem::remove(test_filename);
+}
+
+TEST_F(HexTest, WriteFileEmpty) {
+    // Test writing an empty file
+    std::string test_filename = "test_write_empty_file.tmp";
+    Bytes empty_data;
+    
+    utils::write_file(test_filename, empty_data);
+    
+    // Verify file exists and is empty
+    std::ifstream file(test_filename, std::ios::binary);
+    EXPECT_TRUE(file.is_open());
+    
+    file.seekg(0, std::ios::end);
+    size_t size = file.tellg();
+    EXPECT_EQ(size, 0);
+    file.close();
+    
+    // Clean up
+    std::filesystem::remove(test_filename);
+}
+
+TEST_F(HexTest, ParseJson) {
+    // Test parsing valid JSON
+    std::string json_str = R"({"name": "test", "value": 123, "active": true})";
+    nlohmann::json parsed = utils::parse_json(json_str);
+    
+    EXPECT_EQ(parsed["name"], "test");
+    EXPECT_EQ(parsed["value"], 123);
+    EXPECT_EQ(parsed["active"], true);
+}
+
+TEST_F(HexTest, ParseJsonArray) {
+    // Test parsing JSON array
+    std::string json_str = R"([1, 2, 3, "hello", {"nested": true}])";
+    nlohmann::json parsed = utils::parse_json(json_str);
+    
+    EXPECT_TRUE(parsed.is_array());
+    EXPECT_EQ(parsed.size(), 5);
+    EXPECT_EQ(parsed[0], 1);
+    EXPECT_EQ(parsed[3], "hello");
+    EXPECT_EQ(parsed[4]["nested"], true);
+}
+
+TEST_F(HexTest, ParseJsonInvalid) {
+    // Test parsing invalid JSON
+    std::string invalid_json = R"({invalid json})";
+    EXPECT_THROW(utils::parse_json(invalid_json), OpenADPError);
+    
+    // Test malformed JSON
+    std::string malformed_json = R"({"name": "test",})";
+    EXPECT_THROW(utils::parse_json(malformed_json), OpenADPError);
+}
+
+TEST_F(HexTest, ToJsonString) {
+    // Test converting JSON object to string
+    nlohmann::json json_obj;
+    json_obj["name"] = "test";
+    json_obj["value"] = 123;
+    json_obj["active"] = true;
+    
+    std::string json_str = utils::to_json_string(json_obj);
+    
+    // Parse it back to verify
+    nlohmann::json parsed = utils::parse_json(json_str);
+    EXPECT_EQ(parsed["name"], "test");
+    EXPECT_EQ(parsed["value"], 123);
+    EXPECT_EQ(parsed["active"], true);
+}
+
+TEST_F(HexTest, ToJsonStringArray) {
+    // Test converting JSON array to string
+    nlohmann::json json_array = nlohmann::json::array();
+    json_array.push_back(1);
+    json_array.push_back("hello");
+    json_array.push_back(true);
+    
+    std::string json_str = utils::to_json_string(json_array);
+    
+    // Parse it back to verify
+    nlohmann::json parsed = utils::parse_json(json_str);
+    EXPECT_TRUE(parsed.is_array());
+    EXPECT_EQ(parsed.size(), 3);
+    EXPECT_EQ(parsed[0], 1);
+    EXPECT_EQ(parsed[1], "hello");
+    EXPECT_EQ(parsed[2], true);
+}
+
+TEST_F(HexTest, ReadWriteFileRoundTrip) {
+    // Test read/write round trip with binary data
+    std::string test_filename = "test_roundtrip.tmp";
+    Bytes original_data;
+    
+    // Create test data with all byte values
+    for (int i = 0; i < 256; i++) {
+        original_data.push_back(static_cast<uint8_t>(i));
+    }
+    
+    // Write and read back
+    utils::write_file(test_filename, original_data);
+    Bytes read_data = utils::read_file(test_filename);
+    
+    EXPECT_EQ(original_data, read_data);
+    
+    // Clean up
+    std::filesystem::remove(test_filename);
 }
 
 } // namespace test

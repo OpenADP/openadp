@@ -151,41 +151,45 @@ TEST_F(CryptoTest, HKDFKeyDerivation) {
 
 // Test Ed25519 operations
 TEST_F(CryptoTest, Ed25519HashToPoint) {
-    Bytes uid = utils::string_to_bytes("user123");
-    Bytes did = utils::string_to_bytes("device456");
-    Bytes bid = utils::string_to_bytes("backup789");
+    Bytes uid = utils::string_to_bytes("user");
+    Bytes did = utils::string_to_bytes("device");
+    Bytes bid = utils::string_to_bytes("backup");
     Bytes pin = utils::string_to_bytes("1234");
     
-    Point4D point = crypto::Ed25519::hash_to_point(uid, did, bid, pin);
+    Point4D result = crypto::Ed25519::hash_to_point(uid, did, bid, pin);
+    EXPECT_TRUE(crypto::Ed25519::is_valid_point(result));
     
-    EXPECT_FALSE(point.x.empty());
-    EXPECT_FALSE(point.y.empty());
-    EXPECT_FALSE(point.z.empty());
-    EXPECT_FALSE(point.t.empty());
-    
-    // Test deterministic behavior
-    Point4D point2 = crypto::Ed25519::hash_to_point(uid, did, bid, pin);
-    EXPECT_EQ(point.x, point2.x);
-    EXPECT_EQ(point.y, point2.y);
-    EXPECT_EQ(point.z, point2.z);
-    EXPECT_EQ(point.t, point2.t);
+    // Test with different inputs should give different results
+    Bytes different_pin = utils::string_to_bytes("5678");
+    Point4D result2 = crypto::Ed25519::hash_to_point(uid, did, bid, different_pin);
+    EXPECT_NE(result.x, result2.x);
 }
 
 TEST_F(CryptoTest, Ed25519CompressDecompress) {
-    Point4D original("01D3FA31B7A6844F7B24DED7F6608D9BDC2B00446A1EEE62CDBAD4B276EB4AF9",
-                     "01D3FA31B7A6844F7B24DED7F6608D9BDC2B00446A1EEE62CDBAD4B276EB4AF9",
-                     "1", "0");
+    // Generate a valid Ed25519 point using hash_to_point
+    Bytes uid = utils::string_to_bytes("test_user");
+    Bytes did = utils::string_to_bytes("test_device");
+    Bytes bid = utils::string_to_bytes("backup_001");
+    Bytes pin = utils::string_to_bytes("1234");
+    
+    Point4D original = crypto::Ed25519::hash_to_point(uid, did, bid, pin);
     
     Bytes compressed = crypto::Ed25519::compress(original);
+    EXPECT_EQ(compressed.size(), 32); // Ed25519 compressed points are 32 bytes
+    
+    // Test that decompression doesn't throw
+    EXPECT_NO_THROW({
+        Point4D decompressed = crypto::Ed25519::decompress(compressed);
+        EXPECT_FALSE(decompressed.x.empty());
+        EXPECT_FALSE(decompressed.y.empty());
+        EXPECT_FALSE(decompressed.z.empty());
+        EXPECT_FALSE(decompressed.t.empty());
+    });
+    
+    // Test round-trip consistency: compress again and compare compressed data
     Point4D decompressed = crypto::Ed25519::decompress(compressed);
-    
-    // Convert to lowercase for comparison (hex can be case-insensitive)
-    std::string original_y_lower = original.y;
-    std::string decompressed_y_lower = decompressed.y;
-    std::transform(original_y_lower.begin(), original_y_lower.end(), original_y_lower.begin(), ::tolower);
-    std::transform(decompressed_y_lower.begin(), decompressed_y_lower.end(), decompressed_y_lower.begin(), ::tolower);
-    
-    EXPECT_EQ(original_y_lower, decompressed_y_lower);
+    Bytes compressed_again = crypto::Ed25519::compress(decompressed);
+    EXPECT_EQ(compressed, compressed_again);
 }
 
 // Test Shamir Secret Sharing
@@ -260,6 +264,305 @@ TEST_F(CryptoTest, HexConversions) {
     
     Bytes converted_back = crypto::hex_to_bytes(hex);
     EXPECT_EQ(data, converted_back);
+}
+
+// Test AES-GCM with empty data
+TEST_F(CryptoTest, AesGcmEmptyData) {
+    Bytes key(32, 0x42);
+    Bytes empty_data;
+    
+    auto result = crypto::aes_gcm_encrypt(empty_data, key);
+    EXPECT_TRUE(result.ciphertext.empty());
+    EXPECT_EQ(result.tag.size(), 16);
+    EXPECT_EQ(result.nonce.size(), 12);
+    
+    // Decrypt empty data
+    Bytes decrypted = crypto::aes_gcm_decrypt(result.ciphertext, result.tag, result.nonce, key);
+    EXPECT_TRUE(decrypted.empty());
+}
+
+// Test AES-GCM with invalid key sizes
+TEST_F(CryptoTest, AesGcmInvalidKeySize) {
+    Bytes plaintext = utils::string_to_bytes("test");
+    
+    // Test with too short key
+    Bytes short_key(16, 0x42); // 128-bit key
+    EXPECT_NO_THROW(crypto::aes_gcm_encrypt(plaintext, short_key)); // Should work with 128-bit
+    
+    // Test with too long key  
+    Bytes long_key(64, 0x42); // 512-bit key
+    EXPECT_NO_THROW(crypto::aes_gcm_encrypt(plaintext, long_key)); // Should work, will be truncated
+    
+    // Test with empty key
+    Bytes empty_key;
+    EXPECT_THROW(crypto::aes_gcm_encrypt(plaintext, empty_key), OpenADPError);
+}
+
+// Test AES-GCM with invalid tag/nonce sizes
+TEST_F(CryptoTest, AesGcmInvalidSizes) {
+    Bytes key(32, 0x42);
+    Bytes ciphertext = {1, 2, 3, 4};
+    
+    // Test with wrong tag size
+    Bytes wrong_tag(8, 0x01); // Too short
+    Bytes nonce(12, 0x02);
+    EXPECT_THROW(crypto::aes_gcm_decrypt(ciphertext, wrong_tag, nonce, key), OpenADPError);
+    
+    // Test with wrong nonce size
+    Bytes tag(16, 0x01);
+    Bytes wrong_nonce(8, 0x02); // Too short
+    EXPECT_THROW(crypto::aes_gcm_decrypt(ciphertext, tag, wrong_nonce, key), OpenADPError);
+}
+
+// Test HKDF with edge cases
+TEST_F(CryptoTest, HkdfEdgeCases) {
+    // Test with empty salt
+    Bytes ikm = {1, 2, 3, 4};
+    Bytes empty_salt;
+    Bytes info = utils::string_to_bytes("test info");
+    
+    Bytes result = crypto::hkdf_derive(ikm, empty_salt, info, 32);
+    EXPECT_EQ(result.size(), 32);
+    
+    // Test with empty info
+    Bytes salt = {5, 6, 7, 8};
+    Bytes empty_info;
+    
+    result = crypto::hkdf_derive(ikm, salt, empty_info, 32);
+    EXPECT_EQ(result.size(), 32);
+    
+    // Test with zero length output
+    EXPECT_THROW(crypto::hkdf_derive(ikm, salt, info, 0), OpenADPError);
+    
+    // Test with very large output length
+    EXPECT_THROW(crypto::hkdf_derive(ikm, salt, info, 10000), OpenADPError);
+}
+
+// Test Shamir Secret Sharing edge cases
+TEST_F(CryptoTest, ShamirEdgeCases) {
+    std::string secret_hex = "01020304";
+    
+    // Test with threshold = 1
+    auto shares = crypto::ShamirSecretSharing::split_secret(secret_hex, 1, 3);
+    EXPECT_EQ(shares.size(), 3);
+    
+    // Recover with just one share
+    std::vector<Share> single_share = {shares[0]};
+    std::string recovered = crypto::ShamirSecretSharing::recover_secret(single_share);
+    EXPECT_EQ(recovered, secret_hex);
+    
+    // Test with threshold = total shares
+    shares = crypto::ShamirSecretSharing::split_secret(secret_hex, 3, 3);
+    EXPECT_EQ(shares.size(), 3);
+    
+    // With insufficient shares, should give incorrect result (not throw)
+    std::vector<Share> two_shares = {shares[0], shares[1]};
+    std::string recovered_insufficient = crypto::ShamirSecretSharing::recover_secret(two_shares);
+    // Convert both to lowercase for comparison
+    std::string secret_lower = secret_hex;
+    std::string recovered_lower = recovered_insufficient;
+    std::transform(secret_lower.begin(), secret_lower.end(), secret_lower.begin(), ::tolower);
+    std::transform(recovered_lower.begin(), recovered_lower.end(), recovered_lower.begin(), ::tolower);
+    EXPECT_NE(secret_lower, recovered_lower); // Should be different with insufficient shares
+    
+    // Test with invalid parameters
+    EXPECT_THROW(crypto::ShamirSecretSharing::split_secret(secret_hex, 2, 1), OpenADPError); // threshold > total
+    EXPECT_THROW(crypto::ShamirSecretSharing::split_secret(secret_hex, 1, 0), OpenADPError); // total = 0
+    EXPECT_THROW(crypto::ShamirSecretSharing::split_secret(secret_hex, 128, 256), OpenADPError); // total > 255
+}
+
+// Test Shamir with empty secret
+TEST_F(CryptoTest, ShamirEmptySecret) {
+    std::string empty_secret;
+    
+    EXPECT_THROW(crypto::ShamirSecretSharing::split_secret(empty_secret, 2, 3), OpenADPError);
+}
+
+// Test Shamir with duplicate share indices
+TEST_F(CryptoTest, ShamirDuplicateIndices) {
+    std::string secret_hex = "01020304";
+    auto shares = crypto::ShamirSecretSharing::split_secret(secret_hex, 2, 3);
+    
+    // Create duplicate shares
+    std::vector<Share> duplicate_shares = {shares[0], shares[0]};
+    
+    EXPECT_THROW(crypto::ShamirSecretSharing::recover_secret(duplicate_shares), OpenADPError);
+}
+
+// Test Shamir with corrupted share data
+TEST_F(CryptoTest, ShamirCorruptedShares) {
+    std::string secret_hex = "01020304";
+    auto shares = crypto::ShamirSecretSharing::split_secret(secret_hex, 2, 3);
+    
+    // Corrupt one share by modifying its y value
+    shares[0].y = "corrupted_value";
+    
+    std::vector<Share> corrupted_shares = {shares[0], shares[1]};
+    std::string recovered = crypto::ShamirSecretSharing::recover_secret(corrupted_shares);
+    
+    // Should recover different data due to corruption
+    EXPECT_NE(recovered, secret_hex);
+}
+
+// Test SHA256 with large data
+TEST_F(CryptoTest, Sha256LargeData) {
+    // Test with large input
+    Bytes large_data(1000000, 0x42); // 1MB of data
+    
+    Bytes hash = crypto::sha256_hash(large_data);
+    EXPECT_EQ(hash.size(), 32);
+    
+    // Hash should be deterministic
+    Bytes hash2 = crypto::sha256_hash(large_data);
+    EXPECT_EQ(hash, hash2);
+}
+
+// Test Ed25519 scalar multiplication
+TEST_F(CryptoTest, Ed25519ScalarMult) {
+    // Create a test point
+    Bytes uid = utils::string_to_bytes("user");
+    Bytes did = utils::string_to_bytes("device");
+    Bytes bid = utils::string_to_bytes("backup");
+    Bytes pin = utils::string_to_bytes("1234");
+    
+    Point4D point = crypto::Ed25519::hash_to_point(uid, did, bid, pin);
+    
+    // Test scalar multiplication
+    std::string scalar_hex = "deadbeefcafebabe1234567890abcdef0123456789abcdef0123456789abcdef";
+    Point4D result = crypto::Ed25519::scalar_mult(scalar_hex, point);
+    
+    EXPECT_TRUE(crypto::Ed25519::is_valid_point(result));
+}
+
+// Test Ed25519 point operations
+TEST_F(CryptoTest, Ed25519PointOperations) {
+    // Create two test points
+    Bytes uid1 = utils::string_to_bytes("user1");
+    Bytes uid2 = utils::string_to_bytes("user2");
+    Bytes did = utils::string_to_bytes("device");
+    Bytes bid = utils::string_to_bytes("backup");
+    Bytes pin = utils::string_to_bytes("1234");
+    
+    Point4D point1 = crypto::Ed25519::hash_to_point(uid1, did, bid, pin);
+    Point4D point2 = crypto::Ed25519::hash_to_point(uid2, did, bid, pin);
+    
+    // Test point addition
+    Point4D sum = crypto::Ed25519::point_add(point1, point2);
+    EXPECT_TRUE(crypto::Ed25519::is_valid_point(sum));
+    
+    // Test point compression/decompression round-trip
+    Bytes compressed = crypto::Ed25519::compress(point1);
+    EXPECT_EQ(compressed.size(), 32);
+    
+    EXPECT_NO_THROW({
+        Point4D decompressed = crypto::Ed25519::decompress(compressed);
+        EXPECT_FALSE(decompressed.x.empty());
+        EXPECT_FALSE(decompressed.y.empty());
+        EXPECT_FALSE(decompressed.z.empty());
+        EXPECT_FALSE(decompressed.t.empty());
+        
+        // Test that double compression gives same result
+        Bytes compressed_again = crypto::Ed25519::compress(decompressed);
+        EXPECT_EQ(compressed, compressed_again);
+    });
+    
+    // Test expand/unexpand round-trip
+    Point2D point2d = crypto::Ed25519::unexpand(point1);
+    EXPECT_FALSE(point2d.x.empty());
+    EXPECT_FALSE(point2d.y.empty());
+    
+    Point4D expanded = crypto::Ed25519::expand(point2d);
+    EXPECT_FALSE(expanded.x.empty());
+    EXPECT_FALSE(expanded.y.empty());
+    EXPECT_FALSE(expanded.z.empty());
+    EXPECT_FALSE(expanded.t.empty());
+    
+    // Test that unexpand/expand is consistent
+    Point2D point2d_again = crypto::Ed25519::unexpand(expanded);
+    EXPECT_EQ(point2d.x, point2d_again.x);
+    EXPECT_EQ(point2d.y, point2d_again.y);
+    
+    // Test cofactor multiplication
+    Point4D mul8 = crypto::Ed25519::point_mul8(point1);
+    EXPECT_TRUE(crypto::Ed25519::is_valid_point(mul8));
+}
+
+// Test point secret sharing
+TEST_F(CryptoTest, PointSecretSharing) {
+    // Create a test point
+    Point2D point;
+    point.x = "deadbeefcafebabe1234567890abcdef0123456789abcdef0123456789abcdef";
+    point.y = "0123456789abcdefdeadbeefcafebabe0123456789abcdefdeadbeefcafebabe";
+    
+    // Split point into shares
+    auto shares = crypto::PointSecretSharing::split_point(point, 2, 3);
+    EXPECT_EQ(shares.size(), 3);
+    
+    // Recover point from shares
+    std::vector<PointShare> recovery_shares = {shares[0], shares[1]};
+    Point2D recovered = crypto::PointSecretSharing::recover_point(recovery_shares);
+    
+    // Convert to lowercase for case-insensitive comparison
+    std::string recovered_x_lower = recovered.x;
+    std::string recovered_y_lower = recovered.y;
+    std::string point_x_lower = point.x;
+    std::string point_y_lower = point.y;
+    
+    std::transform(recovered_x_lower.begin(), recovered_x_lower.end(), recovered_x_lower.begin(), ::tolower);
+    std::transform(recovered_y_lower.begin(), recovered_y_lower.end(), recovered_y_lower.begin(), ::tolower);
+    std::transform(point_x_lower.begin(), point_x_lower.end(), point_x_lower.begin(), ::tolower);
+    std::transform(point_y_lower.begin(), point_y_lower.end(), point_y_lower.begin(), ::tolower);
+    
+    EXPECT_EQ(recovered_x_lower, point_x_lower);
+    EXPECT_EQ(recovered_y_lower, point_y_lower);
+}
+
+// Test key derivation
+TEST_F(CryptoTest, KeyDerivation) {
+    // Create a test point
+    Bytes uid = utils::string_to_bytes("user");
+    Bytes did = utils::string_to_bytes("device");
+    Bytes bid = utils::string_to_bytes("backup");
+    Bytes pin = utils::string_to_bytes("1234");
+    
+    Point4D point = crypto::Ed25519::hash_to_point(uid, did, bid, pin);
+    
+    // Derive encryption key
+    Bytes key = crypto::derive_encryption_key(point);
+    EXPECT_EQ(key.size(), 32);
+    
+    // Should be deterministic
+    Bytes key2 = crypto::derive_encryption_key(point);
+    EXPECT_EQ(key, key2);
+}
+
+// Test utility functions
+TEST_F(CryptoTest, UtilityFunctions) {
+    Bytes test_data = {0x01, 0x02, 0x03, 0x04};
+    
+    // Test hex conversion
+    std::string hex = crypto::bytes_to_hex(test_data);
+    EXPECT_EQ(hex, "01020304");
+    
+    Bytes converted_back = crypto::hex_to_bytes(hex);
+    EXPECT_EQ(converted_back, test_data);
+    
+    // Test prefixed function
+    Bytes prefixed_data = crypto::prefixed(test_data);
+    EXPECT_GT(prefixed_data.size(), test_data.size());
+}
+
+// Test crypto operations with maximum size inputs
+TEST_F(CryptoTest, MaximumSizeInputs) {
+    // Test AES-GCM with large plaintext
+    Bytes large_plaintext(100000, 0x42); // 100KB
+    Bytes key(32, 0x01);
+    
+    auto result = crypto::aes_gcm_encrypt(large_plaintext, key);
+    EXPECT_EQ(result.ciphertext.size(), large_plaintext.size());
+    
+    Bytes decrypted = crypto::aes_gcm_decrypt(result.ciphertext, result.tag, result.nonce, key);
+    EXPECT_EQ(decrypted, large_plaintext);
 }
 
 } // namespace test

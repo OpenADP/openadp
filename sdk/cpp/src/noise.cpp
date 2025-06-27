@@ -13,10 +13,12 @@ namespace noise {
 // Forward declarations
 Bytes perform_dh(const Bytes& private_key, const Bytes& public_key);
 std::pair<Bytes, Bytes> hkdf_2(const Bytes& ck, const Bytes& input_key_material);
-Bytes encrypt_and_hash(const Bytes& plaintext, Bytes& h);
-Bytes decrypt_and_hash(const Bytes& ciphertext, Bytes& h);
+Bytes encrypt_and_hash(const Bytes& plaintext, Bytes& h, const Bytes& k, uint64_t& nonce);
+Bytes decrypt_and_hash(const Bytes& ciphertext, Bytes& h, const Bytes& k, uint64_t& nonce);
 Bytes generate_keypair_private();
 Bytes derive_public_key(const Bytes& private_key);
+void mix_hash(Bytes& h, const Bytes& data);
+void mix_key(Bytes& ck, Bytes& k, const Bytes& input_key_material);
 
 // Noise protocol constants
 const size_t KEY_SIZE = 32;
@@ -42,10 +44,11 @@ struct NoiseState::Impl {
     uint64_t recv_nonce;
     
     bool handshake_finished;
+    bool is_initiator;
     
-    Impl() : send_nonce(0), recv_nonce(0), handshake_finished(false) {
-        // Initialize with Noise_NK protocol name
-        std::string protocol_name = "Noise_NK_25519_ChaChaPoly_SHA256";
+    Impl() : send_nonce(0), recv_nonce(0), handshake_finished(false), is_initiator(false) {
+        // Initialize with Noise_NK protocol name (matching JS/Python)
+        std::string protocol_name = "Noise_NK_25519_AESGCM_SHA256";
         Bytes protocol_bytes = utils::string_to_bytes(protocol_name);
         
         if (protocol_bytes.size() <= 32) {
@@ -56,9 +59,7 @@ struct NoiseState::Impl {
         }
         
         ck = h;
-        
-        // Generate local static key
-        s = generate_keypair_private();
+        k.clear(); // No key initially
     }
 };
 
@@ -67,12 +68,30 @@ NoiseState::NoiseState() : pimpl_(std::make_unique<Impl>()) {}
 NoiseState::~NoiseState() = default;
 
 void NoiseState::initialize_handshake(const Bytes& remote_public_key) {
+    // Initialize as initiator (client)
+    pimpl_->is_initiator = true;
     pimpl_->rs = remote_public_key;
     
-    // Mix remote static public key into hash
-    Bytes temp = pimpl_->h;
-    temp.insert(temp.end(), remote_public_key.begin(), remote_public_key.end());
-    pimpl_->h = crypto::sha256_hash(temp);
+    // Mix prologue (empty) into hash - this is required by Noise protocol
+    Bytes prologue; // Empty prologue
+    mix_hash(pimpl_->h, prologue);
+    
+    // Mix remote static public key into hash (NK pattern)
+    mix_hash(pimpl_->h, remote_public_key);
+}
+
+void NoiseState::initialize_responder(const Bytes& local_private_key) {
+    // Initialize as responder (server)
+    pimpl_->is_initiator = false;
+    pimpl_->s = local_private_key;
+    
+    // Mix prologue (empty) into hash - this is required by Noise protocol
+    Bytes prologue; // Empty prologue
+    mix_hash(pimpl_->h, prologue);
+    
+    // Mix local static public key into hash (NK pattern)
+    Bytes local_public = derive_public_key(local_private_key);
+    mix_hash(pimpl_->h, local_public);
 }
 
 Bytes NoiseState::write_message(const Bytes& payload) {
@@ -80,40 +99,60 @@ Bytes NoiseState::write_message(const Bytes& payload) {
         throw OpenADPError("Handshake already finished");
     }
     
-    // Generate ephemeral keypair
-    pimpl_->e = generate_keypair_private();
-    Bytes e_pub = derive_public_key(pimpl_->e);
-    
-    // Mix ephemeral public key
-    Bytes temp = pimpl_->h;
-    temp.insert(temp.end(), e_pub.begin(), e_pub.end());
-    pimpl_->h = crypto::sha256_hash(temp);
-    
-    // Perform DH
-    Bytes dh = perform_dh(pimpl_->e, pimpl_->rs);
-    
-    // Mix DH result
-    auto keys = hkdf_2(pimpl_->ck, dh);
-    pimpl_->ck = keys.first;
-    pimpl_->k = keys.second;
-    
-    // Encrypt payload
-    Bytes ciphertext;
-    if (!payload.empty()) {
-        ciphertext = encrypt_and_hash(payload, pimpl_->h);
+    if (pimpl_->is_initiator) {
+        // Initiator message: -> e, es
+        
+        // Generate ephemeral keypair
+        pimpl_->e = generate_keypair_private();
+        Bytes e_pub = derive_public_key(pimpl_->e);
+        
+        // Mix ephemeral public key
+        mix_hash(pimpl_->h, e_pub);
+        
+        // Perform DH: es = DH(e, rs)
+        Bytes dh = perform_dh(pimpl_->e, pimpl_->rs);
+        mix_key(pimpl_->ck, pimpl_->k, dh);
+        
+        // Encrypt payload (always encrypt if we have a key, even for empty payload)
+        uint64_t nonce = 0;
+        Bytes ciphertext = encrypt_and_hash(payload, pimpl_->h, pimpl_->k, nonce);
+        
+        // Build message: e + encrypted_payload
+        Bytes message = e_pub;
+        message.insert(message.end(), ciphertext.begin(), ciphertext.end());
+        
+        return message;
+        
+    } else {
+        // Responder message: <- e, ee
+        
+        // Generate ephemeral keypair
+        pimpl_->e = generate_keypair_private();
+        Bytes e_pub = derive_public_key(pimpl_->e);
+        
+        // Mix ephemeral public key
+        mix_hash(pimpl_->h, e_pub);
+        
+        // Perform DH: ee = DH(e, re)
+        Bytes dh = perform_dh(pimpl_->e, pimpl_->re);
+        mix_key(pimpl_->ck, pimpl_->k, dh);
+        
+        // Encrypt payload (always encrypt if we have a key, even for empty payload)
+        uint64_t nonce = 0;
+        Bytes ciphertext = encrypt_and_hash(payload, pimpl_->h, pimpl_->k, nonce);
+        
+        // Split transport keys
+        auto transport_keys = hkdf_2(pimpl_->ck, Bytes());
+        pimpl_->recv_key = transport_keys.first;
+        pimpl_->send_key = transport_keys.second;
+        pimpl_->handshake_finished = true;
+        
+        // Build message: e + encrypted_payload
+        Bytes message = e_pub;
+        message.insert(message.end(), ciphertext.begin(), ciphertext.end());
+        
+        return message;
     }
-    
-    // Build message
-    Bytes message = e_pub;
-    message.insert(message.end(), ciphertext.begin(), ciphertext.end());
-    
-    // Finalize handshake
-    auto transport_keys = hkdf_2(pimpl_->ck, Bytes());
-    pimpl_->send_key = transport_keys.first;
-    pimpl_->recv_key = transport_keys.second;
-    pimpl_->handshake_finished = true;
-    
-    return message;
 }
 
 Bytes NoiseState::write_message() {
@@ -125,36 +164,66 @@ Bytes NoiseState::read_message(const Bytes& message) {
         throw OpenADPError("Message too short");
     }
     
-    // Extract ephemeral public key
-    pimpl_->re = Bytes(message.begin(), message.begin() + 32);
-    
-    // Mix ephemeral public key
-    Bytes temp = pimpl_->h;
-    temp.insert(temp.end(), pimpl_->re.begin(), pimpl_->re.end());
-    pimpl_->h = crypto::sha256_hash(temp);
-    
-    // Perform DH
-    Bytes dh = perform_dh(pimpl_->s, pimpl_->re);
-    
-    // Mix DH result
-    auto keys = hkdf_2(pimpl_->ck, dh);
-    pimpl_->ck = keys.first;
-    pimpl_->k = keys.second;
-    
-    // Decrypt payload
-    Bytes payload;
-    if (message.size() > 32) {
-        Bytes ciphertext(message.begin() + 32, message.end());
-        payload = decrypt_and_hash(ciphertext, pimpl_->h);
+    if (pimpl_->is_initiator) {
+        // Initiator reading responder message: <- e, ee
+        
+        // Extract ephemeral public key
+        pimpl_->re = Bytes(message.begin(), message.begin() + 32);
+        
+        // Mix ephemeral public key
+        mix_hash(pimpl_->h, pimpl_->re);
+        
+        // Perform DH: ee = DH(e, re)
+        Bytes dh = perform_dh(pimpl_->e, pimpl_->re);
+        mix_key(pimpl_->ck, pimpl_->k, dh);
+        
+        // Decrypt payload
+        Bytes payload;
+        if (message.size() > 32) {
+            Bytes ciphertext(message.begin() + 32, message.end());
+            uint64_t nonce = 0;
+            payload = decrypt_and_hash(ciphertext, pimpl_->h, pimpl_->k, nonce);
+        } else {
+            // No ciphertext, but we still need to process an empty payload
+            uint64_t nonce = 0;
+            payload = decrypt_and_hash(Bytes{}, pimpl_->h, pimpl_->k, nonce);
+        }
+        
+        // Split transport keys
+        auto transport_keys = hkdf_2(pimpl_->ck, Bytes());
+        pimpl_->send_key = transport_keys.first;
+        pimpl_->recv_key = transport_keys.second;
+        pimpl_->handshake_finished = true;
+        
+        return payload;
+        
+    } else {
+        // Responder reading initiator message: -> e, es
+        
+        // Extract ephemeral public key
+        pimpl_->re = Bytes(message.begin(), message.begin() + 32);
+        
+        // Mix ephemeral public key
+        mix_hash(pimpl_->h, pimpl_->re);
+        
+        // Perform DH: es = DH(s, re)
+        Bytes dh = perform_dh(pimpl_->s, pimpl_->re);
+        mix_key(pimpl_->ck, pimpl_->k, dh);
+        
+        // Decrypt payload
+        Bytes payload;
+        if (message.size() > 32) {
+            Bytes ciphertext(message.begin() + 32, message.end());
+            uint64_t nonce = 0;
+            payload = decrypt_and_hash(ciphertext, pimpl_->h, pimpl_->k, nonce);
+        } else {
+            // No ciphertext, but we still need to process an empty payload
+            uint64_t nonce = 0;
+            payload = decrypt_and_hash(Bytes{}, pimpl_->h, pimpl_->k, nonce);
+        }
+        
+        return payload;
     }
-    
-    // Finalize handshake
-    auto transport_keys = hkdf_2(pimpl_->ck, Bytes());
-    pimpl_->recv_key = transport_keys.first;
-    pimpl_->send_key = transport_keys.second;
-    pimpl_->handshake_finished = true;
-    
-    return payload;
 }
 
 bool NoiseState::handshake_finished() const {
@@ -166,20 +235,24 @@ Bytes NoiseState::encrypt(const Bytes& plaintext) {
         throw OpenADPError("Handshake not finished");
     }
     
-    // Create nonce (little-endian)
+    // Create nonce (12 bytes: 4 zeros + 8-byte counter big-endian)
     Bytes nonce(12, 0);
-    for (int i = 0; i < 8; i++) {
-        nonce[i] = (pimpl_->send_nonce >> (i * 8)) & 0xFF;
-    }
+    nonce[4] = (pimpl_->send_nonce >> 56) & 0xFF;
+    nonce[5] = (pimpl_->send_nonce >> 48) & 0xFF;
+    nonce[6] = (pimpl_->send_nonce >> 40) & 0xFF;
+    nonce[7] = (pimpl_->send_nonce >> 32) & 0xFF;
+    nonce[8] = (pimpl_->send_nonce >> 24) & 0xFF;
+    nonce[9] = (pimpl_->send_nonce >> 16) & 0xFF;
+    nonce[10] = (pimpl_->send_nonce >> 8) & 0xFF;
+    nonce[11] = pimpl_->send_nonce & 0xFF;
     
-    // Encrypt with ChaCha20-Poly1305 (using AES-GCM as substitute)
-    auto result = crypto::aes_gcm_encrypt(plaintext, pimpl_->send_key);
+    // Encrypt with AES-GCM using handshake hash as AAD
+    auto result = crypto::aes_gcm_encrypt(plaintext, pimpl_->send_key, nonce, pimpl_->h);
     
     pimpl_->send_nonce++;
     
-    // Combine nonce + ciphertext + tag
-    Bytes encrypted = result.nonce;
-    encrypted.insert(encrypted.end(), result.ciphertext.begin(), result.ciphertext.end());
+    // Return ciphertext + tag (AES-GCM format)
+    Bytes encrypted = result.ciphertext;
     encrypted.insert(encrypted.end(), result.tag.begin(), result.tag.end());
     
     return encrypted;
@@ -190,28 +263,43 @@ Bytes NoiseState::decrypt(const Bytes& ciphertext) {
         throw OpenADPError("Handshake not finished");
     }
     
-    if (ciphertext.size() < 28) { // 12 (nonce) + 16 (tag)
-        throw OpenADPError("Ciphertext too short");
+    if (ciphertext.size() < 16) {
+        throw OpenADPError("Ciphertext too short for decryption");
     }
     
-    // Extract components
-    Bytes nonce(ciphertext.begin(), ciphertext.begin() + 12);
-    Bytes tag(ciphertext.end() - 16, ciphertext.end());
-    Bytes data(ciphertext.begin() + 12, ciphertext.end() - 16);
+    // Create nonce (12 bytes: 4 zeros + 8-byte counter big-endian)
+    Bytes nonce(12, 0);
+    nonce[4] = (pimpl_->recv_nonce >> 56) & 0xFF;
+    nonce[5] = (pimpl_->recv_nonce >> 48) & 0xFF;
+    nonce[6] = (pimpl_->recv_nonce >> 40) & 0xFF;
+    nonce[7] = (pimpl_->recv_nonce >> 32) & 0xFF;
+    nonce[8] = (pimpl_->recv_nonce >> 24) & 0xFF;
+    nonce[9] = (pimpl_->recv_nonce >> 16) & 0xFF;
+    nonce[10] = (pimpl_->recv_nonce >> 8) & 0xFF;
+    nonce[11] = pimpl_->recv_nonce & 0xFF;
     
-    // Decrypt with AES-GCM
-    Bytes plaintext = crypto::aes_gcm_decrypt(data, tag, nonce, pimpl_->recv_key);
+    // Extract components
+    Bytes tag(ciphertext.end() - 16, ciphertext.end());
+    Bytes data(ciphertext.begin(), ciphertext.end() - 16);
+    
+    // Decrypt with AES-GCM using handshake hash as AAD
+    Bytes plaintext = crypto::aes_gcm_decrypt(data, tag, nonce, pimpl_->recv_key, pimpl_->h);
     
     pimpl_->recv_nonce++;
     
     return plaintext;
 }
 
+Bytes NoiseState::get_handshake_hash() const {
+    return pimpl_->h;
+}
+
 std::pair<Bytes, Bytes> NoiseState::get_transport_keys() const {
     return std::make_pair(pimpl_->send_key, pimpl_->recv_key);
 }
 
-// Helper functions (private methods need to be declared as free functions)
+// Helper functions implementation
+
 Bytes perform_dh(const Bytes& private_key, const Bytes& public_key) {
     if (private_key.size() != 32 || public_key.size() != 32) {
         throw OpenADPError("Invalid key size for DH");
@@ -280,29 +368,104 @@ Bytes perform_dh(const Bytes& private_key, const Bytes& public_key) {
 }
 
 std::pair<Bytes, Bytes> hkdf_2(const Bytes& ck, const Bytes& input_key_material) {
-    // Use HKDF to derive two 32-byte keys
+    // Use HKDF to derive two 32-byte keys following Noise spec
     Bytes salt = ck.empty() ? Bytes(32, 0) : ck;
     Bytes ikm = input_key_material.empty() ? Bytes(1, 0) : input_key_material;
     
-    Bytes output1 = crypto::hkdf_derive(ikm, salt, utils::string_to_bytes("1"), 32);
-    Bytes output2 = crypto::hkdf_derive(ikm, salt, utils::string_to_bytes("2"), 32);
+    // HKDF-Extract then HKDF-Expand for 64 bytes total
+    Bytes output = crypto::hkdf_derive(ikm, salt, Bytes(), 64);
+    
+    // Split into two 32-byte keys
+    Bytes output1(output.begin(), output.begin() + 32);
+    Bytes output2(output.begin() + 32, output.end());
     
     return std::make_pair(output1, output2);
 }
 
-Bytes encrypt_and_hash(const Bytes& plaintext, Bytes& h) {
-    // Simplified encryption during handshake
-    h = crypto::sha256_hash(plaintext);
-    return plaintext; // No encryption during handshake for simplicity
+Bytes encrypt_and_hash(const Bytes& plaintext, Bytes& h, const Bytes& k, uint64_t& nonce) {
+    if (k.empty()) {
+        // No key yet - just mix plaintext into hash
+        mix_hash(h, plaintext);
+        return plaintext;
+    }
+    
+    // Create nonce (12 bytes: 4 zeros + 8-byte counter big-endian)
+    Bytes nonce_bytes(12, 0);
+    nonce_bytes[4] = (nonce >> 56) & 0xFF;
+    nonce_bytes[5] = (nonce >> 48) & 0xFF;
+    nonce_bytes[6] = (nonce >> 40) & 0xFF;
+    nonce_bytes[7] = (nonce >> 32) & 0xFF;
+    nonce_bytes[8] = (nonce >> 24) & 0xFF;
+    nonce_bytes[9] = (nonce >> 16) & 0xFF;
+    nonce_bytes[10] = (nonce >> 8) & 0xFF;
+    nonce_bytes[11] = nonce & 0xFF;
+    
+    // Encrypt with AES-GCM using current hash as AAD
+    auto result = crypto::aes_gcm_encrypt(plaintext, k, nonce_bytes, h);
+    
+    // Combine ciphertext + tag
+    Bytes ciphertext = result.ciphertext;
+    ciphertext.insert(ciphertext.end(), result.tag.begin(), result.tag.end());
+    
+    // Mix ciphertext into hash
+    mix_hash(h, ciphertext);
+    
+    nonce++;
+    
+    return ciphertext;
 }
 
-Bytes decrypt_and_hash(const Bytes& ciphertext, Bytes& h) {
-    // Simplified decryption during handshake
-    h = crypto::sha256_hash(ciphertext);
-    return ciphertext; // No decryption during handshake for simplicity
+Bytes decrypt_and_hash(const Bytes& ciphertext, Bytes& h, const Bytes& k, uint64_t& nonce) {
+    if (k.empty()) {
+        // No key yet - just mix ciphertext into hash and return as plaintext
+        mix_hash(h, ciphertext);
+        return ciphertext;
+    }
+    
+    if (ciphertext.size() < 16) {
+        throw OpenADPError("Ciphertext too short for decryption");
+    }
+    
+    // Create nonce (12 bytes: 4 zeros + 8-byte counter big-endian)
+    Bytes nonce_bytes(12, 0);
+    nonce_bytes[4] = (nonce >> 56) & 0xFF;
+    nonce_bytes[5] = (nonce >> 48) & 0xFF;
+    nonce_bytes[6] = (nonce >> 40) & 0xFF;
+    nonce_bytes[7] = (nonce >> 32) & 0xFF;
+    nonce_bytes[8] = (nonce >> 24) & 0xFF;
+    nonce_bytes[9] = (nonce >> 16) & 0xFF;
+    nonce_bytes[10] = (nonce >> 8) & 0xFF;
+    nonce_bytes[11] = nonce & 0xFF;
+    
+    // Extract components
+    Bytes tag(ciphertext.end() - 16, ciphertext.end());
+    Bytes data(ciphertext.begin(), ciphertext.end() - 16);
+    
+    // Decrypt with AES-GCM using current hash as AAD
+    Bytes plaintext = crypto::aes_gcm_decrypt(data, tag, nonce_bytes, k, h);
+    
+    // Mix ciphertext into hash AFTER successful decryption
+    mix_hash(h, ciphertext);
+    
+    nonce++;
+    
+    return plaintext;
 }
 
-// Utility functions
+void mix_hash(Bytes& h, const Bytes& data) {
+    // Mix data into hash state: h = SHA256(h || data)
+    Bytes combined = h;
+    combined.insert(combined.end(), data.begin(), data.end());
+    h = crypto::sha256_hash(combined);
+}
+
+void mix_key(Bytes& ck, Bytes& k, const Bytes& input_key_material) {
+    // Mix key material into chaining key and derive new symmetric key
+    auto keys = hkdf_2(ck, input_key_material);
+    ck = keys.first;
+    k = keys.second;
+}
+
 Bytes generate_keypair_private() {
     Bytes private_key(32);
     if (RAND_bytes(private_key.data(), 32) != 1) {
@@ -316,34 +479,22 @@ Bytes derive_public_key(const Bytes& private_key) {
         throw OpenADPError("Private key must be 32 bytes");
     }
     
-    // For X25519, derive public key from private key
-    EVP_PKEY* pkey = nullptr;
-    EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_X25519, nullptr);
-    if (!ctx) {
-        throw OpenADPError("Failed to create key context");
+    // Create EVP_PKEY from private key
+    EVP_PKEY* pkey = EVP_PKEY_new_raw_private_key(EVP_PKEY_X25519, nullptr, private_key.data(), private_key.size());
+    if (!pkey) {
+        throw OpenADPError("Failed to create private key");
     }
     
-    if (EVP_PKEY_keygen_init(ctx) <= 0) {
-        EVP_PKEY_CTX_free(ctx);
-        throw OpenADPError("Failed to initialize key generation");
-    }
-    
-    if (EVP_PKEY_keygen(ctx, &pkey) <= 0) {
-        EVP_PKEY_CTX_free(ctx);
-        throw OpenADPError("Failed to generate keypair");
-    }
-    
+    // Extract public key
     size_t public_key_len = 32;
     Bytes public_key(public_key_len);
     
     if (EVP_PKEY_get_raw_public_key(pkey, public_key.data(), &public_key_len) <= 0) {
         EVP_PKEY_free(pkey);
-        EVP_PKEY_CTX_free(ctx);
         throw OpenADPError("Failed to extract public key");
     }
     
     EVP_PKEY_free(pkey);
-    EVP_PKEY_CTX_free(ctx);
     
     public_key.resize(public_key_len);
     return public_key;

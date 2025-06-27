@@ -16,8 +16,11 @@ public:
     NoiseState();
     ~NoiseState();
     
-    // Initialize handshake with remote public key
+    // Initialize handshake with remote public key (as initiator)
     void initialize_handshake(const Bytes& remote_public_key);
+    
+    // Initialize as responder with local private key
+    void initialize_responder(const Bytes& local_private_key);
     
     // Write handshake message
     Bytes write_message(const Bytes& payload);
@@ -28,6 +31,9 @@ public:
     
     // Check if handshake is complete
     bool handshake_finished() const;
+    
+    // Get handshake hash
+    Bytes get_handshake_hash() const;
     
     // Encrypt transport message (after handshake)
     Bytes encrypt(const Bytes& plaintext);

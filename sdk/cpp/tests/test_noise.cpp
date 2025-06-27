@@ -66,16 +66,26 @@ TEST_F(NoiseTest, HandshakeProcess) {
     noise::NoiseState server_state;
     
     // Server generates keys first
-    Bytes server_public_key = utils::random_bytes(32);
+    Bytes server_private_key = noise::generate_keypair_private();
+    Bytes server_public_key = noise::derive_public_key(server_private_key);
     
-    // Client initializes handshake with server's public key
+    // Initialize client as initiator with server's public key
     client_state.initialize_handshake(server_public_key);
     
-    // Client writes handshake message
+    // Initialize server as responder with its private key
+    server_state.initialize_responder(server_private_key);
+    
+    // Client writes first handshake message
     Bytes client_message = client_state.write_message();
     
-    // Server should be able to read the message
+    // Server reads client message
     EXPECT_NO_THROW(server_state.read_message(client_message));
+    
+    // Server writes second handshake message
+    Bytes server_message = server_state.write_message();
+    
+    // Client reads server message
+    EXPECT_NO_THROW(client_state.read_message(server_message));
     
     // After handshake, both should report finished
     EXPECT_TRUE(client_state.handshake_finished());
@@ -93,14 +103,18 @@ TEST_F(NoiseTest, EncryptDecryptAfterHandshake) {
     noise::NoiseState client, server;
     
     // Generate keys for testing
-    Bytes server_public = noise::derive_public_key(noise::generate_keypair_private());
+    Bytes server_private = noise::generate_keypair_private();
+    Bytes server_public = noise::derive_public_key(server_private);
     
     client.initialize_handshake(server_public);
+    server.initialize_responder(server_private);
     
     try {
         // Perform handshake
         Bytes client_message = client.write_message();
-        Bytes server_response = server.read_message(client_message);
+        server.read_message(client_message);
+        Bytes server_message = server.write_message();
+        client.read_message(server_message);
         
         EXPECT_TRUE(client.handshake_finished());
         EXPECT_TRUE(server.handshake_finished());
@@ -135,33 +149,43 @@ TEST_F(NoiseTest, DecryptBeforeHandshake) {
 }
 
 TEST_F(NoiseTest, DecryptTooShort) {
-    noise::NoiseState state1;
-    noise::NoiseState state2;
+    noise::NoiseState client;
+    noise::NoiseState server;
     
-    // Complete handshake
-    Bytes remote_key = utils::random_bytes(32);
-    state1.initialize_handshake(remote_key);
-    Bytes handshake_msg = state1.write_message();
-    state2.read_message(handshake_msg);
+    // Complete handshake properly
+    Bytes server_private = noise::generate_keypair_private();
+    Bytes server_public = noise::derive_public_key(server_private);
+    
+    client.initialize_handshake(server_public);
+    server.initialize_responder(server_private);
+    
+    Bytes client_message = client.write_message();
+    server.read_message(client_message);
+    Bytes server_message = server.write_message();
+    client.read_message(server_message);
     
     // Try to decrypt message that's too short
-    Bytes short_ciphertext = {0x01, 0x02, 0x03}; // Less than 28 bytes (12 nonce + 16 tag)
+    Bytes short_ciphertext = {0x01, 0x02, 0x03}; // Less than 16 bytes (tag size)
     
-    EXPECT_THROW(state2.decrypt(short_ciphertext), OpenADPError);
+    EXPECT_THROW(server.decrypt(short_ciphertext), OpenADPError);
 }
 
 TEST_F(NoiseTest, EncryptDecryptMultipleMessages) {
     noise::NoiseState client, server;
     
     // Generate keys for testing
-    Bytes server_public = noise::derive_public_key(noise::generate_keypair_private());
+    Bytes server_private = noise::generate_keypair_private();
+    Bytes server_public = noise::derive_public_key(server_private);
     
     client.initialize_handshake(server_public);
+    server.initialize_responder(server_private);
     
     try {
         // Perform handshake
         Bytes client_message = client.write_message();
-        Bytes server_response = server.read_message(client_message);
+        server.read_message(client_message);
+        Bytes server_message = server.write_message();
+        client.read_message(server_message);
         
         // Test multiple messages
         for (int i = 0; i < 3; i++) {
@@ -180,26 +204,31 @@ TEST_F(NoiseTest, EncryptDecryptMultipleMessages) {
 }
 
 TEST_F(NoiseTest, TransportKeys) {
-    noise::NoiseState state1, state2;
+    noise::NoiseState client, server;
     
     // Keys before handshake may be empty
-    auto keys1_before = state1.get_transport_keys();
-    auto keys2_before = state2.get_transport_keys();
+    auto keys1_before = client.get_transport_keys();
+    auto keys2_before = server.get_transport_keys();
     
     EXPECT_TRUE(keys1_before.first.size() == 0 || keys1_before.first.size() == 32);
     EXPECT_TRUE(keys1_before.second.size() == 0 || keys1_before.second.size() == 32);
     
     try {
         // Generate keys and perform handshake
-        Bytes server_public = noise::derive_public_key(noise::generate_keypair_private());
-        state1.initialize_handshake(server_public);
+        Bytes server_private = noise::generate_keypair_private();
+        Bytes server_public = noise::derive_public_key(server_private);
         
-        Bytes message1 = state1.write_message();
-        Bytes response1 = state2.read_message(message1);
+        client.initialize_handshake(server_public);
+        server.initialize_responder(server_private);
+        
+        Bytes client_message = client.write_message();
+        server.read_message(client_message);
+        Bytes server_message = server.write_message();
+        client.read_message(server_message);
         
         // Keys after handshake should be available
-        auto keys1_after = state1.get_transport_keys();
-        auto keys2_after = state2.get_transport_keys();
+        auto keys1_after = client.get_transport_keys();
+        auto keys2_after = server.get_transport_keys();
         
         EXPECT_EQ(keys1_after.first.size(), 32);
         EXPECT_EQ(keys1_after.second.size(), 32);
@@ -223,11 +252,16 @@ TEST_F(NoiseTest, EncryptionNonceProgression) {
     
     try {
         // Generate keys and perform handshake
-        Bytes server_public = noise::derive_public_key(noise::generate_keypair_private());
+        Bytes server_private = noise::generate_keypair_private();
+        Bytes server_public = noise::derive_public_key(server_private);
+        
         client.initialize_handshake(server_public);
+        server.initialize_responder(server_private);
         
         Bytes client_message = client.write_message();
-        Bytes server_response = server.read_message(client_message);
+        server.read_message(client_message);
+        Bytes server_message = server.write_message();
+        client.read_message(server_message);
         
         // Test that nonces progress (different ciphertexts for same plaintext)
         Bytes plaintext = utils::string_to_bytes("test");
@@ -251,26 +285,24 @@ TEST_F(NoiseTest, EncryptionNonceProgression) {
 }
 
 TEST_F(NoiseTest, HandshakeWithPayload) {
-    noise::NoiseState state1;
-    noise::NoiseState state2;
+    noise::NoiseState client;
+    noise::NoiseState server;
     
-    Bytes remote_key = utils::random_bytes(32);
-    state1.initialize_handshake(remote_key);
+    Bytes server_private = noise::generate_keypair_private();
+    Bytes server_public = noise::derive_public_key(server_private);
     
-    // Send handshake with payload
-    std::string payload_str = "handshake payload";
-    Bytes payload = utils::string_to_bytes(payload_str);
+    client.initialize_handshake(server_public);
+    server.initialize_responder(server_private);
     
-    Bytes handshake_msg = state1.write_message(payload);
-    Bytes received_payload = state2.read_message(handshake_msg);
+    Bytes payload = utils::string_to_bytes("Hello from client");
     
-    // Payload should be preserved (in simplified implementation)
-    EXPECT_EQ(received_payload, payload);
-    EXPECT_EQ(utils::bytes_to_string(received_payload), payload_str);
+    // Client sends handshake message with payload
+    Bytes message = client.write_message(payload);
     
-    // Handshake should be complete
-    EXPECT_TRUE(state1.handshake_finished());
-    EXPECT_TRUE(state2.handshake_finished());
+    // Server should receive the payload
+    Bytes received_payload = server.read_message(message);
+    
+    EXPECT_EQ(payload, received_payload);
 }
 
 } // namespace test

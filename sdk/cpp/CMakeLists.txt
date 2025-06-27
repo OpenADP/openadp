@@ -89,6 +89,9 @@ target_link_libraries(ocrypt-register openadp)
 add_executable(ocrypt-recover tools/ocrypt-recover.cpp)
 target_link_libraries(ocrypt-recover openadp)
 
+add_executable(noise_server tools/noise_server.cpp)
+target_link_libraries(noise_server openadp)
+
 # Tests (only if Google Test is available)
 if(BUILD_TESTS OR GTest_FOUND OR GTEST_FOUND)
     set(TEST_SOURCES
@@ -97,6 +100,8 @@ if(BUILD_TESTS OR GTest_FOUND OR GTEST_FOUND)
         tests/test_keygen.cpp
         tests/test_ocrypt.cpp
         tests/test_noise.cpp
+        tests/test_noise_cross_language.cpp
+tests/test_noise_debug.cpp
         tests/test_base64.cpp
         tests/test_hex.cpp
         tests/test_openadp.cpp

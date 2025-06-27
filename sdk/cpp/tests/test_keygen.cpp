@@ -267,5 +267,280 @@ TEST_F(KeygenTest, GenerateEncryptionKeyParameterValidation) {
     // (behavior depends on server validation)
 }
 
+// Test error handling in generate_encryption_key
+TEST_F(KeygenTest, GenerateEncryptionKeyErrors) {
+    Identity identity("user", "device", "backup");
+    std::vector<ServerInfo> empty_servers;
+    
+    // Test with empty server list
+    auto result = keygen::generate_encryption_key(identity, "password", 5, 0, empty_servers);
+    EXPECT_TRUE(result.error_message.has_value());
+    EXPECT_TRUE(result.error_message->find("No servers") != std::string::npos ||
+               result.error_message->find("empty") != std::string::npos ||
+               result.error_message->find("server") != std::string::npos);
+    
+    // Test with single server (should fail threshold requirement)
+    std::vector<ServerInfo> single_server = {{"https://server1.example.com"}};
+    result = keygen::generate_encryption_key(identity, "password", 5, 0, single_server);
+    EXPECT_TRUE(result.error_message.has_value());
+}
+
+// Test error handling in recover_encryption_key
+TEST_F(KeygenTest, RecoverEncryptionKeyErrors) {
+    Identity identity("user", "device", "backup");
+    std::vector<ServerInfo> servers = {
+        {"https://server1.example.com"},
+        {"https://server2.example.com"}
+    };
+    
+    // Test with empty auth codes
+    AuthCodes empty_auth_codes;
+    auto result = keygen::recover_encryption_key(identity, "password", empty_auth_codes, servers);
+    EXPECT_TRUE(result.error_message.has_value());
+    
+    // Test with mismatched auth codes and servers
+    AuthCodes auth_codes;
+    auth_codes.base_auth_code = "test_code";
+    auth_codes.server_auth_codes["https://server1.example.com"] = "code1"; // Only one code for two servers
+    
+    result = keygen::recover_encryption_key(identity, "password", auth_codes, servers);
+    EXPECT_TRUE(result.error_message.has_value());
+}
+
+// Test generate_auth_codes with edge cases
+TEST_F(KeygenTest, GenerateAuthCodesEdgeCases) {
+    std::vector<ServerInfo> empty_servers;
+    
+    // Test with empty servers - should return empty auth codes
+    auto result = keygen::generate_auth_codes("base_code", empty_servers);
+    EXPECT_EQ(result.base_auth_code, "base_code");
+    EXPECT_EQ(result.server_auth_codes.size(), 0);
+    
+    // Test with single server
+    std::vector<ServerInfo> single_server = {{"https://server1.example.com"}};
+    result = keygen::generate_auth_codes("base_code", single_server);
+    EXPECT_EQ(result.base_auth_code, "base_code");
+    EXPECT_EQ(result.server_auth_codes.size(), 1);
+    
+    // Test with many servers
+    std::vector<ServerInfo> many_servers;
+    for (int i = 0; i < 10; i++) {
+        many_servers.push_back({"https://server" + std::to_string(i) + ".example.com"});
+    }
+    result = keygen::generate_auth_codes("base_code", many_servers);
+    EXPECT_EQ(result.server_auth_codes.size(), 10);
+}
+
+// Test Identity validation
+TEST_F(KeygenTest, IdentityValidation) {
+    std::vector<ServerInfo> servers = {
+        {"https://server1.example.com"},
+        {"https://server2.example.com"}
+    };
+    
+    // Test with empty user ID
+    Identity empty_user("", "device", "backup");
+    auto result = keygen::generate_encryption_key(empty_user, "password", 5, 0, servers);
+    EXPECT_TRUE(result.error_message.has_value());
+    
+    // Test with empty device ID
+    Identity empty_device("user", "", "backup");
+    result = keygen::generate_encryption_key(empty_device, "password", 5, 0, servers);
+    EXPECT_TRUE(result.error_message.has_value());
+    
+    // Test with empty backup ID
+    Identity empty_backup("user", "device", "");
+    result = keygen::generate_encryption_key(empty_backup, "password", 5, 0, servers);
+    EXPECT_TRUE(result.error_message.has_value());
+}
+
+// Test password validation
+TEST_F(KeygenTest, PasswordValidation) {
+    Identity identity("user", "device", "backup");
+    std::vector<ServerInfo> servers = {
+        {"https://server1.example.com"},
+        {"https://server2.example.com"}
+    };
+    
+    // Test with empty password
+    auto result = keygen::generate_encryption_key(identity, "", 5, 0, servers);
+    EXPECT_TRUE(result.error_message.has_value());
+    
+    // Test with very long password
+    std::string long_password(10000, 'a');
+    result = keygen::generate_encryption_key(identity, long_password, 5, 0, servers);
+    // Should work or fail gracefully
+    EXPECT_TRUE(result.error_message.has_value() || result.encryption_key.has_value());
+}
+
+// Test max_guesses validation
+TEST_F(KeygenTest, MaxGuessesValidation) {
+    Identity identity("user", "device", "backup");
+    std::vector<ServerInfo> servers = {
+        {"https://server1.example.com"},
+        {"https://server2.example.com"}
+    };
+    
+    // Test with zero max guesses
+    auto result = keygen::generate_encryption_key(identity, "password", 0, 0, servers);
+    EXPECT_TRUE(result.error_message.has_value());
+    
+    // Test with negative max guesses
+    result = keygen::generate_encryption_key(identity, "password", -1, 0, servers);
+    EXPECT_TRUE(result.error_message.has_value());
+    
+    // Test with very large max guesses
+    result = keygen::generate_encryption_key(identity, "password", 1000000, 0, servers);
+    EXPECT_TRUE(result.error_message.has_value() || result.encryption_key.has_value());
+}
+
+// Test expiration validation
+TEST_F(KeygenTest, ExpirationValidation) {
+    Identity identity("user", "device", "backup");
+    std::vector<ServerInfo> servers = {
+        {"https://server1.example.com"},
+        {"https://server2.example.com"}
+    };
+    
+    // Test with past expiration
+    int64_t past_time = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count() - 3600; // 1 hour ago
+    
+    auto result = keygen::generate_encryption_key(identity, "password", 5, past_time, servers);
+    EXPECT_TRUE(result.error_message.has_value());
+    
+    // Test with far future expiration
+    int64_t future_time = std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count() + 365*24*3600; // 1 year from now
+    
+    result = keygen::generate_encryption_key(identity, "password", 5, future_time, servers);
+    // Should work or fail gracefully
+    EXPECT_TRUE(result.error_message.has_value() || result.encryption_key.has_value());
+}
+
+// Test server info validation
+TEST_F(KeygenTest, ServerInfoValidation) {
+    Identity identity("user", "device", "backup");
+    
+    // Test with servers having empty URLs
+    std::vector<ServerInfo> invalid_servers = {
+        {""},
+        {"https://server2.example.com"}
+    };
+    
+    auto result = keygen::generate_encryption_key(identity, "password", 5, 0, invalid_servers);
+    EXPECT_TRUE(result.error_message.has_value());
+    
+    // Test with servers having invalid URLs
+    std::vector<ServerInfo> malformed_servers = {
+        {"not-a-url"},
+        {"https://server2.example.com"}
+    };
+    
+    result = keygen::generate_encryption_key(identity, "password", 5, 0, malformed_servers);
+    EXPECT_TRUE(result.error_message.has_value());
+}
+
+// Test threshold calculation edge cases
+TEST_F(KeygenTest, ThresholdCalculation) {
+    Identity identity("user", "device", "backup");
+    
+    // Test with exactly 2 servers (minimum for threshold)
+    std::vector<ServerInfo> two_servers = {
+        {"https://server1.example.com"},
+        {"https://server2.example.com"}
+    };
+    
+    auto result = keygen::generate_encryption_key(identity, "password", 5, 0, two_servers);
+    if (!result.error_message.has_value()) {
+        EXPECT_EQ(result.threshold, 2); // Should need both servers
+    }
+    
+    // Test with 3 servers
+    std::vector<ServerInfo> three_servers = {
+        {"https://server1.example.com"},
+        {"https://server2.example.com"},
+        {"https://server3.example.com"}
+    };
+    
+    result = keygen::generate_encryption_key(identity, "password", 5, 0, three_servers);
+    if (!result.error_message.has_value()) {
+        EXPECT_EQ(result.threshold, 2); // Should need 2 out of 3
+    }
+}
+
+// Test auth code generation with different base codes
+TEST_F(KeygenTest, AuthCodeGenerationVariations) {
+    std::vector<ServerInfo> servers = {
+        {"https://server1.example.com"},
+        {"https://server2.example.com"}
+    };
+    
+    // Test with different base codes
+    auto result1 = keygen::generate_auth_codes("code1", servers);
+    auto result2 = keygen::generate_auth_codes("code2", servers);
+    
+    EXPECT_NE(result1.server_auth_codes.at("https://server1.example.com"), 
+              result2.server_auth_codes.at("https://server1.example.com"));
+    EXPECT_NE(result1.server_auth_codes.at("https://server2.example.com"), 
+              result2.server_auth_codes.at("https://server2.example.com"));
+    
+    // Test with same base code (should be deterministic)
+    auto result3 = keygen::generate_auth_codes("code1", servers);
+    EXPECT_EQ(result1.server_auth_codes.at("https://server1.example.com"), 
+              result3.server_auth_codes.at("https://server1.example.com"));
+    EXPECT_EQ(result1.server_auth_codes.at("https://server2.example.com"), 
+              result3.server_auth_codes.at("https://server2.example.com"));
+}
+
+// Test with servers having public keys
+TEST_F(KeygenTest, ServersWithPublicKeys) {
+    Identity identity("user", "device", "backup");
+    
+    std::vector<ServerInfo> servers_with_keys;
+    servers_with_keys.push_back({"https://server1.example.com"});
+    servers_with_keys.push_back({"https://server2.example.com"});
+    
+    // Add public keys
+    servers_with_keys[0].public_key = Bytes(32, 0x01);
+    servers_with_keys[1].public_key = Bytes(32, 0x02);
+    
+    auto result = keygen::generate_encryption_key(identity, "password", 5, 0, servers_with_keys);
+    // Should handle servers with public keys (may still fail due to unreachable servers)
+    EXPECT_TRUE(result.error_message.has_value() || result.encryption_key.has_value());
+}
+
+// Test recovery with wrong password
+TEST_F(KeygenTest, RecoveryWithWrongPassword) {
+    Identity identity("user", "device", "backup");
+    std::vector<ServerInfo> servers = {
+        {"https://server1.example.com"},
+        {"https://server2.example.com"}
+    };
+    
+    AuthCodes auth_codes;
+    auth_codes.base_auth_code = "test_code";
+    auth_codes.server_auth_codes["https://server1.example.com"] = "code1";
+    auth_codes.server_auth_codes["https://server2.example.com"] = "code2";
+    
+    // Test with wrong password
+    auto result = keygen::recover_encryption_key(identity, "wrong_password", auth_codes, servers);
+    EXPECT_TRUE(result.error_message.has_value());
+}
+
+// Test with Unicode characters in inputs
+TEST_F(KeygenTest, UnicodeInputs) {
+    Identity identity("用户", "设备", "备份"); // Chinese characters
+    std::vector<ServerInfo> servers = {
+        {"https://server1.example.com"},
+        {"https://server2.example.com"}
+    };
+    
+    // Test with Unicode password
+    auto result = keygen::generate_encryption_key(identity, "密码", 5, 0, servers);
+    // Should handle Unicode or fail gracefully
+    EXPECT_TRUE(result.error_message.has_value() || result.encryption_key.has_value());
+}
+
 } // namespace test
 } // namespace openadp 

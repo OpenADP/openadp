@@ -37,9 +37,58 @@ GenerateEncryptionKeyResult generate_encryption_key(
     const std::vector<ServerInfo>& server_infos
 ) {
     try {
+        // Input validation
+        if (identity.uid.empty()) {
+            return GenerateEncryptionKeyResult::error("User ID cannot be empty");
+        }
+        if (identity.did.empty()) {
+            return GenerateEncryptionKeyResult::error("Device ID cannot be empty");
+        }
+        if (identity.bid.empty()) {
+            return GenerateEncryptionKeyResult::error("Backup ID cannot be empty");
+        }
+        
+        if (password.empty()) {
+            return GenerateEncryptionKeyResult::error("Password cannot be empty");
+        }
+        
+        if (max_guesses <= 0) {
+            return GenerateEncryptionKeyResult::error("Max guesses must be positive");
+        }
+        if (max_guesses > 100000) {
+            return GenerateEncryptionKeyResult::error("Max guesses too large");
+        }
+        
+        // Check expiration (if provided)
+        if (expiration > 0) {
+            auto now = std::chrono::system_clock::now();
+            auto current_time = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+            if (expiration < current_time) {
+                return GenerateEncryptionKeyResult::error("Expiration time is in the past");
+            }
+        }
+        
         // Check if we have enough servers
         if (server_infos.empty()) {
-            return GenerateEncryptionKeyResult::error("No live servers available");
+            return GenerateEncryptionKeyResult::error("No servers available");
+        }
+        
+        // Validate server URLs
+        for (const auto& server_info : server_infos) {
+            if (server_info.url.empty()) {
+                return GenerateEncryptionKeyResult::error("Server URL cannot be empty");
+            }
+            if (server_info.url.find("http://") != 0 && server_info.url.find("https://") != 0) {
+                return GenerateEncryptionKeyResult::error("Invalid server URL format: " + server_info.url);
+            }
+        }
+        
+        // Calculate threshold (majority: n/2 + 1, but at least 1)
+        int threshold = std::max(1, static_cast<int>(server_infos.size()) / 2 + 1);
+        
+        // For single server, we need that server to succeed
+        if (server_infos.size() == 1) {
+            threshold = 1;
         }
         
         // Generate random scalar b
@@ -76,7 +125,6 @@ GenerateEncryptionKeyResult generate_encryption_key(
         
         // Register with servers
         std::vector<ServerInfo> successful_servers;
-        int threshold = std::max(1, static_cast<int>(server_infos.size() * 2 / 3)); // 2/3 threshold
         
         for (const auto& server_info : server_infos) {
             try {
