@@ -82,12 +82,12 @@ name = "openadp_ocrypt"
 path = "src/lib.rs"
 
 [[bin]]
-name = "openadp-encrypt"
-path = "src/bin/openadp-encrypt.rs"
+name = "ocrypt-register"
+path = "src/bin/ocrypt-register.rs"
 
 [[bin]]
-name = "openadp-decrypt"
-path = "src/bin/openadp-decrypt.rs"
+name = "ocrypt-recover"
+path = "src/bin/ocrypt-recover.rs"
 
 [[example]]
 name = "basic_usage"

@@ -343,6 +343,33 @@ pub async fn recover_encryption_key(
     if selected_server_infos.is_empty() {
         return Ok(RecoverEncryptionKeyResult::error("No servers available".to_string()));
     }
+
+    // Step 2.5: Fetch server public keys from registry (like Go implementation)
+    let registry_servers = match crate::client::get_servers("").await {
+        Ok(servers) => servers,
+        Err(_) => {
+            // Fallback to hardcoded servers if registry fails
+            crate::client::get_fallback_server_info()
+        }
+    };
+    
+    // Create a map of URL -> public key for quick lookup
+    let mut public_key_map = std::collections::HashMap::new();
+    for registry_server in &registry_servers {
+        if !registry_server.public_key.is_empty() {
+            public_key_map.insert(registry_server.url.clone(), registry_server.public_key.clone());
+        }
+    }
+    
+    // Update selected servers with public keys from registry
+    let mut selected_server_infos_with_keys = Vec::new();
+    for mut server_info in selected_server_infos {
+        if let Some(public_key_str) = public_key_map.get(&server_info.url) {
+            server_info.public_key = public_key_str.clone();
+        }
+        selected_server_infos_with_keys.push(server_info);
+    }
+    let selected_server_infos = selected_server_infos_with_keys;
     
     // Step 3: Compute B = r * U  
     let b = point_mul(&r_scalar, &u);
@@ -379,7 +406,7 @@ pub async fn recover_encryption_key(
         let list_request = ListBackupsRequest {
             uid: identity.uid.clone(),
             auth_code: String::new(),
-            encrypted: false,
+            encrypted: client.has_public_key(), // Use encryption if available
             auth_data: None,
         };
         
@@ -509,7 +536,7 @@ pub async fn fetch_remaining_guesses_for_servers(
         let request = ListBackupsRequest {
             uid: identity.uid.clone(),
             auth_code: String::new(),
-            encrypted: false,
+            encrypted: client.has_public_key(), // Use encryption if available
             auth_data: None,
         };
         

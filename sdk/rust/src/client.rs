@@ -634,8 +634,12 @@ impl EncryptedOpenADPClient {
         if let Some(noise) = &mut self.noise {
             // Step 1: Perform Noise-NK handshake if not already done
             if !noise.handshake_complete {
-                // Generate session ID
-                let session_id = format!("session_{}", chrono::Utc::now().timestamp_micros());
+                // Generate session ID - use random 64-bit ID, base64 encoded
+                use rand::RngCore;
+                let mut rng = rand::thread_rng();
+                let mut session_bytes = [0u8; 8];
+                rng.fill_bytes(&mut session_bytes);
+                let session_id = base64::engine::general_purpose::STANDARD.encode(&session_bytes);
                 self.session_id = Some(session_id.clone());
                 
                 // Send first handshake message (-> e, es)
@@ -828,9 +832,15 @@ impl EncryptedOpenADPClient {
     
     /// Recover secret with optional encryption
     pub async fn recover_secret_standardized(&mut self, mut request: RecoverSecretRequest) -> Result<RecoverSecretResponse> {
-        request.encrypted = self.has_public_key();
+        // Only set encrypted flag if client has public key and request doesn't explicitly set it to false
+        if self.has_public_key() {
+            request.encrypted = true;
+        }
+        
+        println!("🔍 DEBUG: request.encrypted={}, has_public_key={}", request.encrypted, self.has_public_key());
         
         if request.encrypted && self.has_public_key() {
+            println!("🔍 DEBUG: Taking ENCRYPTED path for RecoverSecret");
             // Use encrypted request - server expects array of parameters
             let params = Some(json!([
                 request.auth_code,
@@ -863,6 +873,7 @@ impl EncryptedOpenADPClient {
                 expiration,
             })
         } else {
+            println!("🔍 DEBUG: Taking UNENCRYPTED path for RecoverSecret");
             // Use unencrypted request
             self.basic_client.recover_secret_standardized(request).await
         }
@@ -870,8 +881,38 @@ impl EncryptedOpenADPClient {
     
     /// List backups with optional encryption
     pub async fn list_backups_standardized(&mut self, mut request: ListBackupsRequest) -> Result<ListBackupsResponse> {
-        request.encrypted = false; // List backups typically doesn't need encryption
-        self.basic_client.list_backups_standardized(request).await
+        request.encrypted = self.has_public_key();
+        
+        if request.encrypted && self.has_public_key() {
+            // Use encrypted request
+            let params = Some(json!([request.uid]));
+            let response = self.make_encrypted_request("ListBackups", params).await?;
+            
+            // Parse the response
+            let empty_vec = Vec::new();
+            let backups_array = response.get("backups").and_then(|v| v.as_array()).unwrap_or(&empty_vec);
+            let mut backups = Vec::new();
+            
+            for backup_value in backups_array {
+                if let Some(backup_obj) = backup_value.as_object() {
+                    let backup = BackupInfo {
+                        uid: backup_obj.get("uid").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        did: backup_obj.get("did").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        bid: backup_obj.get("bid").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        version: backup_obj.get("version").and_then(|v| v.as_i64()).unwrap_or(1) as i32,
+                        num_guesses: backup_obj.get("num_guesses").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+                        max_guesses: backup_obj.get("max_guesses").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+                        expiration: backup_obj.get("expiration").and_then(|v| v.as_i64()).unwrap_or(0),
+                    };
+                    backups.push(backup);
+                }
+            }
+            
+            Ok(ListBackupsResponse { backups })
+        } else {
+            // Use unencrypted request
+            self.basic_client.list_backups_standardized(request).await
+        }
     }
     
     /// Test connection
