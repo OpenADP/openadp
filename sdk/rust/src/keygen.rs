@@ -193,8 +193,8 @@ pub async fn generate_encryption_key(
         }
     }
     
-    if live_server_infos.len() < 2 {
-        return Ok(GenerateEncryptionKeyResult::error("Need at least 2 live servers".to_string()));
+    if live_server_infos.is_empty() {
+        return Ok(GenerateEncryptionKeyResult::error("No live servers available".to_string()));
     }
     
     // Step 3: Convert password to PIN
@@ -427,6 +427,16 @@ pub async fn recover_encryption_key(
             }
         }
         
+        // Create a fresh client for RecoverSecret (don't reuse the ListBackups client)
+        let public_key_fresh = if !server_info.public_key.is_empty() {
+            match parse_server_public_key(&server_info.public_key) {
+                Ok(key) => Some(key),
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+        let mut fresh_client = EncryptedOpenADPClient::new(server_info.url.clone(), public_key_fresh, 30);
         
         let request = RecoverSecretRequest {
             auth_code: server_auth_code.clone(),
@@ -435,11 +445,13 @@ pub async fn recover_encryption_key(
             bid: identity.bid.clone(),
             guess_num: guess_num,  // Use current num_guesses directly
             b: b_base64.clone(),
-            encrypted: client.has_public_key(),
+            encrypted: fresh_client.has_public_key(),
             auth_data: None,
         };
         
-        match client.recover_secret_standardized(request).await {
+
+        
+        match fresh_client.recover_secret_standardized(request).await {
             Ok(response) => {
                 if response.success {
                     

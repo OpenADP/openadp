@@ -79,12 +79,14 @@ pub mod crypto;
 pub mod client;
 pub mod keygen;
 pub mod ocrypt;
+pub mod recovery;
 
 // Re-export main functionality
 pub use crypto::*;
 pub use client::*;
 pub use keygen::*;
 pub use ocrypt::*;
+pub use recovery::*;
 
 // Error types
 use thiserror::Error;

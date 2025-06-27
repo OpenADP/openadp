@@ -264,6 +264,7 @@ impl OpenADPClient {
         let request = JsonRpcRequest::new(method.to_string(), params);
         let json_body = serde_json::to_string(&request)?;
         
+        println!("🔍 DEBUG: Making HTTP request to URL: {}", self.url);
         let response = timeout(self.timeout, 
             self.client
                 .post(&self.url)
@@ -634,10 +635,10 @@ impl EncryptedOpenADPClient {
         if let Some(noise) = &mut self.noise {
             // Step 1: Perform Noise-NK handshake if not already done
             if !noise.handshake_complete {
-                // Generate session ID - use random 64-bit ID, base64 encoded
+                // Generate session ID - use random 16-byte ID, base64 encoded (matches Go server expectation)
                 use rand::RngCore;
                 let mut rng = rand::thread_rng();
-                let mut session_bytes = [0u8; 8];
+                let mut session_bytes = [0u8; 16];  // Changed from 8 to 16 bytes
                 rng.fill_bytes(&mut session_bytes);
                 let session_id = base64::engine::general_purpose::STANDARD.encode(&session_bytes);
                 self.session_id = Some(session_id.clone());
@@ -657,6 +658,7 @@ impl EncryptedOpenADPClient {
                     "id": 1
                 });
                 
+                println!("🔍 DEBUG: Starting Noise-NK handshake with URL: {}", self.basic_client.url);
                 let handshake_response = timeout(self.basic_client.timeout,
                     self.basic_client.client
                         .post(&self.basic_client.url)

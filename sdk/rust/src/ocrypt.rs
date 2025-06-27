@@ -12,6 +12,8 @@ use aes_gcm::{Aes256Gcm, Key, Nonce, KeyInit};
 use aes_gcm::aead::Aead;
 use rand::Rng;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use sha2::{Sha256, Digest};
+use hex;
 
 
 /// Wrapped secret data
@@ -275,11 +277,22 @@ async fn recover_without_refresh(
     };
 
     // Create auth codes from metadata
+    let mut server_auth_codes = std::collections::HashMap::new();
+    
+    // Reconstruct server auth codes from base auth code (same logic as other implementations)
+    for server_url in &metadata.servers {
+        let combined = format!("{}:{}", metadata.auth_code, server_url);
+        let mut hasher = Sha256::new();
+        hasher.update(combined.as_bytes());
+        let hash = hasher.finalize();
+        let server_code = hex::encode(&hash);
+        server_auth_codes.insert(server_url.clone(), server_code);
+    }
+    
     let auth_codes = crate::keygen::AuthCodes {
         base_auth_code: metadata.auth_code.clone(),
-        server_auth_codes: std::collections::HashMap::new(),
+        server_auth_codes,
     };
-    // In a full implementation, would reconstruct server auth codes
 
     let recovery_result = recover_encryption_key(
         &identity,
