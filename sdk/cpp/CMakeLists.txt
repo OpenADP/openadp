@@ -57,6 +57,7 @@ set(OPENADP_SOURCES
     src/noise.cpp
     src/base64.cpp
     src/hex.cpp
+    src/debug.cpp
     src/openadp.cpp
 )
 

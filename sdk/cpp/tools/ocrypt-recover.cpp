@@ -1,4 +1,5 @@
 #include <openadp.hpp>
+#include <openadp/debug.hpp>
 #include <iostream>
 #include <fstream>
 #include <getopt.h>
@@ -17,6 +18,7 @@ void print_usage(const char* program_name) {
               << "  --password <string>       Password/PIN to unlock the secret (will prompt if not provided)\n"
               << "  --servers-url <url>       Custom URL for server registry (empty uses default)\n"
               << "  --output <file>           File to write recovery result JSON (writes to stdout if not specified)\n"
+              << "  --debug                 Enable debug mode (deterministic operations)\n"
               << "  --help                    Show this help message\n"
               << "\n"
               << "Examples:\n"
@@ -51,12 +53,14 @@ int main(int argc, char* argv[]) {
     std::string password;
     std::string servers_url;
     std::string output_file;
+    bool debug_mode = false;
     
     static struct option long_options[] = {
         {"metadata", required_argument, 0, 'm'},
         {"password", required_argument, 0, 'p'},
         {"servers-url", required_argument, 0, 's'},
         {"output", required_argument, 0, 'o'},
+        {"debug", no_argument, 0, 'D'},
         {"help", no_argument, 0, 'h'},
         {0, 0, 0, 0}
     };
@@ -64,7 +68,7 @@ int main(int argc, char* argv[]) {
     int option_index = 0;
     int c;
     
-    while ((c = getopt_long(argc, argv, "m:p:s:o:h", long_options, &option_index)) != -1) {
+    while ((c = getopt_long(argc, argv, "m:p:s:o:Dh", long_options, &option_index)) != -1) {
         switch (c) {
             case 'm':
                 metadata_str = optarg;
@@ -78,6 +82,9 @@ int main(int argc, char* argv[]) {
             case 'o':
                 output_file = optarg;
                 break;
+            case 'D':
+                debug_mode = true;
+                break;
             case 'h':
                 print_usage(argv[0]);
                 return 0;
@@ -87,6 +94,11 @@ int main(int argc, char* argv[]) {
             default:
                 break;
         }
+    }
+    
+    // Set debug mode if requested
+    if (debug_mode) {
+        debug::set_debug(true);
     }
     
     // Validate required arguments

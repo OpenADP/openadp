@@ -17,6 +17,7 @@ from typing import Tuple, List, Optional, Union
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.backends import default_backend
+from .debug import debug_log, is_debug_mode_enabled, get_deterministic_polynomial_coefficient
 
 # Ed25519 curve parameters
 P = 2**255 - 19  # Field prime
@@ -392,21 +393,35 @@ class ShamirSecretSharing:
         if threshold < 1:
             raise ValueError("Threshold must be at least 1")
         
+        debug_log(f"Splitting secret with threshold {threshold}, num_shares {num_shares}")
+        
         # Generate random coefficients for polynomial
         coefficients = [secret]  # a0 = secret
-        for _ in range(threshold - 1):
-            coefficients.append(secrets.randbelow(Q))
+        debug_log(f"Polynomial coefficient a0 (secret): {secret}")
+        
+        for i in range(threshold - 1):
+            if is_debug_mode_enabled():
+                # Use deterministic coefficients in debug mode
+                coeff = get_deterministic_polynomial_coefficient()
+                debug_log(f"Using deterministic polynomial coefficient a{i+1}: {coeff}")
+            else:
+                coeff = secrets.randbelow(Q)
+            coefficients.append(coeff)
+        
+        debug_log(f"Polynomial coefficients: {coefficients}")
         
         # Evaluate polynomial at x = 1, 2, ..., num_shares
         shares = []
         for x in range(1, num_shares + 1):
             y = 0
             x_power = 1
-            for coeff in coefficients:
+            for j, coeff in enumerate(coefficients):
                 y = (y + coeff * x_power) % Q
                 x_power = (x_power * x) % Q
             shares.append((x, y))
+            debug_log(f"Share {x}: (x={x}, y={y})")
         
+        debug_log(f"Generated {len(shares)} shares")
         return shares
     
     @staticmethod

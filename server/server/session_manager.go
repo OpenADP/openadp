@@ -22,6 +22,19 @@ import (
 	openadpNoise "github.com/openadp/ocrypt/common"
 )
 
+// Global debug mode flag
+var debugMode bool
+
+// SetDebugMode enables or disables debug mode for deterministic ephemeral keys
+func SetDebugMode(enabled bool) {
+	debugMode = enabled
+	if enabled {
+		log.Println("🐛 Session manager debug mode enabled - using deterministic ephemeral keys")
+	} else {
+		log.Println("Session manager debug mode disabled - using random ephemeral keys")
+	}
+}
+
 // NoiseSessionManager manages Noise-NK encryption sessions for the JSON-RPC server
 type NoiseSessionManager struct {
 	sessions    map[string]*openadpNoise.NoiseNK

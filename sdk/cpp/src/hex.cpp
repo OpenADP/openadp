@@ -1,5 +1,6 @@
 #include "openadp/utils.hpp"
 #include "openadp/types.hpp"
+#include "openadp/debug.hpp"
 #include <openssl/rand.h>
 #include <iomanip>
 #include <sstream>
@@ -51,15 +52,27 @@ std::string bytes_to_string(const Bytes& data) {
 }
 
 Bytes random_bytes(size_t length) {
-    Bytes result(length);
-    if (RAND_bytes(result.data(), static_cast<int>(length)) != 1) {
-        throw OpenADPError("Failed to generate random bytes");
+    if (debug::is_debug_mode_enabled()) {
+        // In debug mode, use deterministic bytes
+        return debug::get_deterministic_random_bytes(length);
+    } else {
+        // In normal mode, use cryptographically secure random
+        Bytes result(length);
+        if (RAND_bytes(result.data(), static_cast<int>(length)) != 1) {
+            throw OpenADPError("Failed to generate random bytes");
+        }
+        return result;
     }
-    return result;
 }
 
 std::string random_hex(size_t byte_length) {
-    return hex_encode(random_bytes(byte_length));
+    if (debug::is_debug_mode_enabled()) {
+        // In debug mode, use deterministic hex
+        return debug::get_deterministic_random_hex(byte_length * 2); // 2 hex chars per byte
+    } else {
+        // In normal mode, use cryptographically secure random
+        return hex_encode(random_bytes(byte_length));
+    }
 }
 
 Bytes read_file(const std::string& filename) {

@@ -1,6 +1,7 @@
 #include "openadp/crypto.hpp"
 #include "openadp/types.hpp"
 #include "openadp/utils.hpp"
+#include "openadp/debug.hpp"
 #include <openssl/evp.h>
 #include <openssl/kdf.h>
 #include <openssl/sha.h>
@@ -651,7 +652,16 @@ std::vector<Share> ShamirSecretSharing::split_secret(const std::string& secret_h
     
     for (int i = 1; i < threshold; i++) {
         BIGNUM* coeff = BN_new();
-        BN_rand_range(coeff, prime);
+        
+        if (debug::is_debug_mode_enabled()) {
+            // In debug mode, use deterministic coefficients: 1, 2, 3, ...
+            std::string coeff_hex = debug::get_deterministic_polynomial_coefficient();
+            BN_hex2bn(&coeff, coeff_hex.c_str());
+            debug::debug_log("Using deterministic coefficient " + std::to_string(i) + ": " + coeff_hex);
+        } else {
+            BN_rand_range(coeff, prime);
+        }
+        
         coefficients.push_back(coeff);
     }
     

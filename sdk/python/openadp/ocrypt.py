@@ -21,6 +21,7 @@ import secrets
 import hashlib
 import random
 import time
+import os
 from typing import Tuple, Optional
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
@@ -28,6 +29,7 @@ from Crypto.Random import get_random_bytes
 # Import OpenADP functions
 from .keygen import generate_encryption_key, recover_encryption_key, AuthCodes, Identity
 from .client import get_servers, get_fallback_server_info, ServerInfo
+from .debug import debug_log, is_debug_mode_enabled, get_deterministic_random_bytes
 
 
 def _register_with_bid(user_id: str, app_id: str, long_term_secret: bytes, pin: str, max_guesses: int = 10, backup_id: str = "even", servers_url: str = "") -> bytes:
@@ -116,9 +118,17 @@ def _register_with_bid(user_id: str, app_id: str, long_term_secret: bytes, pin: 
         
         # Step 4: Long-Term Secret Wrapping
         print("🔐 Wrapping long-term secret...")
-        nonce = get_random_bytes(12)  # AES-GCM nonce (96 bits)
+        if is_debug_mode_enabled():
+            # Use deterministic nonce in debug mode
+            nonce = get_deterministic_random_bytes(12)
+            debug_log(f"Using deterministic nonce: {nonce.hex()}")
+        else:
+            nonce = get_random_bytes(12)  # AES-GCM nonce (96 bits)
+        
+        debug_log(f"Encrypting long-term secret ({len(long_term_secret)} bytes)")
         cipher = AES.new(enc_key, AES.MODE_GCM, nonce=nonce)
         wrapped_secret, tag = cipher.encrypt_and_digest(long_term_secret)
+        debug_log(f"Wrapped secret: {len(wrapped_secret)} bytes ciphertext, {len(tag)} bytes tag")
         
         # Step 5: Metadata Creation
         server_urls = [server_info.url for server_info in result.server_infos]

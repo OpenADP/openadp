@@ -45,6 +45,7 @@ func main() {
 		userID      = flag.String("user-id", "", "User ID for secret ownership (will prompt if not provided)")
 		serversFlag = flag.String("servers", "", "Comma-separated list of server URLs (optional)")
 		serversURL  = flag.String("servers-url", "https://servers.openadp.org", "URL to scrape for server list")
+		debugMode   = flag.Bool("debug", false, "Enable debug mode (deterministic operations)")
 		help        = flag.Bool("help", false, "Show help information")
 		showVersion = flag.Bool("version", false, "Show version information")
 	)
@@ -80,6 +81,12 @@ func main() {
 	if *help {
 		showHelp()
 		return
+	}
+
+	// Set debug mode if requested
+	if *debugMode {
+		fmt.Println("🐛 Debug mode enabled - using deterministic operations")
+		client.SetDebugMode(true)
 	}
 
 	if *filename == "" {
@@ -247,6 +254,7 @@ OPTIONS:
     --user-id <id>         User ID for secret ownership (will prompt if not provided)
     --servers <urls>       Comma-separated list of server URLs (optional)
     --servers-url <url>    URL to scrape for server list (default: https://servers.openadp.org)
+    --debug                Enable debug mode (deterministic operations)
     --version              Show version information
     --help                 Show this help message
 
@@ -278,6 +286,9 @@ EXAMPLES:
     export OPENADP_PASSWORD="mypassword"
     export OPENADP_USER_ID="myuserid"
     openadp-encrypt --file document.txt
+
+    # Enable debug mode for deterministic testing
+    openadp-encrypt --file document.txt --debug
 
 The encrypted file will be saved as <filename>.enc
 `)

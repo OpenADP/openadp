@@ -1,6 +1,7 @@
 #include "openadp/noise.hpp"
 #include "openadp/crypto.hpp"
 #include "openadp/utils.hpp"
+#include "openadp/debug.hpp"
 #include <iostream>
 #include <fstream>
 #include <thread>
@@ -11,6 +12,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <nlohmann/json.hpp>
+#include <getopt.h>
 
 using json = nlohmann::json;
 using namespace openadp;
@@ -147,7 +149,59 @@ void handle_client(int client_fd, const std::string& client_addr, const Bytes& s
     std::cout << "🔌 Disconnected from " << client_addr << std::endl;
 }
 
-int main() {
+void print_usage(const char* program_name) {
+    std::cout << "Usage: " << program_name << " [OPTIONS]\n"
+              << "\n"
+              << "Simple Noise-NK server for testing OpenADP clients.\n"
+              << "\n"
+              << "Options:\n"
+              << "  --port <num>          Port to listen on (default: 8080)\n"
+              << "  --debug               Enable debug mode (deterministic operations)\n"
+              << "  --help                Show this help message\n"
+              << "\n"
+              << "Examples:\n"
+              << "  " << program_name << "\n"
+              << "  " << program_name << " --port 9090\n";
+}
+
+int main(int argc, char* argv[]) {
+    int port = 8080;
+    bool debug_mode = false;
+    
+    static struct option long_options[] = {
+        {"port", required_argument, 0, 'p'},
+        {"debug", no_argument, 0, 'd'},
+        {"help", no_argument, 0, 'h'},
+        {0, 0, 0, 0}
+    };
+    
+    int option_index = 0;
+    int c;
+    
+    while ((c = getopt_long(argc, argv, "p:dh", long_options, &option_index)) != -1) {
+        switch (c) {
+            case 'p':
+                port = std::stoi(optarg);
+                break;
+            case 'd':
+                debug_mode = true;
+                break;
+            case 'h':
+                print_usage(argv[0]);
+                return 0;
+            case '?':
+                print_usage(argv[0]);
+                return 1;
+            default:
+                break;
+        }
+    }
+    
+    // Set debug mode if requested
+    if (debug_mode) {
+        debug::set_debug(true);
+    }
+    
     std::cout << "🔐 Noise-NK C++ TCP Server" << std::endl;
     std::cout << "===========================" << std::endl;
     
@@ -167,7 +221,7 @@ int main() {
         // Save server info to JSON file
         json server_info = {
             {"host", "localhost"},
-            {"port", 8888},
+            {"port", port},
             {"public_key", server_public_hex},
             {"protocol", "Noise_NK_25519_AESGCM_SHA256"}
         };
@@ -198,7 +252,7 @@ int main() {
         struct sockaddr_in server_addr;
         server_addr.sin_family = AF_INET;
         server_addr.sin_addr.s_addr = INADDR_ANY;
-        server_addr.sin_port = htons(8888);
+        server_addr.sin_port = htons(port);
         
         if (bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
             std::cerr << "❌ Failed to bind socket" << std::endl;
@@ -213,7 +267,7 @@ int main() {
             return 1;
         }
         
-        std::cout << "🚀 Noise-NK C++ server listening on localhost:8888" << std::endl;
+        std::cout << "🚀 Noise-NK C++ server listening on localhost:" << port << std::endl;
         std::cout << "📡 Waiting for JavaScript clients..." << std::endl;
         
         while (server_running) {

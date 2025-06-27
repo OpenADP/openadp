@@ -22,6 +22,8 @@ from dataclasses import dataclass
 from enum import IntEnum
 import requests
 from urllib.parse import urlparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from .debug import debug_log, is_debug_mode_enabled, get_deterministic_ephemeral_secret
 
 # Import cryptographic dependencies
 try:
@@ -383,6 +385,8 @@ class NoiseNK:
         """Initialize as initiator with remote static key."""
         from noise.connection import NoiseConnection, Keypair
         
+        debug_log("Initializing NoiseNK as initiator")
+        
         self.remote_static_key = remote_static_key
         self.is_initiator = True
         
@@ -394,9 +398,17 @@ class NoiseNK:
         # Set the remote static key (responder's public key)
         # This is required for NK pattern
         self.noise.set_keypair_from_public_bytes(Keypair.REMOTE_STATIC, remote_static_key)
+        debug_log(f"Set remote static key: {remote_static_key.hex()}")
+        
+        # Use deterministic ephemeral key in debug mode
+        if is_debug_mode_enabled():
+            ephemeral_secret = get_deterministic_ephemeral_secret()
+            self.noise.set_keypair_from_private_bytes(Keypair.EPHEMERAL, ephemeral_secret)
+            debug_log(f"Using deterministic ephemeral secret: {ephemeral_secret.hex()}")
         
         # Start handshake
         self.noise.start_handshake()
+        debug_log("NoiseNK handshake started")
         
     def initialize_as_responder(self, local_static_private_key):
         """Initialize as responder with local static private key."""
@@ -548,8 +560,14 @@ class EncryptedOpenADPClient:
     
     def _make_unencrypted_request(self, method: str, params: Any = None) -> Any:
         """Make a standard JSON-RPC request without encryption."""
+        debug_log(f"Making unencrypted request to {self.url}")
+        debug_log(f"Method: {method}")
+        debug_log(f"Parameters: {params}")
+        
         request = JSONRPCRequest(method, params, self.request_id)
         self.request_id += 1
+        
+        debug_log(f"Request ID: {request.id}")
         
         try:
             response = self.session.post(
@@ -559,6 +577,7 @@ class EncryptedOpenADPClient:
             )
             response.raise_for_status()
         except requests.RequestException as e:
+            debug_log(f"HTTP request failed: {e}")
             raise OpenADPError(
                 ErrorCode.NETWORK_FAILURE,
                 f"HTTP request failed: {str(e)}"
@@ -566,7 +585,9 @@ class EncryptedOpenADPClient:
         
         try:
             response_data = response.json()
+            debug_log(f"Response received: {response_data}")
         except json.JSONDecodeError as e:
+            debug_log(f"Invalid JSON response: {e}")
             raise OpenADPError(
                 ErrorCode.INVALID_RESPONSE,
                 f"Invalid JSON response: {str(e)}"
@@ -575,24 +596,33 @@ class EncryptedOpenADPClient:
         rpc_response = JSONRPCResponse.from_dict(response_data)
         
         if rpc_response.error:
+            debug_log(f"JSON-RPC error: {rpc_response.error.code} - {rpc_response.error.message}")
             raise OpenADPError(
                 ErrorCode.SERVER_ERROR,
                 f"JSON-RPC error {rpc_response.error.code}: {rpc_response.error.message}"
             )
         
+        debug_log(f"Request successful, result: {rpc_response.result}")
         return rpc_response.result
     
     def _make_encrypted_request(self, method: str, params: Any = None, 
                                auth_data: Optional[Dict[str, Any]] = None) -> Any:
         """Make a Noise-NK encrypted JSON-RPC request."""
+        debug_log(f"Making encrypted request to {self.url}")
+        debug_log(f"Method: {method}")
+        debug_log(f"Parameters (before encryption): {params}")
+        debug_log(f"Auth data: {auth_data}")
+        
         # Step 1: Generate session ID
         session_id = f"session_{int(time.time() * 1000000)}"
+        debug_log(f"Generated session ID: {session_id}")
         
         # Step 2: Initialize Noise-NK as initiator
         try:
             noise_client = NoiseNK()
             noise_client.initialize_as_initiator(self.server_public_key)
         except Exception as e:
+            debug_log(f"Failed to initialize Noise-NK: {e}")
             raise OpenADPError(
                 ErrorCode.ENCRYPTION_FAILED,
                 f"Failed to initialize Noise-NK: {e}"
@@ -601,7 +631,9 @@ class EncryptedOpenADPClient:
         # Step 3: Start handshake
         try:
             handshake_msg1 = noise_client.write_message(b"test")
+            debug_log(f"Created handshake message 1: {len(handshake_msg1)} bytes")
         except Exception as e:
+            debug_log(f"Failed to create handshake message: {e}")
             raise OpenADPError(
                 ErrorCode.ENCRYPTION_FAILED,
                 f"Failed to create handshake message: {e}"
@@ -620,6 +652,8 @@ class EncryptedOpenADPClient:
             request_id
         )
         
+        debug_log(f"Sending handshake request (ID: {request_id})")
+        
         try:
             response = self.session.post(
                 self.url,
@@ -628,6 +662,7 @@ class EncryptedOpenADPClient:
             )
             response.raise_for_status()
         except requests.RequestException as e:
+            debug_log(f"Failed to send handshake request: {e}")
             raise OpenADPError(
                 ErrorCode.NETWORK_FAILURE,
                 f"failed to send handshake request: {str(e)}"
@@ -635,7 +670,9 @@ class EncryptedOpenADPClient:
         
         try:
             handshake_resp_data = response.json()
+            debug_log(f"Handshake response received: {handshake_resp_data}")
         except json.JSONDecodeError as e:
+            debug_log(f"Failed to parse handshake response: {e}")
             raise OpenADPError(
                 ErrorCode.INVALID_RESPONSE,
                 f"failed to parse handshake response: {str(e)}"
@@ -644,6 +681,7 @@ class EncryptedOpenADPClient:
         handshake_response = JSONRPCResponse.from_dict(handshake_resp_data)
         
         if handshake_response.error:
+            debug_log(f"Handshake JSON-RPC error: {handshake_response.error.code} - {handshake_response.error.message}")
             raise OpenADPError(
                 ErrorCode.ENCRYPTION_FAILED,
                 f"handshake JSON-RPC error {handshake_response.error.code}: {handshake_response.error.message}"
@@ -651,6 +689,7 @@ class EncryptedOpenADPClient:
         
         # Step 5: Process server's handshake response
         if not isinstance(handshake_response.result, dict):
+            debug_log("Invalid handshake response format")
             raise OpenADPError(
                 ErrorCode.INVALID_RESPONSE,
                 "invalid handshake response format"
@@ -658,6 +697,7 @@ class EncryptedOpenADPClient:
         
         handshake_msg_b64 = handshake_response.result.get("message")
         if not handshake_msg_b64:
+            debug_log("Handshake response missing message field")
             raise OpenADPError(
                 ErrorCode.INVALID_RESPONSE,
                 "handshake response missing message field"
@@ -665,7 +705,9 @@ class EncryptedOpenADPClient:
         
         try:
             handshake_msg2 = base64.b64decode(handshake_msg_b64)
+            debug_log(f"Received handshake message 2: {len(handshake_msg2)} bytes")
         except Exception as e:
+            debug_log(f"Failed to decode handshake message: {e}")
             raise OpenADPError(
                 ErrorCode.INVALID_RESPONSE,
                 f"failed to decode handshake message: {str(e)}"
@@ -674,7 +716,9 @@ class EncryptedOpenADPClient:
         # Complete handshake
         try:
             noise_client.read_message(handshake_msg2)
+            debug_log("Noise-NK handshake completed successfully")
         except Exception as e:
+            debug_log(f"Failed to complete handshake: {e}")
             raise OpenADPError(
                 ErrorCode.ENCRYPTION_FAILED,
                 f"Failed to complete handshake: {e}"
@@ -692,10 +736,14 @@ class EncryptedOpenADPClient:
         if auth_data:
             method_call["auth"] = auth_data
         
+        debug_log(f"Method call (before encryption): {method_call}")
+        
         # Serialize method call
         try:
             method_call_bytes = json.dumps(method_call).encode('utf-8')
+            debug_log(f"Serialized method call: {len(method_call_bytes)} bytes")
         except Exception as e:
+            debug_log(f"Failed to serialize method call: {e}")
             raise OpenADPError(
                 ErrorCode.INVALID_REQUEST,
                 f"failed to serialize method call: {str(e)}"
@@ -704,7 +752,9 @@ class EncryptedOpenADPClient:
         # Step 7: Encrypt the method call
         try:
             encrypted_call = noise_client.encrypt(method_call_bytes)
+            debug_log(f"Encrypted method call: {len(encrypted_call)} bytes")
         except Exception as e:
+            debug_log(f"Failed to encrypt method call: {e}")
             raise OpenADPError(
                 ErrorCode.ENCRYPTION_FAILED,
                 f"failed to encrypt method call: {str(e)}"
@@ -720,6 +770,8 @@ class EncryptedOpenADPClient:
             self.request_id + 1  # Different ID for second round
         )
         
+        debug_log(f"Sending encrypted call (ID: {self.request_id + 1})")
+        
         try:
             response2 = self.session.post(
                 self.url,
@@ -728,6 +780,7 @@ class EncryptedOpenADPClient:
             )
             response2.raise_for_status()
         except requests.RequestException as e:
+            debug_log(f"Failed to send encrypted request: {e}")
             raise OpenADPError(
                 ErrorCode.NETWORK_FAILURE,
                 f"failed to send encrypted request: {str(e)}"
@@ -735,7 +788,9 @@ class EncryptedOpenADPClient:
         
         try:
             encrypted_resp_data = response2.json()
+            debug_log(f"Encrypted response received: {encrypted_resp_data}")
         except json.JSONDecodeError as e:
+            debug_log(f"Failed to parse encrypted response: {e}")
             raise OpenADPError(
                 ErrorCode.INVALID_RESPONSE,
                 f"failed to parse encrypted response: {str(e)}"
@@ -744,13 +799,15 @@ class EncryptedOpenADPClient:
         encrypted_response = JSONRPCResponse.from_dict(encrypted_resp_data)
         
         if encrypted_response.error:
+            debug_log(f"Encrypted JSON-RPC error: {encrypted_response.error.code} - {encrypted_response.error.message}")
             raise OpenADPError(
                 ErrorCode.ENCRYPTION_FAILED,
-                f"encrypted call JSON-RPC error {encrypted_response.error.code}: {encrypted_response.error.message}"
+                f"encrypted JSON-RPC error {encrypted_response.error.code}: {encrypted_response.error.message}"
             )
         
         # Step 9: Decrypt the response
         if not isinstance(encrypted_response.result, dict):
+            debug_log("Invalid encrypted response format")
             raise OpenADPError(
                 ErrorCode.INVALID_RESPONSE,
                 "invalid encrypted response format"
@@ -758,6 +815,7 @@ class EncryptedOpenADPClient:
         
         encrypted_data_b64 = encrypted_response.result.get("data")
         if not encrypted_data_b64:
+            debug_log("Encrypted response missing data field")
             raise OpenADPError(
                 ErrorCode.INVALID_RESPONSE,
                 "encrypted response missing data field"
@@ -765,7 +823,9 @@ class EncryptedOpenADPClient:
         
         try:
             encrypted_data = base64.b64decode(encrypted_data_b64)
+            debug_log(f"Encrypted data to decrypt: {len(encrypted_data)} bytes")
         except Exception as e:
+            debug_log(f"Failed to decode encrypted data: {e}")
             raise OpenADPError(
                 ErrorCode.INVALID_RESPONSE,
                 f"failed to decode encrypted data: {str(e)}"
@@ -773,7 +833,9 @@ class EncryptedOpenADPClient:
         
         try:
             decrypted_data = noise_client.decrypt(encrypted_data)
+            debug_log(f"Decrypted data: {len(decrypted_data)} bytes")
         except Exception as e:
+            debug_log(f"Failed to decrypt response: {e}")
             raise OpenADPError(
                 ErrorCode.ENCRYPTION_FAILED,
                 f"failed to decrypt response: {str(e)}"
@@ -782,7 +844,9 @@ class EncryptedOpenADPClient:
         # Parse decrypted JSON-RPC response
         try:
             decrypted_response_data = json.loads(decrypted_data.decode('utf-8'))
+            debug_log(f"Decrypted response (after encryption): {decrypted_response_data}")
         except Exception as e:
+            debug_log(f"Failed to parse decrypted response: {e}")
             raise OpenADPError(
                 ErrorCode.INVALID_RESPONSE,
                 f"failed to parse decrypted response: {str(e)}"
@@ -791,11 +855,13 @@ class EncryptedOpenADPClient:
         decrypted_response = JSONRPCResponse.from_dict(decrypted_response_data)
         
         if decrypted_response.error:
+            debug_log(f"Decrypted JSON-RPC error: {decrypted_response.error.code} - {decrypted_response.error.message}")
             raise OpenADPError(
                 ErrorCode.SERVER_ERROR,
                 f"decrypted JSON-RPC error {decrypted_response.error.code}: {decrypted_response.error.message}"
             )
         
+        debug_log(f"Encrypted request successful, result: {decrypted_response.result}")
         return decrypted_response.result
     
     # Core API methods matching Go implementation
@@ -1168,19 +1234,17 @@ class MultiServerClient:
     
     def _test_servers_concurrently(self, server_infos: List[ServerInfo]) -> List[EncryptedOpenADPClient]:
         """Test servers concurrently for liveness."""
-        import concurrent.futures
-        
         def test_server(server_info: ServerInfo) -> Optional[EncryptedOpenADPClient]:
             return self._test_single_server_with_info(server_info)
         
         live_servers = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_server = {
                 executor.submit(test_server, server_info): server_info
                 for server_info in server_infos
             }
             
-            for future in concurrent.futures.as_completed(future_to_server):
+            for future in as_completed(future_to_server):
                 client = future.result()
                 if client:
                     live_servers.append(client)

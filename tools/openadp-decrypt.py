@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 
 from openadp.keygen import recover_encryption_key, Identity, AuthCodes
 from openadp.client import get_servers, get_fallback_server_info, ServerInfo, OpenADPClient
+from openadp.debug import set_debug_mode, debug_log
 
 VERSION = "1.0.0"
 NONCE_SIZE = 12  # AES-GCM nonce size
@@ -47,6 +48,7 @@ OPTIONS:
     --password <password>  Password for key derivation (will prompt if not provided)
     --user-id <id>         User ID override (will use metadata or prompt if not provided)
     --servers <urls>       Comma-separated list of server URLs to override metadata servers
+    --debug                Enable debug mode for deterministic operations
     --version              Show version information
     --help                 Show this help message
 
@@ -60,6 +62,10 @@ USER ID HANDLING:
     You only need to specify a User ID if it's missing from the file metadata
     or if you want to override it for some reason.
 
+DEBUG MODE:
+    When --debug is enabled, all cryptographic operations become deterministic
+    for testing purposes. This should NEVER be used in production.
+
 EXAMPLES:
     # Decrypt a file using servers from metadata
     openadp-decrypt.py --file document.txt.enc
@@ -69,6 +75,9 @@ EXAMPLES:
 
     # Override user ID (useful for corrupted metadata)
     openadp-decrypt.py --file document.txt.enc --user-id "myuserid"
+
+    # Enable debug mode for testing
+    openadp-decrypt.py --file document.txt.enc --debug
 
     # Use environment variables
     export OPENADP_PASSWORD="mypassword"
@@ -86,6 +95,10 @@ def read_uint32_le(data):
 
 def recover_encryption_key_with_server_info(filename, password, user_id, base_auth_code, server_infos, threshold):
     """Recover encryption key using OpenADP servers"""
+    debug_log(f"Starting key recovery for file: {filename}")
+    debug_log(f"User ID: {user_id}, Threshold: {threshold}")
+    debug_log(f"Server count: {len(server_infos)}")
+    
     # Create Identity from filename, user_id (same as during encryption)
     hostname = socket.gethostname()
     identity = Identity(
@@ -93,6 +106,7 @@ def recover_encryption_key_with_server_info(filename, password, user_id, base_au
         did=hostname,
         bid=f"file://{os.path.basename(filename)}"
     )
+    debug_log(f"Identity created - UID: {identity.uid}, DID: {identity.did}, BID: {identity.bid}")
     print(f"🔑 Recovering with UID={identity.uid}, DID={identity.did}, BID={identity.bid}")
     
     # Regenerate server auth codes from base auth code
@@ -102,6 +116,7 @@ def recover_encryption_key_with_server_info(filename, password, user_id, base_au
         combined = f"{base_auth_code}:{server_info.url}"
         hash_obj = hashlib.sha256(combined.encode('utf-8'))
         server_auth_codes[server_info.url] = hash_obj.hexdigest()
+        debug_log(f"Generated auth code for {server_info.url}")
     
     # Create AuthCodes structure from metadata
     auth_codes = AuthCodes(
@@ -109,12 +124,15 @@ def recover_encryption_key_with_server_info(filename, password, user_id, base_au
         server_auth_codes=server_auth_codes,
         user_id=user_id
     )
+    debug_log(f"AuthCodes structure created with {len(server_auth_codes)} server codes")
     
     # Recover encryption key using the full distributed protocol
     result = recover_encryption_key(identity, password, server_infos, threshold, auth_codes)
     if result.error:
+        debug_log(f"Key recovery failed: {result.error}")
         raise Exception(f"key recovery failed: {result.error}")
     
+    debug_log(f"Key recovered successfully ({len(result.encryption_key)} bytes)")
     print("✅ Key recovered successfully")
     return result.encryption_key
 
@@ -132,6 +150,10 @@ def get_auth_codes_from_metadata(metadata):
 
 def decrypt_file(input_filename, password, user_id, override_servers):
     """Decrypt a file using OpenADP servers"""
+    debug_log(f"Starting file decryption: {input_filename}")
+    debug_log(f"User ID: {user_id}")
+    debug_log(f"Override servers: {override_servers is not None}")
+    
     # Determine output filename
     if input_filename.endswith(".enc"):
         output_filename = input_filename[:-4]  # Remove .enc extension
@@ -139,23 +161,30 @@ def decrypt_file(input_filename, password, user_id, override_servers):
         output_filename = input_filename + ".dec"
         print(f"Warning: Input file doesn't end with .enc, using '{output_filename}' for output")
     
+    debug_log(f"Output filename: {output_filename}")
+    
     # Read the encrypted file
     try:
         with open(input_filename, 'rb') as f:
             file_data = f.read()
+        debug_log(f"Read encrypted file: {len(file_data)} bytes")
     except Exception as e:
+        debug_log(f"Failed to read input file: {e}")
         raise Exception(f"failed to read input file: {e}")
     
     # Validate file size
     min_size = 4 + 1 + NONCE_SIZE + 1  # metadata_length + minimal_metadata + nonce + minimal_ciphertext
     if len(file_data) < min_size:
+        debug_log(f"File too small: {len(file_data)} bytes (minimum {min_size})")
         raise Exception(f"file is too small to be a valid encrypted file (expected at least {min_size} bytes, got {len(file_data)})")
     
     # Extract metadata length (first 4 bytes, little endian)
     metadata_length = read_uint32_le(file_data[:4])
+    debug_log(f"Metadata length: {metadata_length} bytes")
     
     # Validate metadata length
     if metadata_length > len(file_data) - 4 - NONCE_SIZE:
+        debug_log(f"Invalid metadata length: {metadata_length}")
         raise Exception(f"invalid metadata length {metadata_length}")
     
     # Extract components: [metadata_length][metadata][nonce][encrypted_data]
@@ -168,11 +197,16 @@ def decrypt_file(input_filename, password, user_id, override_servers):
     nonce = file_data[nonce_start:nonce_end]
     ciphertext = file_data[nonce_end:]
     
+    debug_log(f"Extracted nonce: {nonce.hex()}")
+    debug_log(f"Ciphertext length: {len(ciphertext)} bytes")
+    
     # Parse metadata
     try:
         metadata_dict = json.loads(metadata_json.decode('utf-8'))
         metadata = Metadata(metadata_dict)
+        debug_log(f"Parsed metadata: {len(metadata.servers)} servers, threshold {metadata.threshold}")
     except Exception as e:
+        debug_log(f"Failed to parse metadata: {e}")
         raise Exception(f"failed to parse metadata: {e}")
     
     server_urls = metadata.servers
@@ -344,10 +378,16 @@ def main():
     parser.add_argument("--password", help="Password for key derivation (will prompt if not provided)")
     parser.add_argument("--user-id", dest="user_id", help="User ID override (will use metadata or prompt if not provided)")
     parser.add_argument("--servers", help="Comma-separated list of server URLs to override metadata servers")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode for deterministic operations")
     parser.add_argument("--version", action="store_true", help="Show version information")
     parser.add_argument("--help", action="store_true", help="Show help information")
     
     args = parser.parse_args()
+    
+    # Enable debug mode if requested
+    if args.debug:
+        set_debug_mode(True)
+        debug_log("Debug mode enabled for openadp-decrypt")
     
     if args.version:
         print(f"OpenADP File Decryption Tool v{VERSION}")

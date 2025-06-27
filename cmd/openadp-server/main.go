@@ -669,6 +669,7 @@ func main() {
 		port        = flag.Int("port", 8080, "Port to listen on")
 		dbPath      = flag.String("db", "openadp.db", "Path to SQLite database file")
 		authEnabled = flag.Bool("auth", true, "Enable authentication")
+		debugMode   = flag.Bool("debug", false, "Enable debug mode (deterministic ephemeral keys)")
 		showVersion = flag.Bool("version", false, "Show version information")
 		showHelp    = flag.Bool("help", false, "Show help information")
 	)
@@ -694,6 +695,9 @@ func main() {
 		fmt.Println("")
 		fmt.Println("    # Start on custom port with custom database")
 		fmt.Println("    openadp-server -port 9090 -db /path/to/db.sqlite")
+		fmt.Println("")
+		fmt.Println("    # Start in debug mode")
+		fmt.Println("    openadp-server --debug")
 		return
 	}
 
@@ -709,8 +713,17 @@ func main() {
 	if envAuth := os.Getenv("OPENADP_AUTH"); envAuth != "" {
 		*authEnabled = envAuth == "true" || envAuth == "1"
 	}
+	if envDebug := os.Getenv("OPENADP_DEBUG"); envDebug != "" {
+		*debugMode = envDebug == "true" || envDebug == "1"
+	}
 
 	fmt.Printf(banner, version)
+
+	// Set debug mode if requested
+	if *debugMode {
+		log.Printf("🐛 Debug mode enabled - using deterministic ephemeral keys")
+		server.SetDebugMode(true)
+	}
 
 	// Create and start server
 	srv, err := NewServer(*dbPath, *port, *authEnabled)

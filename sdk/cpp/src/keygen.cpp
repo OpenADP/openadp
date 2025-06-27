@@ -3,6 +3,7 @@
 #include "openadp/client.hpp"
 #include "openadp/crypto.hpp"
 #include "openadp/utils.hpp"
+#include "openadp/debug.hpp"
 #include <chrono>
 #include <algorithm>
 
@@ -10,7 +11,13 @@ namespace openadp {
 namespace keygen {
 
 std::string generate_random_scalar() {
-    return utils::random_hex(32); // 256-bit scalar
+    if (debug::is_debug_mode_enabled()) {
+        // In debug mode, use large deterministic secret
+        return debug::get_deterministic_main_secret();
+    } else {
+        // In normal mode, use cryptographically secure random
+        return utils::random_hex(32); // 256-bit scalar
+    }
 }
 
 AuthCodes generate_auth_codes(const std::string& base_auth_code, const std::vector<ServerInfo>& server_infos) {

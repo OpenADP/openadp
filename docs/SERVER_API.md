@@ -37,7 +37,7 @@ Registers a secret share with the server for distributed storage.
 | 3 | `bid` | string | Backup identifier |
 | 4 | `version` | int | Share version number |
 | 5 | `x` | int | Shamir share X coordinate |
-| 6 | `y` | string | Shamir share Y coordinate (base64 encoded) |
+| 6 | `y` | string | Shamir share Y coordinate (base64 encoded, little-endian 32-bytes) |
 | 7 | `max_guesses` | int | Maximum recovery attempts allowed |
 | 8 | `expiration` | int | Unix timestamp expiration |
 

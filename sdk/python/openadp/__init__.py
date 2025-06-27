@@ -75,6 +75,20 @@ from .ocrypt import (
     recover as ocrypt_recover
 )
 
+# Debug functionality
+from .debug import (
+    set_debug_mode,
+    is_debug_mode_enabled,
+    debug_log,
+    get_deterministic_main_secret,
+    get_deterministic_polynomial_coefficient,
+    get_deterministic_random_hex,
+    get_deterministic_random_bytes,
+    get_deterministic_ephemeral_secret,
+    secure_random_scalar,
+    secure_random_coefficient
+)
+
 # Client implementations
 from .client import (
     # Core client classes
@@ -142,6 +156,13 @@ __all__ = [
     
     # Ocrypt
     "ocrypt_register", "ocrypt_recover",
+    
+    # Debug
+    "set_debug_mode", "is_debug_mode_enabled", "debug_log",
+    "get_deterministic_main_secret", "get_deterministic_polynomial_coefficient",
+    "get_deterministic_random_hex", "get_deterministic_random_bytes",
+    "get_deterministic_ephemeral_secret", "secure_random_scalar",
+    "secure_random_coefficient",
     
     # Client classes
     "OpenADPClient", "EncryptedOpenADPClient", "MultiServerClient",

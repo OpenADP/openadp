@@ -2,14 +2,10 @@
 # ===================================
 
 # Variables
-BINARY_NAME=openadp-demo
-CLI_BINARY_NAME=openadp-cli
 SERVER_BINARY_NAME=openadp-server
 ENCRYPT_BINARY_NAME=openadp-encrypt
 DECRYPT_BINARY_NAME=openadp-decrypt
-KEYGEN_BINARY_NAME=openadp-keygen
 SERVERINFO_BINARY_NAME=openadp-serverinfo
-TEST_RUNNER_BINARY_NAME=run-tests
 OCRYPT_REGISTER_BINARY_NAME=ocrypt-register
 OCRYPT_RECOVER_BINARY_NAME=ocrypt-recover
 RUST_ENCRYPT_BINARY_NAME=openadp-encrypt-rust
@@ -39,20 +35,10 @@ CARGO_TEST=$(CARGO) test
 # Build flags
 LDFLAGS=-ldflags "-X main.version=$(VERSION)"
 
-.PHONY: all build build-cli build-server build-encrypt build-decrypt build-keygen build-serverinfo build-test-runner build-ocrypt-register build-ocrypt-recover build-rust build-rust-encrypt build-rust-decrypt test-rust clean clean-rust test test-verbose deps fmt lint help install demo server encrypt decrypt rust-encrypt rust-decrypt keygen serverinfo run-tests ocrypt-register ocrypt-recover fuzz fuzz-server fuzz-crypto fuzz-api fuzz-all fuzz-quick fuzz-extended fuzz-coverage fuzz-clean fuzz-help
+.PHONY: all build build-server build-encrypt build-decrypt build-serverinfo build-ocrypt-register build-ocrypt-recover build-rust build-rust-encrypt build-rust-decrypt test-rust clean clean-rust test test-verbose deps fmt lint help install encrypt decrypt rust-encrypt rust-decrypt serverinfo ocrypt-register ocrypt-recover fuzz fuzz-server fuzz-crypto fuzz-api fuzz-all fuzz-quick fuzz-extended fuzz-coverage fuzz-clean fuzz-help
 
 # Default target
-all: clean deps fmt test build build-cli build-server build-encrypt build-decrypt build-keygen build-serverinfo build-test-runner build-ocrypt-register build-ocrypt-recover build-rust
-
-# Build the demo application
-build:
-	@echo "🔨 Building OpenADP demo application..."
-	$(GOBUILD) -o $(BUILD_DIR)/$(BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/openadp
-
-# Build the CLI application
-build-cli:
-	@echo "🔨 Building OpenADP CLI application..."
-	$(GOBUILD) -o $(BUILD_DIR)/$(CLI_BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/openadp-cli
+all: clean deps fmt test build build-server build-encrypt build-decrypt build-serverinfo build-ocrypt-register build-ocrypt-recover build-rust
 
 # Build the server application
 build-server:
@@ -69,20 +55,10 @@ build-decrypt:
 	@echo "🔨 Building OpenADP decryption tool..."
 	$(GOBUILD) -o $(BUILD_DIR)/$(DECRYPT_BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/openadp-decrypt
 
-# Build the key generation tool
-build-keygen:
-	@echo "🔨 Building OpenADP key generation tool..."
-	$(GOBUILD) -o $(BUILD_DIR)/$(KEYGEN_BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/openadp-keygen
-
 # Build the server info tool
 build-serverinfo:
 	@echo "🔨 Building OpenADP server info tool..."
 	$(GOBUILD) -o $(BUILD_DIR)/$(SERVERINFO_BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/openadp-serverinfo
-
-# Build the test runner
-build-test-runner:
-	@echo "🔨 Building OpenADP test runner..."
-	$(GOBUILD) -o $(BUILD_DIR)/$(TEST_RUNNER_BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/run-tests
 
 # Build the ocrypt register tool
 build-ocrypt-register:
@@ -160,26 +136,6 @@ test:
 	@echo "Testing server module..."
 	cd server && $(GOTEST) -v ./...
 
-# Run tests using our comprehensive test runner
-run-tests: build-test-runner
-	@echo "🚀 Running comprehensive test suite..."
-	./$(BUILD_DIR)/$(TEST_RUNNER_BINARY_NAME)
-
-# Run tests with coverage using our test runner
-run-tests-coverage: build-test-runner
-	@echo "🚀 Running comprehensive test suite with coverage..."
-	./$(BUILD_DIR)/$(TEST_RUNNER_BINARY_NAME) -coverage
-
-# Run only unit tests using our test runner
-run-tests-unit: build-test-runner
-	@echo "🚀 Running unit tests only..."
-	./$(BUILD_DIR)/$(TEST_RUNNER_BINARY_NAME) -unit-only
-
-# Run benchmarks using our test runner
-run-tests-bench: build-test-runner
-	@echo "🚀 Running benchmark tests..."
-	./$(BUILD_DIR)/$(TEST_RUNNER_BINARY_NAME) -bench-only
-
 # Run tests with coverage
 test-coverage:
 	@echo "🧪 Running tests with coverage..."
@@ -220,14 +176,12 @@ lint:
 	fi
 
 # Install binaries to GOPATH/bin
-install: build build-cli build-server build-encrypt build-decrypt build-keygen build-serverinfo build-test-runner build-rust
+install: build build-server build-encrypt build-decrypt build-serverinfo build-rust
 	@echo "📥 Installing binaries..."
 	cp $(BUILD_DIR)/$(BINARY_NAME) $(GOPATH)/bin/
-	cp $(BUILD_DIR)/$(CLI_BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(SERVER_BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(ENCRYPT_BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(DECRYPT_BINARY_NAME) $(GOPATH)/bin/
-	cp $(BUILD_DIR)/$(KEYGEN_BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(SERVERINFO_BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(TEST_RUNNER_BINARY_NAME) $(GOPATH)/bin/
 	@if [ -f "$(BUILD_DIR)/$(RUST_ENCRYPT_BINARY_NAME)" ]; then \
@@ -236,16 +190,6 @@ install: build build-cli build-server build-encrypt build-decrypt build-keygen b
 		echo "✅ Installed Rust binaries to $(GOPATH)/bin/"; \
 	fi
 	@echo "✅ Installed all binaries to $(GOPATH)/bin/"
-
-# Run the demo application
-demo: build
-	@echo "🚀 Running OpenADP demo..."
-	./$(BUILD_DIR)/$(BINARY_NAME)
-
-# Run the CLI application
-cli: build-cli
-	@echo "🚀 Running OpenADP CLI..."
-	./$(BUILD_DIR)/$(CLI_BINARY_NAME) -help
 
 # Run the server application
 server: build-server
@@ -286,21 +230,6 @@ rust-encrypt: build-rust-encrypt
 rust-decrypt: build-rust-decrypt
 	@echo "🦀 Running Rust OpenADP decryption tool..."
 	./$(BUILD_DIR)/$(RUST_DECRYPT_BINARY_NAME) --help
-
-# Generate authentication code
-auth-code: build-cli
-	@echo "🔑 Generating authentication code..."
-	./$(BUILD_DIR)/$(CLI_BINARY_NAME) -command generate-auth
-
-# Run system tests
-system-test: build-cli
-	@echo "🧪 Running system tests..."
-	./$(BUILD_DIR)/$(CLI_BINARY_NAME) -command test
-
-# Interactive CLI mode
-interactive: build-cli
-	@echo "🎮 Starting interactive mode..."
-	./$(BUILD_DIR)/$(CLI_BINARY_NAME) -interactive
 
 # Test server connectivity
 test-server: build-server
@@ -348,35 +277,30 @@ release: clean
 	
 	# Linux AMD64
 	GOOS=linux GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/release/$(BINARY_NAME)-linux-amd64 $(LDFLAGS) ./$(CMD_DIR)/openadp
-	GOOS=linux GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/release/$(CLI_BINARY_NAME)-linux-amd64 $(LDFLAGS) ./$(CMD_DIR)/openadp-cli
 	GOOS=linux GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/release/$(SERVER_BINARY_NAME)-linux-amd64 $(LDFLAGS) ./$(CMD_DIR)/openadp-server
 	GOOS=linux GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/release/$(ENCRYPT_BINARY_NAME)-linux-amd64 $(LDFLAGS) ./$(CMD_DIR)/openadp-encrypt
 	GOOS=linux GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/release/$(DECRYPT_BINARY_NAME)-linux-amd64 $(LDFLAGS) ./$(CMD_DIR)/openadp-decrypt
 	
 	# Linux ARM64
 	GOOS=linux GOARCH=arm64 $(GOBUILD) -o $(BUILD_DIR)/release/$(BINARY_NAME)-linux-arm64 $(LDFLAGS) ./$(CMD_DIR)/openadp
-	GOOS=linux GOARCH=arm64 $(GOBUILD) -o $(BUILD_DIR)/release/$(CLI_BINARY_NAME)-linux-arm64 $(LDFLAGS) ./$(CMD_DIR)/openadp-cli
 	GOOS=linux GOARCH=arm64 $(GOBUILD) -o $(BUILD_DIR)/release/$(SERVER_BINARY_NAME)-linux-arm64 $(LDFLAGS) ./$(CMD_DIR)/openadp-server
 	GOOS=linux GOARCH=arm64 $(GOBUILD) -o $(BUILD_DIR)/release/$(ENCRYPT_BINARY_NAME)-linux-arm64 $(LDFLAGS) ./$(CMD_DIR)/openadp-encrypt
 	GOOS=linux GOARCH=arm64 $(GOBUILD) -o $(BUILD_DIR)/release/$(DECRYPT_BINARY_NAME)-linux-arm64 $(LDFLAGS) ./$(CMD_DIR)/openadp-decrypt
 	
 	# macOS AMD64
 	GOOS=darwin GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/release/$(BINARY_NAME)-darwin-amd64 $(LDFLAGS) ./$(CMD_DIR)/openadp
-	GOOS=darwin GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/release/$(CLI_BINARY_NAME)-darwin-amd64 $(LDFLAGS) ./$(CMD_DIR)/openadp-cli
 	GOOS=darwin GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/release/$(SERVER_BINARY_NAME)-darwin-amd64 $(LDFLAGS) ./$(CMD_DIR)/openadp-server
 	GOOS=darwin GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/release/$(ENCRYPT_BINARY_NAME)-darwin-amd64 $(LDFLAGS) ./$(CMD_DIR)/openadp-encrypt
 	GOOS=darwin GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/release/$(DECRYPT_BINARY_NAME)-darwin-amd64 $(LDFLAGS) ./$(CMD_DIR)/openadp-decrypt
 	
 	# macOS ARM64 (Apple Silicon)
 	GOOS=darwin GOARCH=arm64 $(GOBUILD) -o $(BUILD_DIR)/release/$(BINARY_NAME)-darwin-arm64 $(LDFLAGS) ./$(CMD_DIR)/openadp
-	GOOS=darwin GOARCH=arm64 $(GOBUILD) -o $(BUILD_DIR)/release/$(CLI_BINARY_NAME)-darwin-arm64 $(LDFLAGS) ./$(CMD_DIR)/openadp-cli
 	GOOS=darwin GOARCH=arm64 $(GOBUILD) -o $(BUILD_DIR)/release/$(SERVER_BINARY_NAME)-darwin-arm64 $(LDFLAGS) ./$(CMD_DIR)/openadp-server
 	GOOS=darwin GOARCH=arm64 $(GOBUILD) -o $(BUILD_DIR)/release/$(ENCRYPT_BINARY_NAME)-darwin-arm64 $(LDFLAGS) ./$(CMD_DIR)/openadp-encrypt
 	GOOS=darwin GOARCH=arm64 $(GOBUILD) -o $(BUILD_DIR)/release/$(DECRYPT_BINARY_NAME)-darwin-arm64 $(LDFLAGS) ./$(CMD_DIR)/openadp-decrypt
 	
 	# Windows AMD64
 	GOOS=windows GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/release/$(BINARY_NAME)-windows-amd64.exe $(LDFLAGS) ./$(CMD_DIR)/openadp
-	GOOS=windows GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/release/$(CLI_BINARY_NAME)-windows-amd64.exe $(LDFLAGS) ./$(CMD_DIR)/openadp-cli
 	GOOS=windows GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/release/$(SERVER_BINARY_NAME)-windows-amd64.exe $(LDFLAGS) ./$(CMD_DIR)/openadp-server
 	GOOS=windows GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/release/$(ENCRYPT_BINARY_NAME)-windows-amd64.exe $(LDFLAGS) ./$(CMD_DIR)/openadp-encrypt
 	GOOS=windows GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/release/$(DECRYPT_BINARY_NAME)-windows-amd64.exe $(LDFLAGS) ./$(CMD_DIR)/openadp-decrypt
@@ -403,12 +327,9 @@ help:
 	@echo ""
 	@echo "🔨 Build Targets:"
 	@echo "  all              - Build all components (default)"
-	@echo "  build            - Build demo application"
-	@echo "  build-cli        - Build CLI application"
 	@echo "  build-server     - Build server application"
 	@echo "  build-encrypt    - Build encryption tool"
 	@echo "  build-decrypt    - Build decryption tool"
-	@echo "  build-keygen     - Build key generation tool"
 	@echo "  build-ocrypt-register - Build Ocrypt register tool"
 	@echo "  build-ocrypt-recover - Build Ocrypt recover tool"
 	@echo "  build-rust       - Build all Rust tools"
@@ -425,8 +346,6 @@ help:
 	@echo "  bench            - Run benchmarks"
 	@echo ""
 	@echo "🚀 Run Targets:"
-	@echo "  demo             - Run demo application"
-	@echo "  cli              - Run CLI application"
 	@echo "  server           - Run server application"
 	@echo "  encrypt          - Run encryption tool"
 	@echo "  decrypt          - Run decryption tool"
@@ -434,7 +353,6 @@ help:
 	@echo "  ocrypt-recover   - Run Ocrypt recover tool"
 	@echo "  rust-encrypt     - Run Rust encryption tool"
 	@echo "  rust-decrypt     - Run Rust decryption tool"
-	@echo "  interactive      - Run CLI in interactive mode"
 	@echo ""
 	@echo "🏗️  Node Operator Targets:"
 	@echo "  install-node     - Install/update OpenADP node (requires sudo)"

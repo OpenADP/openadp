@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 
 from openadp.keygen import generate_encryption_key, Identity
 from openadp.client import get_servers, get_fallback_server_info, ServerInfo, OpenADPClient
+from openadp.debug import set_debug_mode, debug_log
 
 VERSION = "1.0.0"
 NONCE_SIZE = 12  # AES-GCM nonce size
@@ -57,6 +58,7 @@ OPTIONS:
     --user-id <id>         User ID for secret ownership (will prompt if not provided)
     --servers <urls>       Comma-separated list of server URLs (optional)
     --servers-url <url>    URL to scrape for server list (default: https://servers.openadp.org)
+    --debug                Enable debug mode for deterministic operations
     --version              Show version information
     --help                 Show this help message
 
@@ -74,6 +76,10 @@ SERVER DISCOVERY:
     If the registry is unavailable, it falls back to hardcoded servers.
     Use -servers to specify your own server list and skip discovery.
 
+DEBUG MODE:
+    When --debug is enabled, all cryptographic operations become deterministic
+    for testing purposes. This should NEVER be used in production.
+
 EXAMPLES:
     # Encrypt a file using discovered servers (fetches from servers.openadp.org)
     openadp-encrypt.py --file document.txt
@@ -83,6 +89,9 @@ EXAMPLES:
 
     # Use a different server registry
     openadp-encrypt.py --file document.txt --servers-url "https://my-registry.com"
+
+    # Enable debug mode for testing
+    openadp-encrypt.py --file document.txt --debug
 
     # Use environment variables to avoid prompts
     export OPENADP_PASSWORD="mypassword"
@@ -112,12 +121,17 @@ def encrypt_file(input_filename, password, user_id, server_infos, servers_url):
     
     # Generate encryption key using OpenADP with full distributed protocol
     print("🔄 Generating encryption key using OpenADP servers...")
+    debug_log(f"Starting key generation for file: {input_filename}")
+    debug_log(f"User ID: {user_id}, Device ID: {get_hostname()}")
+    
     # Create Identity from filename, user_id, and hostname (matching old derive_identifiers behavior)
     identity = Identity(
         uid=user_id,
         did=get_hostname(),
         bid=f"file://{os.path.basename(input_filename)}"
     )
+    debug_log(f"Identity created - UID: {identity.uid}, DID: {identity.did}, BID: {identity.bid}")
+    
     result = generate_encryption_key(identity, password, 10, 0, server_infos)
     
     if result.error:
@@ -128,6 +142,10 @@ def encrypt_file(input_filename, password, user_id, server_infos, servers_url):
     auth_codes = result.auth_codes
     actual_server_urls = [server_info.url for server_info in result.server_infos]
     threshold = result.threshold
+    
+    debug_log(f"Encryption key generated successfully ({len(enc_key)} bytes)")
+    debug_log(f"Authentication codes generated for {len(auth_codes.server_auth_codes)} servers")
+    debug_log(f"Threshold: {threshold}-of-{len(actual_server_urls)}")
     
     print(f"🔑 Generated authentication codes for {len(auth_codes.server_auth_codes)} servers")
     print(f"🔑 Key generated successfully (UID={user_id}, DID={get_hostname()}, BID=file://{os.path.basename(input_filename)})")
@@ -142,11 +160,13 @@ def encrypt_file(input_filename, password, user_id, server_infos, servers_url):
     try:
         with open(input_filename, 'rb') as f:
             plaintext = f.read()
+        debug_log(f"Read input file: {len(plaintext)} bytes")
     except Exception as e:
         raise Exception(f"failed to read input file: {e}")
     
     # Generate random nonce
     nonce = get_random_bytes(NONCE_SIZE)
+    debug_log(f"Generated nonce: {nonce.hex()}")
     
     # Create metadata using the actual results from keygen
     metadata = Metadata(
@@ -158,11 +178,13 @@ def encrypt_file(input_filename, password, user_id, server_infos, servers_url):
     )
     
     metadata_json = json.dumps(metadata.to_dict()).encode('utf-8')
+    debug_log(f"Metadata created: {len(metadata_json)} bytes")
     
     # Encrypt the file using metadata as additional authenticated data
     cipher = AES.new(enc_key, AES.MODE_GCM, nonce=nonce)
     cipher.update(metadata_json)  # Additional authenticated data
     ciphertext, tag = cipher.encrypt_and_digest(plaintext)
+    debug_log(f"File encrypted: {len(ciphertext)} bytes ciphertext, {len(tag)} bytes tag")
     
     # Combine ciphertext and tag for compatibility with Go's GCM implementation
     encrypted_data = ciphertext + tag
@@ -181,6 +203,7 @@ def encrypt_file(input_filename, password, user_id, server_infos, servers_url):
             
             # Write encrypted data
             f.write(encrypted_data)
+        debug_log(f"Output file written: {output_filename}")
     except Exception as e:
         raise Exception(f"failed to create output file: {e}")
     
@@ -204,10 +227,16 @@ def main():
     parser.add_argument("--servers", help="Comma-separated list of server URLs (optional)")
     parser.add_argument("--servers-url", dest="servers_url", default="https://servers.openadp.org", 
                        help="URL to scrape for server list (default: https://servers.openadp.org)")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode for deterministic operations")
     parser.add_argument("--version", action="store_true", help="Show version information")
     parser.add_argument("--help", action="store_true", help="Show help information")
     
     args = parser.parse_args()
+    
+    # Enable debug mode if requested
+    if args.debug:
+        set_debug_mode(True)
+        debug_log("Debug mode enabled for openadp-encrypt")
     
     if args.version:
         print(f"OpenADP File Encryption Tool v{VERSION}")
@@ -238,6 +267,8 @@ def main():
     else:
         password_str = getpass.getpass("Enter password: ")
     
+    debug_log(f"Password source: {'command line' if args.password else 'environment' if os.environ.get('OPENADP_PASSWORD') else 'prompt'}")
+    
     # Get user ID (priority: flag > environment > prompt)
     user_id_str = ""
     if args.user_id:
@@ -261,12 +292,15 @@ def main():
         print("Error: User ID must be at most 64 characters long")
         sys.exit(1)
     
+    debug_log(f"User ID validated: {user_id_str} ({len(user_id_str)} characters)")
+    
     # Get server list
     server_infos = []
     if args.servers:
         print("📋 Using manually specified servers...")
         server_urls = [url.strip() for url in args.servers.split(",")]
         print(f"   Servers specified: {len(server_urls)}")
+        debug_log(f"Manual server list: {server_urls}")
         for i, url in enumerate(server_urls, 1):
             print(f"   {i}. {url}")
         
@@ -275,6 +309,7 @@ def main():
         server_infos = []
         for url in server_urls:
             try:
+                debug_log(f"Querying server for public key: {url}")
                 # Create a basic client to call GetServerInfo
                 basic_client = OpenADPClient(url)
                 server_info = basic_client.get_server_info()
@@ -294,8 +329,10 @@ def main():
                 
                 key_status = "❌ No public key" if not public_key else "🔐 Public key available"
                 print(f"   ✅ {url} - {key_status}")
+                debug_log(f"Server {url} public key: {public_key}")
             except Exception as e:
                 print(f"   ⚠️  Failed to get server info from {url}: {e}")
+                debug_log(f"Failed to query server {url}: {e}")
                 # Add server without public key as fallback
                 server_infos.append(ServerInfo(
                     url=url,
@@ -304,6 +341,7 @@ def main():
                 ))
     else:
         print(f"🌐 Discovering servers from registry: {args.servers_url}")
+        debug_log(f"Server discovery from: {args.servers_url}")
         
         # Try to get full server information including public keys
         try:
@@ -311,9 +349,11 @@ def main():
             if not server_infos:
                 raise Exception("No servers returned from registry")
             print(f"   ✅ Successfully fetched {len(server_infos)} servers from registry")
+            debug_log(f"Successfully fetched {len(server_infos)} servers from registry")
         except Exception as e:
             print(f"   ⚠️  Failed to fetch from registry: {e}")
             print("   🔄 Falling back to hardcoded servers...")
+            debug_log(f"Registry fetch failed: {e}, using fallback servers")
             server_infos = get_fallback_server_info()
             print(f"   Fallback servers: {len(server_infos)}")
         
@@ -321,17 +361,22 @@ def main():
         for i, server in enumerate(server_infos, 1):
             key_status = "❌ No public key" if not server.public_key else "🔐 Public key available"
             print(f"      {i}. {server.url} [{server.country}] - {key_status}")
+            debug_log(f"Server {i}: {server.url} [{server.country}] - Key: {server.public_key}")
     
     if not server_infos:
         print("❌ Error: No servers available")
         sys.exit(1)
     
+    debug_log(f"Final server count: {len(server_infos)}")
+    
     # Encrypt the file
     try:
         encrypt_file(args.filename, password_str, user_id_str, server_infos, args.servers_url)
         print("✅ File encrypted successfully!")
+        debug_log("File encryption completed successfully")
     except Exception as e:
         print(f"❌ Encryption failed: {e}")
+        debug_log(f"Encryption failed: {e}")
         sys.exit(1)
 
 

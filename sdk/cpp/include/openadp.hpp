@@ -10,6 +10,7 @@
 #include "openadp/ocrypt.hpp"
 #include "openadp/noise.hpp"
 #include "openadp/utils.hpp"
+#include "openadp/debug.hpp"
 #include <nlohmann/json.hpp>
 
 // Main namespace

@@ -43,6 +43,7 @@ func main() {
 		password        = flag.String("password", "", "Password for key derivation (will prompt if not provided)")
 		userID          = flag.String("user-id", "", "User ID override (will use metadata or prompt if not provided)")
 		overrideServers = flag.String("servers", "", "Comma-separated list of server URLs to override metadata servers")
+		debugMode       = flag.Bool("debug", false, "Enable debug mode (deterministic operations)")
 		help            = flag.Bool("help", false, "Show help information")
 		showVersion     = flag.Bool("version", false, "Show version information")
 	)
@@ -78,6 +79,12 @@ func main() {
 	if *help {
 		showHelp()
 		return
+	}
+
+	// Set debug mode if requested
+	if *debugMode {
+		fmt.Println("🐛 Debug mode enabled - using deterministic operations")
+		client.SetDebugMode(true)
 	}
 
 	if *filename == "" {
@@ -140,6 +147,7 @@ OPTIONS:
     --password <password>  Password for key derivation (will prompt if not provided)
     --user-id <id>         User ID override (will use metadata or prompt if not provided)
     --servers <urls>       Comma-separated list of server URLs to override metadata servers
+    --debug                Enable debug mode (deterministic operations)
     --version              Show version information
     --help                 Show this help message
 
@@ -167,6 +175,9 @@ EXAMPLES:
     export OPENADP_PASSWORD="mypassword"
     export OPENADP_USER_ID="myuserid"
     openadp-decrypt --file document.txt.enc
+
+    # Enable debug mode for deterministic testing
+    openadp-decrypt --file document.txt.enc --debug
 
 The decrypted file will be saved without the .enc extension
 `)

@@ -24,6 +24,7 @@ from .crypto import (
     expand, unexpand, Q, mod_inverse
 )
 from .client import EncryptedOpenADPClient, ServerInfo
+from .debug import debug_log, secure_random_scalar, is_debug_mode_enabled, get_deterministic_main_secret
 
 
 @dataclass
@@ -78,35 +79,36 @@ def password_to_pin(password: str) -> bytes:
 
 def generate_auth_codes(server_urls: List[str]) -> AuthCodes:
     """
-    Generate authentication codes for OpenADP servers.
-    
-    Creates a base authentication code and derives server-specific codes.
-    Each server gets a unique code derived from the base code and server URL.
+    Generate authentication codes for servers.
     
     Args:
-        server_urls: List of server URLs to generate codes for
+        server_urls: List of server URLs
         
     Returns:
-        AuthCodes object containing base code and server-specific codes
+        AuthCodes object with base and server-specific codes
     """
-    # Generate base authentication code (32 random bytes as hex)
-    base_auth_code = secrets.token_hex(32)
-
+    debug_log(f"Generating auth codes for {len(server_urls)} servers")
     
-    # Generate server-specific authentication codes
+    # Generate base authentication code (32 random bytes as hex)
+    if is_debug_mode_enabled():
+        # Use deterministic value in debug mode
+        base_auth_code = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        debug_log(f"Using deterministic base auth code: {base_auth_code}")
+    else:
+        base_auth_code = secrets.token_hex(32)
+    
+    # Generate server-specific codes using SHA256 (same as Go implementation)
     server_auth_codes = {}
     for server_url in server_urls:
-        # Derive server-specific code using SHA256 (same as Go implementation)
         combined = f"{base_auth_code}:{server_url}"
-        hash_bytes = hashlib.sha256(combined.encode('utf-8')).digest()
-        server_code = hash_bytes.hex()
-        server_auth_codes[server_url] = server_code
+        hash_obj = hashlib.sha256(combined.encode('utf-8'))
+        server_auth_codes[server_url] = hash_obj.hexdigest()
+        debug_log(f"Generated auth code for server: {server_url}")
     
-    # Return with a placeholder user_id (will be set by caller)
     return AuthCodes(
         base_auth_code=base_auth_code,
         server_auth_codes=server_auth_codes,
-        user_id=""  # Will be set by the caller
+        user_id=""  # Will be set by caller
     )
 
 
@@ -209,11 +211,22 @@ def generate_encryption_key(
         
         # Step 5: Generate RANDOM secret and create point
         # SECURITY FIX: Use random secret for Shamir secret sharing, not deterministic
-        secret = secrets.randbelow(Q)
-        # Note: secret can be 0 - this is valid for Shamir secret sharing
+        if is_debug_mode_enabled():
+            # Use deterministic secret in debug mode
+            secret_hex = get_deterministic_main_secret()
+            secret = int(secret_hex, 16) % Q
+            debug_log(f"Using deterministic secret: 0x{secret_hex}")
+        else:
+            secret = secrets.randbelow(Q)
+            # Note: secret can be 0 - this is valid for Shamir secret sharing
+        
+        debug_log(f"Generated main secret: {secret}")
         
         U = H(identity.uid.encode(), identity.did.encode(), identity.bid.encode(), pin)
         S = point_mul(secret, U)
+        
+        debug_log(f"Computed U point for identity: {identity}")
+        debug_log(f"Computed S = secret * U")
         
         # Step 6: Create shares using secret sharing
         num_shares = len(clients)
@@ -386,9 +399,17 @@ def recover_encryption_key(
         print(f"🔍 DEBUG: U point: x={u_point_affine.x}, y={u_point_affine.y}")
         
         # Generate random r for blinding (0 < r < Q)  
-        r = secrets.randbelow(Q)
-        if r == 0:
-            r = 1  # Ensure r is not zero
+        if is_debug_mode_enabled():
+            # Use deterministic value in debug mode
+            secret_hex = get_deterministic_main_secret()
+            r = int(secret_hex, 16) % Q
+            if r == 0:
+                r = 1  # Ensure r is not zero
+            debug_log(f"Using deterministic blinding factor r: {r}")
+        else:
+            r = secrets.randbelow(Q)
+            if r == 0:
+                r = 1  # Ensure r is not zero
         
         # Compute r^-1 mod Q
         r_inv = mod_inverse(r, Q)
@@ -399,11 +420,11 @@ def recover_encryption_key(
         b_compressed = point_compress(b_point)
         b_base64_format = base64.b64encode(b_compressed).decode('ascii')
         
-        print(f"🔍 DEBUG: r scalar: {r}")
-        print(f"🔍 DEBUG: r^-1 scalar: {r_inv}")
-        print(f"🔍 DEBUG: B point (r * U): x={b_point_affine.x}, y={b_point_affine.y}")
-        print(f"🔍 DEBUG: B compressed: {b_compressed.hex()}")
-        print(f"🔍 DEBUG: B base64: {b_base64_format}")
+        debug_log(f"r scalar: {r}")
+        debug_log(f"r^-1 scalar: {r_inv}")
+        debug_log(f"B point (r * U): x={b_point_affine.x}, y={b_point_affine.y}")
+        debug_log(f"B compressed: {b_compressed.hex()}")
+        debug_log(f"B base64: {b_base64_format}")
         
         # Step 5: Recover shares from servers (use all available servers, already intelligently selected)
         print("OpenADP: Recovering shares from servers...")

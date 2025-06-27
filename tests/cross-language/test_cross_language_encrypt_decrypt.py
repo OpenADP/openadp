@@ -32,6 +32,16 @@ SERVER_PORTS = [8080, 8081, 8082]  # Use multiple servers for comprehensive test
 SERVER_PROCESSES = []
 SERVER_URLS = [f"http://localhost:{port}" for port in SERVER_PORTS]
 
+# Detect if we're running from cross-language directory or project root
+if os.path.basename(os.getcwd()) == "cross-language":
+    # Running from tests/cross-language directory
+    SDK_PYTHON_PATH = "../../sdk/python"
+    BUILD_PATH = "../../build"
+else:
+    # Running from project root
+    SDK_PYTHON_PATH = "sdk/python"
+    BUILD_PATH = "build"
+
 def log(message):
     """Log a message with timestamp"""
     timestamp = time.strftime("%H:%M:%S")
@@ -52,7 +62,7 @@ def start_local_servers():
         
         # Start server process using built executable
         cmd = [
-            "./build/openadp-server",
+            BUILD_PATH + "/openadp-server",
             "-port", str(port),
             "-db", temp_db,
             "-auth", "true"
@@ -143,7 +153,7 @@ def run_python_encrypt(input_file, output_file=None):
         output_file = input_file + ".enc"
     
     cmd = [
-        "python3", "tools/openadp-encrypt.py",
+        "python3", SDK_PYTHON_PATH + "/openadp-encrypt.py",
         "--file", input_file,
         "--password", TEST_PASSWORD,
         "--user-id", TEST_USER_ID,
@@ -172,7 +182,7 @@ def run_python_decrypt(input_file, output_file=None):
         output_file = input_file.replace(".enc", "_decrypted.txt")
     
     cmd = [
-        "python3", "tools/openadp-decrypt.py",
+        "python3", SDK_PYTHON_PATH + "/openadp-decrypt.py",
         "--file", input_file,
         "--password", TEST_PASSWORD,
         "--user-id", TEST_USER_ID,
@@ -202,7 +212,7 @@ def run_go_encrypt(input_file, output_file=None):
         output_file = input_file + ".enc"
     
     cmd = [
-        "./build/openadp-encrypt",
+        BUILD_PATH + "/openadp-encrypt",
         "--file", input_file,
         "--password", TEST_PASSWORD,
         "--user-id", TEST_USER_ID,
@@ -231,7 +241,7 @@ def run_go_decrypt(input_file, output_file=None):
         output_file = input_file.replace(".enc", "_decrypted.txt")
     
     cmd = [
-        "./build/openadp-decrypt",
+        BUILD_PATH + "/openadp-decrypt",
         "--file", input_file,
         "--password", TEST_PASSWORD,
         "--user-id", TEST_USER_ID,

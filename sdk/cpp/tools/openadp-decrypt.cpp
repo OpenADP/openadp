@@ -1,4 +1,5 @@
 #include <openadp.hpp>
+#include <openadp/debug.hpp>
 #include <iostream>
 #include <fstream>
 #include <getopt.h>
@@ -13,12 +14,13 @@ void print_usage(const char* program_name) {
               << "Decrypt a file using OpenADP distributed cryptography.\n"
               << "\n"
               << "Options:\n"
-              << "  --input <file>        Input file to decrypt (required)\n"
+              << "  --input <file>        Input encrypted file (required)\n"
               << "  --output <file>       Output file for decrypted data (required)\n"
               << "  --metadata <file>     Metadata file from encryption (required)\n"
               << "  --user-id <string>    Unique identifier for the user (required)\n"
-              << "  --password <string>   Password/PIN to unlock the data (will prompt if not provided)\n"
+              << "  --password <string>   Password/PIN used during encryption (will prompt if not provided)\n"
               << "  --servers-url <url>   Custom URL for server registry (empty uses default)\n"
+              << "  --debug               Enable debug mode (deterministic operations)\n"
               << "  --help                Show this help message\n"
               << "\n"
               << "Examples:\n"
@@ -54,6 +56,7 @@ int main(int argc, char* argv[]) {
     std::string user_id;
     std::string password;
     std::string servers_url;
+    bool debug_mode = false;
     
     static struct option long_options[] = {
         {"input", required_argument, 0, 'i'},
@@ -62,6 +65,7 @@ int main(int argc, char* argv[]) {
         {"user-id", required_argument, 0, 'u'},
         {"password", required_argument, 0, 'p'},
         {"servers-url", required_argument, 0, 's'},
+        {"debug", no_argument, 0, 'd'},
         {"help", no_argument, 0, 'h'},
         {0, 0, 0, 0}
     };
@@ -69,7 +73,7 @@ int main(int argc, char* argv[]) {
     int option_index = 0;
     int c;
     
-    while ((c = getopt_long(argc, argv, "i:o:m:u:p:s:h", long_options, &option_index)) != -1) {
+    while ((c = getopt_long(argc, argv, "i:o:m:u:p:s:dh", long_options, &option_index)) != -1) {
         switch (c) {
             case 'i':
                 input_file = optarg;
@@ -89,6 +93,9 @@ int main(int argc, char* argv[]) {
             case 's':
                 servers_url = optarg;
                 break;
+            case 'd':
+                debug_mode = true;
+                break;
             case 'h':
                 print_usage(argv[0]);
                 return 0;
@@ -98,6 +105,11 @@ int main(int argc, char* argv[]) {
             default:
                 break;
         }
+    }
+    
+    // Set debug mode if requested
+    if (debug_mode) {
+        debug::set_debug(true);
     }
     
     // Validate required arguments

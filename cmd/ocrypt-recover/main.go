@@ -24,6 +24,7 @@ func main() {
 		password   = flag.String("password", "", "Password/PIN to unlock the secret (will prompt if not provided)")
 		serversURL = flag.String("servers-url", "", "Custom URL for server registry (empty uses default)")
 		output     = flag.String("output", "", "File to write recovery result JSON (writes to stdout if not specified)")
+		debugMode  = flag.Bool("debug", false, "Enable debug mode (deterministic operations)")
 		help       = flag.Bool("help", false, "Show help message")
 	)
 
@@ -35,6 +36,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  --password string\n        Password/PIN to unlock the secret (will prompt if not provided)\n")
 		fmt.Fprintf(os.Stderr, "  --servers-url string\n        Custom URL for server registry (empty uses default)\n")
 		fmt.Fprintf(os.Stderr, "  --output string\n        File to write recovery result JSON (writes to stdout if not specified)\n")
+		fmt.Fprintf(os.Stderr, "  --debug\n        Enable debug mode (deterministic operations)\n")
 		fmt.Fprintf(os.Stderr, "  --help\n        Show help message\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s --metadata '{\"servers\":[...]}'\n", os.Args[0])
@@ -47,6 +49,12 @@ func main() {
 	if *help {
 		flag.Usage()
 		os.Exit(0)
+	}
+
+	// Set debug mode if requested
+	if *debugMode {
+		fmt.Fprintf(os.Stderr, "🐛 Debug mode enabled - using deterministic operations\n")
+		ocrypt.SetDebugMode(true)
 	}
 
 	// Validate required parameters

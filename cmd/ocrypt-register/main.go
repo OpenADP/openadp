@@ -19,6 +19,7 @@ func main() {
 		maxGuesses     = flag.Int("max-guesses", 10, "Maximum wrong PIN attempts before lockout")
 		serversURL     = flag.String("servers-url", "", "Custom URL for server registry (empty uses default)")
 		output         = flag.String("output", "", "File to write metadata JSON (writes to stdout if not specified)")
+		debugMode      = flag.Bool("debug", false, "Enable debug mode (deterministic operations)")
 		help           = flag.Bool("help", false, "Show help message")
 	)
 
@@ -33,6 +34,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  --max-guesses int\n        Maximum wrong PIN attempts before lockout (default 10)\n")
 		fmt.Fprintf(os.Stderr, "  --servers-url string\n        Custom URL for server registry (empty uses default)\n")
 		fmt.Fprintf(os.Stderr, "  --output string\n        File to write metadata JSON (writes to stdout if not specified)\n")
+		fmt.Fprintf(os.Stderr, "  --debug\n        Enable debug mode (deterministic operations)\n")
 		fmt.Fprintf(os.Stderr, "  --help\n        Show help message\n")
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  %s --user-id alice@example.com --app-id myapp --long-term-secret \"my secret key\"\n", os.Args[0])
@@ -44,6 +46,12 @@ func main() {
 	if *help {
 		flag.Usage()
 		os.Exit(0)
+	}
+
+	// Set debug mode if requested
+	if *debugMode {
+		fmt.Fprintf(os.Stderr, "🐛 Debug mode enabled - using deterministic operations\n")
+		ocrypt.SetDebugMode(true)
 	}
 
 	// Validate required parameters

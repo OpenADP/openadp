@@ -1,6 +1,7 @@
 #include "openadp/client.hpp"
 #include "openadp/types.hpp"
 #include "openadp/utils.hpp"
+#include "openadp/debug.hpp"
 #include <curl/curl.h>
 #include <sstream>
 #include <iostream>
@@ -267,7 +268,33 @@ nlohmann::json EncryptedOpenADPClient::register_secret(const RegisterSecretReque
     params["expiration"] = request.expiration;
     params["b"] = request.b;
     
-    return make_encrypted_request("RegisterSecret", params);
+    // Debug logging for request
+    if (debug::is_debug_mode_enabled()) {
+        debug::debug_log("RegisterSecret request: method=RegisterSecret, uid=" + request.identity.uid + 
+                        ", did=" + request.identity.did + ", bid=" + request.identity.bid + 
+                        ", max_guesses=" + std::to_string(request.max_guesses) + 
+                        ", expiration=" + std::to_string(request.expiration) + 
+                        ", b=" + request.b + ", encrypted=" + (has_public_key() ? "true" : "false"));
+    }
+    
+    try {
+        nlohmann::json result = make_encrypted_request("RegisterSecret", params);
+        
+        // Debug logging for response
+        if (debug::is_debug_mode_enabled()) {
+            if (result.contains("success")) {
+                debug::debug_log("RegisterSecret response: success=" + 
+                               (result["success"].get<bool>() ? std::string("true") : std::string("false")));
+            }
+        }
+        
+        return result;
+    } catch (const std::exception& e) {
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("RegisterSecret error: " + std::string(e.what()));
+        }
+        throw;
+    }
 }
 
 nlohmann::json EncryptedOpenADPClient::recover_secret(const RecoverSecretRequest& request) {
@@ -278,7 +305,43 @@ nlohmann::json EncryptedOpenADPClient::recover_secret(const RecoverSecretRequest
     params["password"] = request.password;
     params["guess_num"] = request.guess_num;
     
-    return make_encrypted_request("RecoverSecret", params);
+    // Debug logging for request
+    if (debug::is_debug_mode_enabled()) {
+        debug::debug_log("RecoverSecret request: method=RecoverSecret, uid=" + request.identity.uid + 
+                        ", did=" + request.identity.did + ", bid=" + request.identity.bid + 
+                        ", guess_num=" + std::to_string(request.guess_num) + 
+                        ", encrypted=" + (has_public_key() ? "true" : "false"));
+    }
+    
+    try {
+        nlohmann::json result = make_encrypted_request("RecoverSecret", params);
+        
+        // Debug logging for response
+        if (debug::is_debug_mode_enabled()) {
+            if (result.contains("version")) {
+                debug::debug_log("RecoverSecret response: version=" + std::to_string(result["version"].get<int>()));
+            }
+            if (result.contains("x")) {
+                debug::debug_log("RecoverSecret response: x=" + std::to_string(result["x"].get<int>()));
+            }
+            if (result.contains("si_b")) {
+                debug::debug_log("RecoverSecret response: si_b=" + result["si_b"].get<std::string>());
+            }
+            if (result.contains("num_guesses")) {
+                debug::debug_log("RecoverSecret response: num_guesses=" + std::to_string(result["num_guesses"].get<int>()));
+            }
+            if (result.contains("max_guesses")) {
+                debug::debug_log("RecoverSecret response: max_guesses=" + std::to_string(result["max_guesses"].get<int>()));
+            }
+        }
+        
+        return result;
+    } catch (const std::exception& e) {
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("RecoverSecret error: " + std::string(e.what()));
+        }
+        throw;
+    }
 }
 
 nlohmann::json EncryptedOpenADPClient::list_backups(const Identity& identity) {
