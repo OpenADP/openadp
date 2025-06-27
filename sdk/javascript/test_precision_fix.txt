@@ -1,1 +1,0 @@
-Testing fixed Shamir secret sharing precision.
