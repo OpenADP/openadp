@@ -1,0 +1,588 @@
+{
+  "aes_gcm_vectors": [
+    {
+      "description": "Empty message",
+      "expected_ciphertext_hex": "",
+      "expected_tag_hex": "f05d76ae4ab99fe5a6f69b3148c2363d",
+      "key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "nonce_hex": "000000000000000000000000",
+      "plaintext": "",
+      "plaintext_hex": ""
+    },
+    {
+      "description": "Message: Hello",
+      "expected_ciphertext_hex": "46d9d9b2da",
+      "expected_tag_hex": "1f72f2cfae32ce010545f30308338af0",
+      "key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "nonce_hex": "000000000000000000000000",
+      "plaintext": "Hello",
+      "plaintext_hex": "48656c6c6f"
+    },
+    {
+      "description": "Message: This is a secret mes...",
+      "expected_ciphertext_hex": "5ad4dcad9545f09d6988da507b5ef4edf22e33205be0074a",
+      "expected_tag_hex": "41e10cf00fa6b751500940a44376ae18",
+      "key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "nonce_hex": "000000000000000000000000",
+      "plaintext": "This is a secret message",
+      "plaintext_hex": "54686973206973206120736563726574206d657373616765"
+    },
+    {
+      "description": "Message: OpenADP encryption t...",
+      "expected_ciphertext_hex": "41ccd0b0f468d39d6dc6ca47615ce5f0bd2d76274df2140ff7f7c7ebe59e7d3a213181d958d2d56340b01092a4",
+      "expected_tag_hex": "4888b64c93f10a197d29f1468a57983b",
+      "key_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "nonce_hex": "000000000000000000000000",
+      "plaintext": "OpenADP encryption test with a longer message",
+      "plaintext_hex": "4f70656e41445020656e6372797074696f6e207465737420776974682061206c6f6e676572206d657373616765"
+    }
+  ],
+  "cross_language_compatibility": {
+    "sha256_reference": {
+      "expected": "16ac697f8819e164a0d4c2cf0cebf11cd7f8db3d033076b480f0bb138d0fb624",
+      "input": "OpenADP cross-language test"
+    },
+    "standard_test_case": {
+      "expected_compressed_hex": "42ff27a90126e495f9c18cf8c58dfc08d5f637b42c318609b49b476efef9c8b2",
+      "expected_point": {
+        "t": "1DE6E8DCACC634F1BE3F17BE0BDFDE2F272955E8842D5113AE4D6208E6C2BAC5",
+        "x": "1C349D6551A9220F2D51CEC2F9E03540B9818070A3B76EAB8EE8150F57B67035",
+        "y": "4DBEA9C8DDF8F18E23E850501D6C25C7BBFA15E62DE2CD9DF05DA1A8BF784C94",
+        "z": "769E3835D29B8B8348D81A7D7C083F24699DF2FFB444A164D33CD71B71A5911A"
+      },
+      "inputs": {
+        "bid": "backup-001",
+        "did": "test-device",
+        "pin": "1234",
+        "uid": "test-user"
+      }
+    }
+  },
+  "ed25519": {
+    "base_point_compressed": "1b2341470d302b8641de7c1898a99cffb8b3d82e8f84ab7c183ac28b586b7d00",
+    "base_point_example": {
+      "t": "44BAACCE9A8EE9C8C7E71E0401E9BAF89B37DEC448D350F2F7D52ABF5216634D",
+      "x": "33ACDFA865421ACE922A049703FBF5AF1B5236875A7F121715F82596E4062CA4",
+      "y": "59563B21E9B5DE69A01E0B281AC9FCB304EAF975644C13DDA2B48EEBD242C009",
+      "z": "5B044A3B4CE39A8179E5B5BD7D0503FB43837026F407B700BCD311097C930D5D"
+    },
+    "hash_to_point_vectors": [
+      {
+        "description": "Basic test",
+        "expected_compressed_hex": "8d76bc41da9612b776c48645093f8c18ae2932dea49370edf864ac9694ff16c6",
+        "expected_point": {
+          "t": "5E8952C640179BA69CF70898A40FF07F1674860EFD6DD85018A41434C5954575",
+          "x": "3306037517F1F40BF741D76F22A8F7ECADEDB43D0AD8F7C4F0EB90528854124D",
+          "y": "3B6486564EBE7F42E8ECCF6F316982ADBB93EC6D3E2F6C5B74A4B57C12EB9D8F",
+          "z": "4ED8392F423ED5712947AF47D12F3267520FB8848948F9820B98FCA898788892"
+        },
+        "inputs": {
+          "bid": "backup",
+          "did": "device",
+          "pin": "1234",
+          "uid": "user"
+        },
+        "inputs_hex": {
+          "bid": "6261636b7570",
+          "did": "646576696365",
+          "pin": "31323334",
+          "uid": "75736572"
+        }
+      },
+      {
+        "description": "Empty inputs",
+        "expected_compressed_hex": "e7df7cc04d6d6390af2429673efd44c861bcc6596f97c204721f0945877b6626",
+        "expected_point": {
+          "t": "3EF5B3FCAD2AF32A1B79A4D19D48EF1064C26E47710B7F54D30262C6EDDBAAD2",
+          "x": "4C4E59308F9312320C715A699A0FFBA79AE84CC18DED2D3031E6D4601177D8C3",
+          "y": "1D941456BA101C7B0CE6BCAE0C271EB6052C8A3B25CB7D6EA63B8F1C439634E6",
+          "z": "56D6C7840920B6258BD492B71A2C67B8A55B61E768A86F56F4EE275A90685F06"
+        },
+        "inputs": {
+          "bid": "",
+          "did": "",
+          "pin": "",
+          "uid": ""
+        },
+        "inputs_hex": {
+          "bid": "",
+          "did": "",
+          "pin": "",
+          "uid": ""
+        }
+      },
+      {
+        "description": "Single chars",
+        "expected_compressed_hex": "f04211a5fa5606c029eace622f774fbe2fcf7b6f17a32af7a8025b715068591f",
+        "expected_point": {
+          "t": "56DF7C9C427C4201FFBE5577D880CF011F0001C41ACC24B10EE0BE5CE363280F",
+          "x": "2611ACA1CDBC3CCC9329860BF68DCD06A920FFD1713E46F47E5A6A6EB306BBAB",
+          "y": "379DDBA8185821FECD3970D8A2DDBA1AFD39C931B736D7933685886FFB1C2880",
+          "z": "5B273FF7A1E753B03A826B7E1EF2B6ACE7016A2EC1B75F2BDE54B6463EC47233"
+        },
+        "inputs": {
+          "bid": "b",
+          "did": "d",
+          "pin": "p",
+          "uid": "u"
+        },
+        "inputs_hex": {
+          "bid": "62",
+          "did": "64",
+          "pin": "70",
+          "uid": "75"
+        }
+      },
+      {
+        "description": "Long inputs",
+        "expected_compressed_hex": "4b168a7b43ee31549380837de1b7317dfe42a288e53259f7c6aaf7428d53ff43",
+        "expected_point": {
+          "t": "2025FCD830E85AE74AE91513CB4D74A94B6C09A58CB468486B856C8B636AC3DB",
+          "x": "281FC8BCEA1A86FC403DB450749B37BAEC5003A73F6D3B4955A4F72D375DDCDB",
+          "y": "07B42B7809D255634CBF05F6A8415D5A0DDADE5FADA4A2347443FF5C8AA9C615",
+          "z": "265723A639B483E43CF51B2FA24FE9C6F9A8E7A91764998FBD301415F3EDD7E0"
+        },
+        "inputs": {
+          "bid": "backup-id-with-timestamp",
+          "did": "device-with-long-name",
+          "pin": "complex-pin-12345",
+          "uid": "very-long-user-identifier"
+        },
+        "inputs_hex": {
+          "bid": "6261636b75702d69642d776974682d74696d657374616d70",
+          "did": "6465766963652d776974682d6c6f6e672d6e616d65",
+          "pin": "636f6d706c65782d70696e2d3132333435",
+          "uid": "766572792d6c6f6e672d757365722d6964656e746966696572"
+        }
+      },
+      {
+        "description": "Unicode inputs",
+        "expected_compressed_hex": "12b0a52e917a5c34c1d5a41d841c1b5ae44f4dd2840bed9c75077f8010802024",
+        "expected_point": {
+          "t": "7FEC324FBD85074281B14C9303C7B13B40C15133B66429E32A789AE53E9E8547",
+          "x": "6FDC7C2223E69DA9B48AC7473EB64F82B08B824CFA9AF44696833E80712EF34B",
+          "y": "3F104AE42C8F80C21F922A329385CC2E9A3E077DB5A8378B0C8045AFFF0D05B4",
+          "z": "1D426E948BCC88736D2900B0308DE08FF5A0BCB311D39CA396F2ADB211210D1D"
+        },
+        "inputs": {
+          "bid": "备份",
+          "did": "设备",
+          "pin": "密码",
+          "uid": "用户"
+        },
+        "inputs_hex": {
+          "bid": "e5a487e4bbbd",
+          "did": "e8aebee5a487",
+          "pin": "e5af86e7a081",
+          "uid": "e794a8e688b7"
+        }
+      }
+    ],
+    "point_addition_example": {
+      "point1": {
+        "t": "44BAACCE9A8EE9C8C7E71E0401E9BAF89B37DEC448D350F2F7D52ABF5216634D",
+        "x": "33ACDFA865421ACE922A049703FBF5AF1B5236875A7F121715F82596E4062CA4",
+        "y": "59563B21E9B5DE69A01E0B281AC9FCB304EAF975644C13DDA2B48EEBD242C009",
+        "z": "5B044A3B4CE39A8179E5B5BD7D0503FB43837026F407B700BCD311097C930D5D"
+      },
+      "point2": {
+        "t": "44BAACCE9A8EE9C8C7E71E0401E9BAF89B37DEC448D350F2F7D52ABF5216634D",
+        "x": "33ACDFA865421ACE922A049703FBF5AF1B5236875A7F121715F82596E4062CA4",
+        "y": "59563B21E9B5DE69A01E0B281AC9FCB304EAF975644C13DDA2B48EEBD242C009",
+        "z": "5B044A3B4CE39A8179E5B5BD7D0503FB43837026F407B700BCD311097C930D5D"
+      },
+      "result": {
+        "t": "57EF237A59004D7B710E2FCA81CC62FC25370D6F75D74B1D6EA876830E0F48E3",
+        "x": "7653B1E0CF245D0A086B7339B674258C584BBA18A1F367D92B8AD1F244BDBA5C",
+        "y": "24D895426361E59082FD606289800645558CBE77E85411D8A7C706833F1E26EE",
+        "z": "7F376D9A06F03CE239FD95E17C8D186BD029E1F75B7282987F5BCACAD326D14D"
+      }
+    },
+    "point_operations_consistent": false,
+    "scalar_multiplication_example": {
+      "point": {
+        "t": "44BAACCE9A8EE9C8C7E71E0401E9BAF89B37DEC448D350F2F7D52ABF5216634D",
+        "x": "33ACDFA865421ACE922A049703FBF5AF1B5236875A7F121715F82596E4062CA4",
+        "y": "59563B21E9B5DE69A01E0B281AC9FCB304EAF975644C13DDA2B48EEBD242C009",
+        "z": "5B044A3B4CE39A8179E5B5BD7D0503FB43837026F407B700BCD311097C930D5D"
+      },
+      "result": {
+        "t": "4CCE1F970A137BB546BEAC715640CAE5ADB136396D9B16412A8D670A7291544C",
+        "x": "3DF9450EE042BA7CD4BF8303C3A9C73A04BCE48EDACCCA8D00C34BF6B167E3BA",
+        "y": "7ECAC240252BFC2FD0794761CF29AE90BF9945851A39FE1EB03FFD2F98B688F9",
+        "z": "6B4A3579A7A3B81CA30CF5CA730490DE041F15F1B6C55F79DED3703EA444D620"
+      },
+      "scalar": "2"
+    }
+  },
+  "ed25519_scalar_mult": [
+    {
+      "base_point": {
+        "t": "77727ED9D965EE400020EF5DAF6775C5C7953DC7C0CDEC066A80AE3171F8A62A",
+        "x": "309A3CD0A3E6474E77B4DBE34D5A956325C4081A645AD648442AD13289281256",
+        "y": "289CD986CDC58B2467C527294DBD1B1CE0EFFF7B4B33FB77A5D23BDA0BC39442",
+        "z": "2FFD12747228942E5190D6B3893952D620A39989E3CEE70B6C46C9DFE8E29E79"
+      },
+      "description": "Scalar multiplication: 0",
+      "expected_compressed_hex": "0100000000000000000000000000000000000000000000000000000000000000",
+      "expected_result": {
+        "t": "0",
+        "x": "0",
+        "y": "1",
+        "z": "1"
+      },
+      "scalar": "0",
+      "scalar_hex": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "base_point": {
+        "t": "77727ED9D965EE400020EF5DAF6775C5C7953DC7C0CDEC066A80AE3171F8A62A",
+        "x": "309A3CD0A3E6474E77B4DBE34D5A956325C4081A645AD648442AD13289281256",
+        "y": "289CD986CDC58B2467C527294DBD1B1CE0EFFF7B4B33FB77A5D23BDA0BC39442",
+        "z": "2FFD12747228942E5190D6B3893952D620A39989E3CEE70B6C46C9DFE8E29E79"
+      },
+      "description": "Scalar multiplication: 1",
+      "expected_compressed_hex": "8cd8a4489dea2bc647afbb62c9e005e51717e30bd931b7ec95bea9ee4ec5fece",
+      "expected_result": {
+        "t": "63BDA160D97B573CECF0D042F08A349A6F01486C28C12EECE2BB8983C1A7CD08",
+        "x": "54A0643C6D958F528849562751A836E2D615CBB9C3BE17090D3C008DD913C7FB",
+        "y": "523FCC7BBA1AD10C62DB57AA544F473DB3FB68B6FE78B42320268723F5CC42F7",
+        "z": "34A40B524D9C852C8D894D9480E5E1450F797DEAA61CE87C7313D9AFCD3729D7"
+      },
+      "scalar": "1",
+      "scalar_hex": "0000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "base_point": {
+        "t": "77727ED9D965EE400020EF5DAF6775C5C7953DC7C0CDEC066A80AE3171F8A62A",
+        "x": "309A3CD0A3E6474E77B4DBE34D5A956325C4081A645AD648442AD13289281256",
+        "y": "289CD986CDC58B2467C527294DBD1B1CE0EFFF7B4B33FB77A5D23BDA0BC39442",
+        "z": "2FFD12747228942E5190D6B3893952D620A39989E3CEE70B6C46C9DFE8E29E79"
+      },
+      "description": "Scalar multiplication: 2",
+      "expected_compressed_hex": "3962ad0ad5496f8c516591e9033a41ff74a58759a765d06964dd191a6c4074f6",
+      "expected_result": {
+        "t": "6CD93C98C2FE9D46C9952061D926476A39D056E529BD08C9754B07506E2EA3EC",
+        "x": "7B2BD59ACD84F610F56B656BC6C23CACCC19298230DC083891A6C78B91C6681E",
+        "y": "72ADBB20F1A3957C1D3CE94778E7E8589ED1E39B6D76ECDB55E1C851C58EF992",
+        "z": "2D95C2200AC5708224EBEDC66D9381BB8514136DD7A0A6872918CAAB3AD79455"
+      },
+      "scalar": "2",
+      "scalar_hex": "0000000000000000000000000000000000000000000000000000000000000002"
+    },
+    {
+      "base_point": {
+        "t": "77727ED9D965EE400020EF5DAF6775C5C7953DC7C0CDEC066A80AE3171F8A62A",
+        "x": "309A3CD0A3E6474E77B4DBE34D5A956325C4081A645AD648442AD13289281256",
+        "y": "289CD986CDC58B2467C527294DBD1B1CE0EFFF7B4B33FB77A5D23BDA0BC39442",
+        "z": "2FFD12747228942E5190D6B3893952D620A39989E3CEE70B6C46C9DFE8E29E79"
+      },
+      "description": "Scalar multiplication: small_scalar",
+      "expected_compressed_hex": "f7f3fc1cfc6b65148a3645079ecfdd532fde247eafe7a274fb55c8eb423b1072",
+      "expected_result": {
+        "t": "72E85E654D9B29BD1DB068C48FE45B0B0D86556A303B1F5516C7D7552F4B7B08",
+        "x": "44EA64DD2E2C4A2E9F9F2B6B774CEAD1A496CC758D200A22C2508A81B645C5BD",
+        "y": "68F606721724BB6408EDC1689226E04DAAC5F888CE040DD9F3A3E43DB8BB830B",
+        "z": "371D85D504BCC3F63894FB01F1D977D0CFB67F9E8E074BEFDF426DF5FE9973B1"
+      },
+      "scalar": "12345",
+      "scalar_hex": "0000000000000000000000000000000000000000000000000000000000003039"
+    },
+    {
+      "base_point": {
+        "t": "77727ED9D965EE400020EF5DAF6775C5C7953DC7C0CDEC066A80AE3171F8A62A",
+        "x": "309A3CD0A3E6474E77B4DBE34D5A956325C4081A645AD648442AD13289281256",
+        "y": "289CD986CDC58B2467C527294DBD1B1CE0EFFF7B4B33FB77A5D23BDA0BC39442",
+        "z": "2FFD12747228942E5190D6B3893952D620A39989E3CEE70B6C46C9DFE8E29E79"
+      },
+      "description": "Scalar multiplication: medium_scalar",
+      "expected_compressed_hex": "ededa5f1c5db8ced32300134f84ed26263c0c31d71fd9deacca5119e82b19794",
+      "expected_result": {
+        "t": "1F53BDB8C08E620628CAEB071824EFB52C6003D12849981C62984635643A9E87",
+        "x": "C843F19B98C34163DF9F93AA2B891DD9D63AB8F0678CFAB45BB0A93015EBC2",
+        "y": "0DF2E1E35AFF60134AC3CC3FCCA2F76C398797F8E6C066C9D6AEE6EA4798B722",
+        "z": "646E37975A4F2C1CA86A1C3048C9E304F1D261644C62E5D4ABFF44BE0C7FEE19"
+      },
+      "scalar": "1311768467463790320",
+      "scalar_hex": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "base_point": {
+        "t": "77727ED9D965EE400020EF5DAF6775C5C7953DC7C0CDEC066A80AE3171F8A62A",
+        "x": "309A3CD0A3E6474E77B4DBE34D5A956325C4081A645AD648442AD13289281256",
+        "y": "289CD986CDC58B2467C527294DBD1B1CE0EFFF7B4B33FB77A5D23BDA0BC39442",
+        "z": "2FFD12747228942E5190D6B3893952D620A39989E3CEE70B6C46C9DFE8E29E79"
+      },
+      "description": "Scalar multiplication: large_scalar",
+      "expected_compressed_hex": "a7e3a57188cb3b85a7d7cc26ef910fecb16b28d02316008c0ed4bcdb8549d93d",
+      "expected_result": {
+        "t": "1B3A27936A6B241E4E79CB85D751226F45E3514A3D9CBC723C3E22670AC428E2",
+        "x": "3BFB1201024BA296DE47279DD20FD368155A281EE56A5082C5C706FC35006DB0",
+        "y": "5BE40F1ECE64D64628EA0D7F5FC907240F5FC9DBA5F468D022142CB07F8BE75F",
+        "z": "5CA03DA4F74F865F450A045EA7F31DF5649B3047A928F0ED953F775A97597A9F"
+      },
+      "scalar": "7237005577332262213973186563042994240857116359379907606001950938285454250988",
+      "scalar_hex": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "base_point": {
+        "t": "77727ED9D965EE400020EF5DAF6775C5C7953DC7C0CDEC066A80AE3171F8A62A",
+        "x": "309A3CD0A3E6474E77B4DBE34D5A956325C4081A645AD648442AD13289281256",
+        "y": "289CD986CDC58B2467C527294DBD1B1CE0EFFF7B4B33FB77A5D23BDA0BC39442",
+        "z": "2FFD12747228942E5190D6B3893952D620A39989E3CEE70B6C46C9DFE8E29E79"
+      },
+      "description": "Scalar multiplication: random_1",
+      "expected_compressed_hex": "a9087d733af0cce0d6dfd9cc1360279186b1d6ecdac6dfe358f9707cb109fea1",
+      "expected_result": {
+        "t": "4617C25C0F43DD106AE80C88DE999FAE337B9ED575B0F1EE5961B03442BB6310",
+        "x": "7A7E6E16DA4E913C47D4E82C8119D4CA58E5C0200F0B1ED8485D7D000B5F25D9",
+        "y": "48BA3AA18DCFE11340B8E3EF77BA9D9E2574CDC6C029CBEA17F2F89E2389E3CF",
+        "z": "3AD15FB0A7618A9859FD9A04D29233F7E622A04537D73B199C2ACC2C5B846D72"
+      },
+      "scalar": "17564944486222290824",
+      "scalar_hex": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "base_point": {
+        "t": "77727ED9D965EE400020EF5DAF6775C5C7953DC7C0CDEC066A80AE3171F8A62A",
+        "x": "309A3CD0A3E6474E77B4DBE34D5A956325C4081A645AD648442AD13289281256",
+        "y": "289CD986CDC58B2467C527294DBD1B1CE0EFFF7B4B33FB77A5D23BDA0BC39442",
+        "z": "2FFD12747228942E5190D6B3893952D620A39989E3CEE70B6C46C9DFE8E29E79"
+      },
+      "description": "Scalar multiplication: random_2",
+      "expected_compressed_hex": "77d1e22851b0b51ac6ad2e33a0b8124e71dae125c345d8d62cbdb6abea863855",
+      "expected_result": {
+        "t": "5183ABB1898622AFBF47E186FDC9B630CFFE5668D4BD234F615A1B3EA5A99F33",
+        "x": "26381A077207B6872D36D5675DA72B7DD69C6B56F590A3A57D366E0FDB2B6C2D",
+        "y": "044985B93C2286189AD302EC879D0C770B08D1848121B88C7497CD685AA225F0",
+        "z": "78ECF12460CBD86B4A0620DAEE3AAF31F6AF738D5E0545945C8557342A065D70"
+      },
+      "scalar": "14464977361243330374",
+      "scalar_hex": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "base_point": {
+        "t": "77727ED9D965EE400020EF5DAF6775C5C7953DC7C0CDEC066A80AE3171F8A62A",
+        "x": "309A3CD0A3E6474E77B4DBE34D5A956325C4081A645AD648442AD13289281256",
+        "y": "289CD986CDC58B2467C527294DBD1B1CE0EFFF7B4B33FB77A5D23BDA0BC39442",
+        "z": "2FFD12747228942E5190D6B3893952D620A39989E3CEE70B6C46C9DFE8E29E79"
+      },
+      "description": "Scalar multiplication: random_3",
+      "expected_compressed_hex": "e36639316e8516f61538fc23ed2ca0dcba2ef30516e9ec7c76324f4836b14450",
+      "expected_result": {
+        "t": "39908056059F88A40274BAC7634902DC0D90C8DBA2907D5E2C9BF3EE3A8D0A67",
+        "x": "3E784E203264A66FD9BDEE40B8B710BA38F98D26328B5D949EA7B20D7BB34F39",
+        "y": "3339AFEC730116FEC49B79D7FBCC524B08DAC2F40D70D355F28C81125E621E87",
+        "z": "197A7DEDFC4BABDF2DFC536F08B5CDBEE03FA4F6240D35B37492A878D2974EF7"
+      },
+      "scalar": "4192397290351723356",
+      "scalar_hex": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "hkdf_vectors": [
+    {
+      "description": "Basic HKDF",
+      "expected_hex": "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865",
+      "info_hex": "f0f1f2f3f4f5f6f7f8f9",
+      "input_key_hex": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+      "output_length": 42,
+      "salt_hex": "000102030405060708090a0b0c"
+    },
+    {
+      "description": "Empty salt",
+      "expected_hex": "8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d",
+      "info_hex": "",
+      "input_key_hex": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+      "output_length": 32,
+      "salt_hex": ""
+    },
+    {
+      "description": "Short output",
+      "expected_hex": "103957ce80b172b191d63184a321985b",
+      "info_hex": "696e666f",
+      "input_key_hex": "deadbeefcafebabe",
+      "output_length": 16,
+      "salt_hex": "73616c74"
+    }
+  ],
+  "metadata": {
+    "description": "OpenADP Enhanced Test Vectors - Ed25519 & Shamir",
+    "generator": "C++ SDK Enhanced",
+    "purpose": "Ed25519 scalar multiplication and Shamir Secret Sharing mod q test vectors",
+    "timestamp": "2024-12-19",
+    "version": "1.1"
+  },
+  "prefixed_vectors": [
+    {
+      "description": "Empty data",
+      "expected_hex": "0000",
+      "input": "",
+      "input_hex": "",
+      "length": 0
+    },
+    {
+      "description": "Data: Hello",
+      "expected_hex": "050048656c6c6f",
+      "input": "Hello",
+      "input_hex": "48656c6c6f",
+      "length": 5
+    },
+    {
+      "description": "Data: OpenADP",
+      "expected_hex": "07004f70656e414450",
+      "input": "OpenADP",
+      "input_hex": "4f70656e414450",
+      "length": 7
+    },
+    {
+      "description": "Data: A longer test string",
+      "expected_hex": "140041206c6f6e676572207465737420737472696e67",
+      "input": "A longer test string",
+      "input_hex": "41206c6f6e676572207465737420737472696e67",
+      "length": 20
+    }
+  ],
+  "sha256_vectors": [
+    {
+      "description": "Empty string",
+      "expected": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "input": "",
+      "input_hex": ""
+    },
+    {
+      "description": "Hello World",
+      "expected": "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e",
+      "input": "Hello World",
+      "input_hex": "48656c6c6f20576f726c64"
+    },
+    {
+      "description": "Single byte",
+      "expected": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+      "input": "a",
+      "input_hex": "61"
+    },
+    {
+      "description": "OpenADP test",
+      "expected": "dbdbdbc97c79b7088ca00bfbb59cdefb4319151fd20aa3c0ab7bab0e526cd637",
+      "input": "OpenADP test vector",
+      "input_hex": "4f70656e414450207465737420766563746f72"
+    },
+    {
+      "description": "Unicode",
+      "expected": "018da3b058401e3e1cc755ee85c212638cd4a0e37dab37554dda7dcac579e85a",
+      "input": "用户设备备份",
+      "input_hex": "e794a8e688b7e8aebee5a487e5a487e4bbbd"
+    }
+  ],
+  "shamir_secret_sharing": [
+    {
+      "description": "2-of-3 Shamir Secret Sharing with small secret",
+      "prime_modulus": "7237005577332262213973186563042994240857116359379907606001950938285454250989",
+      "prime_modulus_hex": "1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed",
+      "recovery_test": {
+        "description": "Recover secret using shares 1 and 2",
+        "expected_secret": "42",
+        "used_shares": [
+          0,
+          1
+        ]
+      },
+      "secret": "42",
+      "shares": [
+        {
+          "x": 1,
+          "y": "1E381D6D5D1AC0C7B4B8A3D28ACC44E6EAE00D3F6A80CA10E76F34D138828ED7",
+          "y_hex": "1E381D6D5D1AC0C7B4B8A3D28ACC44E6EAE00D3F6A80CA10E76F34D138828ED7"
+        },
+        {
+          "x": 2,
+          "y": "3C703ADABA35818F697147A5159889CDD5C01A7ED5019421CEDE69A271051D6C",
+          "y_hex": "3C703ADABA35818F697147A5159889CDD5C01A7ED5019421CEDE69A271051D6C"
+        },
+        {
+          "x": 3,
+          "y": "5AA85848175042571E29EB77A064CEB4C0A027BE3F825E32B64D9E73A987AC01",
+          "y_hex": "5AA85848175042571E29EB77A064CEB4C0A027BE3F825E32B64D9E73A987AC01"
+        }
+      ],
+      "threshold": 2
+    },
+    {
+      "description": "2-of-3 Shamir Secret Sharing with large secret",
+      "prime_modulus": "7237005577332262213973186563042994240857116359379907606001950938285454250989",
+      "prime_modulus_hex": "1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed",
+      "recovery_test": {
+        "description": "Recover secret using shares 2 and 3",
+        "expected_secret": "7237005577332262213973186563042994240857116359379907606001950938285454238644",
+        "used_shares": [
+          1,
+          2
+        ]
+      },
+      "secret": "7237005577332262213973186563042994240857116359379907606001950938285454238644",
+      "secret_hex": "0ffffffffffffffffffffffffffffff9cf2102158038032a74e7d5a3c7c3c4c",
+      "shares": [
+        {
+          "x": 1,
+          "y": "5DB67CDA05A6E888EE6500C9689F26FF64D4DDB44F828180C45E9F3B4A9F88DA",
+          "y_hex": "5DB67CDA05A6E888EE6500C9689F26FF64D4DDB44F828180C45E9F3B4A9F88DA"
+        },
+        {
+          "x": 2,
+          "y": "990AD87A98356BAED8A06D6EC8E73C9B707222613EA48F357D7BBB06FAEFA1CD",
+          "y_hex": "990AD87A98356BAED8A06D6EC8E73C9B707222613EA48F357D7BBB06FAEFA1CD"
+        },
+        {
+          "x": 3,
+          "y": "D45F341B2AC3EED4C2DBDA14292F52377C0F670E2DC69CEA3698D6D2AB3FBAC0",
+          "y_hex": "D45F341B2AC3EED4C2DBDA14292F52377C0F670E2DC69CEA3698D6D2AB3FBAC0"
+        }
+      ],
+      "threshold": 2
+    },
+    {
+      "description": "3-of-5 Shamir Secret Sharing with random secret",
+      "prime_modulus": "7237005577332262213973186563042994240857116359379907606001950938285454250989",
+      "prime_modulus_hex": "1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed",
+      "recovery_test": {
+        "description": "Recover secret using shares 1, 3, and 5",
+        "expected_secret": "6990828455056816276",
+        "used_shares": [
+          0,
+          2,
+          4
+        ]
+      },
+      "secret": "6990828455056816276",
+      "secret_hex": "00000000000000000000000000000000000000000000000061046970dd5ab894",
+      "shares": [
+        {
+          "x": 1,
+          "y": "251DDA858090A4C3196131812444ED0C70A9B233D40C1DB109929662C610BA97",
+          "y_hex": "251DDA858090A4C3196131812444ED0C70A9B233D40C1DB109929662C610BA97"
+        },
+        {
+          "x": 2,
+          "y": "CE891D28EDEFA2DBAFF4288A93740C5A52D3A0D9D84BC65D30AF8C91D8F8AF2F",
+          "y_hex": "CE891D28EDEFA2DBAFF4288A93740C5A52D3A0D9D84BC65D30AF8C91D8F8AF2F"
+        },
+        {
+          "x": 3,
+          "y": "FC41C7EA481CFA49C3B8E51C4D8D5DE9A67DCBF20CBF009D7D7F27DE8F39440F",
+          "y_hex": "FC41C7EA481CFA49C3B8E51C4D8D5DE9A67DCBF20CBF009D7D7F27DE8F39440F"
+        },
+        {
+          "x": 4,
+          "y": "AE47DAC98F18AB0D54AF67365290E1BA6BA8337C7165CC71F0016848E8D27937",
+          "y_hex": "AE47DAC98F18AB0D54AF67365290E1BA6BA8337C7165CC71F0016848E8D27937"
+        },
+        {
+          "x": 5,
+          "y": "E49B55C6C2E2B52662D7AED8A27E97CCA252D779064029DA88364DCFE5C44AD6",
+          "y_hex": "E49B55C6C2E2B52662D7AED8A27E97CCA252D779064029DA88364DCFE5C44AD6"
+        }
+      ],
+      "threshold": 3
+    }
+  ]
+}

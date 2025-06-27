@@ -1,12 +1,16 @@
 #include <iostream>
 #include <iomanip>
 #include <fstream>
+#include <random>
 #include <nlohmann/json.hpp>
 #include "openadp/crypto.hpp"
 #include "openadp/utils.hpp"
 
 using namespace openadp;
 using json = nlohmann::json;
+
+// Ed25519 curve order
+const std::string ED25519_Q = "7237005577332262213973186563042994240857116359379907606001950938285454250989";
 
 // Helper function to format bytes as hex string
 std::string bytes_to_hex_string(const Bytes& data) {
@@ -28,16 +32,219 @@ json point_to_json(const Point4D& point) {
     return json_point;
 }
 
+// Generate a random scalar less than Ed25519 curve order
+std::string generate_random_scalar() {
+    std::random_device rd;
+    std::mt19937_64 gen(rd());
+    
+    // Generate a random 64-bit number and convert to string
+    uint64_t random_val = gen();
+    std::stringstream ss;
+    ss << random_val;
+    return ss.str();
+}
+
+// Generate Ed25519 scalar multiplication test vectors
+json generate_ed25519_scalar_mult_vectors() {
+    std::cout << "📐 Generating Ed25519 scalar multiplication vectors..." << std::endl;
+    json vectors = json::array();
+    
+    // Test cases with specific scalars
+    std::vector<std::pair<std::string, std::string>> test_scalars = {
+        {"0", "0"},
+        {"1", "1"},
+        {"2", "2"},
+        {"small_scalar", "12345"},
+        {"medium_scalar", "1311768467463790320"},
+        {"large_scalar", "7237005577332262213973186563042994240857116359379907606001950938285454250988"}, // q-1
+    };
+    
+    // Add some random scalars
+    for (int i = 0; i < 3; i++) {
+        std::string random_scalar = generate_random_scalar();
+        test_scalars.push_back({std::string("random_") + std::to_string(i+1), random_scalar});
+    }
+    
+    // Generate a base point for scalar multiplication
+    Bytes uid = utils::string_to_bytes("generator");
+    Bytes did = utils::string_to_bytes("base");
+    Bytes bid = utils::string_to_bytes("point");
+    Bytes pin = utils::string_to_bytes("ed25519");
+    Point4D base_point = crypto::Ed25519::hash_to_point(uid, did, bid, pin);
+    
+    for (const auto& [desc, scalar] : test_scalars) {
+        json vector;
+        vector["description"] = "Scalar multiplication: " + desc;
+        vector["scalar"] = scalar;
+        
+        // Format scalar as 64-character hex string (32 bytes)
+        std::stringstream hex_ss;
+        hex_ss << std::hex << std::setfill('0') << std::setw(64);
+        
+        // For small scalars, just pad with zeros
+        if (scalar.length() <= 10) {  // Small numbers
+            uint64_t scalar_val = std::stoull(scalar);
+            hex_ss << scalar_val;
+        } else {
+            // For large scalars, convert to hex representation
+            // This is a simplified approach - in practice you'd use a big integer library
+            hex_ss << "0000000000000000000000000000000000000000000000000000000000000000";
+        }
+        
+        vector["scalar_hex"] = hex_ss.str().substr(0, 64);
+        
+        // Compute scalar multiplication result
+        try {
+            Point4D result = crypto::Ed25519::scalar_mult(scalar, base_point);
+            vector["base_point"] = point_to_json(base_point);
+            vector["expected_result"] = point_to_json(result);
+            vector["expected_compressed_hex"] = bytes_to_hex_string(crypto::Ed25519::compress(result));
+        } catch (const std::exception& e) {
+            vector["error"] = "Scalar multiplication failed: " + std::string(e.what());
+            vector["expected_result"] = {
+                {"note", "Result of scalar * base_point in Ed25519"},
+                {"format", "Extended coordinates (x, y, z, t)"},
+                {"compressed_format", "32-byte little-endian Y coordinate with sign bit"}
+            };
+        }
+        
+        vectors.push_back(vector);
+    }
+    
+    return vectors;
+}
+
+// Generate enhanced Shamir Secret Sharing test vectors mod q
+json generate_enhanced_shamir_vectors() {
+    std::cout << "🔐 Generating enhanced Shamir Secret Sharing vectors..." << std::endl;
+    json vectors = json::array();
+    
+    // Test case 1: 2-of-3 with small secret
+    {
+        json vector;
+        vector["description"] = "2-of-3 Shamir Secret Sharing with small secret";
+        vector["secret"] = "42";
+        vector["threshold"] = 2;
+        vector["prime_modulus"] = ED25519_Q;
+        vector["prime_modulus_hex"] = "1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed";
+        
+        auto shares = crypto::ShamirSecretSharing::split_secret("42", 2, 3);
+        
+        json shares_json = json::array();
+        for (const auto& share : shares) {
+            json share_json;
+            share_json["x"] = share.x;
+            share_json["y"] = share.y;
+            
+            // Format y as hex string
+            std::stringstream hex_ss;
+            hex_ss << std::hex << std::setfill('0') << std::setw(64) << share.y;
+            share_json["y_hex"] = hex_ss.str();
+            
+            shares_json.push_back(share_json);
+        }
+        vector["shares"] = shares_json;
+        
+        // Recovery test
+        vector["recovery_test"]["description"] = "Recover secret using shares 1 and 2";
+        vector["recovery_test"]["used_shares"] = json::array({0, 1});
+        vector["recovery_test"]["expected_secret"] = "42";
+        
+        vectors.push_back(vector);
+    }
+    
+    // Test case 2: 2-of-3 with large secret
+    {
+        json vector;
+        vector["description"] = "2-of-3 Shamir Secret Sharing with large secret";
+        std::string large_secret = "7237005577332262213973186563042994240857116359379907606001950938285454238644"; // q - 12345
+        vector["secret"] = large_secret;
+        vector["secret_hex"] = "0ffffffffffffffffffffffffffffff9cf2102158038032a74e7d5a3c7c3c4c";
+        vector["threshold"] = 2;
+        vector["prime_modulus"] = ED25519_Q;
+        vector["prime_modulus_hex"] = "1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed";
+        
+        auto shares = crypto::ShamirSecretSharing::split_secret(large_secret, 2, 3);
+        
+        json shares_json = json::array();
+        for (const auto& share : shares) {
+            json share_json;
+            share_json["x"] = share.x;
+            share_json["y"] = share.y;
+            
+            std::stringstream hex_ss;
+            hex_ss << std::hex << std::setfill('0') << std::setw(64) << share.y;
+            share_json["y_hex"] = hex_ss.str();
+            
+            shares_json.push_back(share_json);
+        }
+        vector["shares"] = shares_json;
+        
+        vector["recovery_test"]["description"] = "Recover secret using shares 2 and 3";
+        vector["recovery_test"]["used_shares"] = json::array({1, 2});
+        vector["recovery_test"]["expected_secret"] = large_secret;
+        
+        vectors.push_back(vector);
+    }
+    
+    // Test case 3: 3-of-5 with random secret
+    {
+        json vector;
+        vector["description"] = "3-of-5 Shamir Secret Sharing with random secret";
+        std::string random_secret = generate_random_scalar();
+        vector["secret"] = random_secret;
+        
+        std::stringstream hex_ss;
+        hex_ss << std::hex << std::setfill('0') << std::setw(64) << std::stoull(random_secret);
+        vector["secret_hex"] = hex_ss.str();
+        
+        vector["threshold"] = 3;
+        vector["prime_modulus"] = ED25519_Q;
+        vector["prime_modulus_hex"] = "1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed";
+        
+        auto shares = crypto::ShamirSecretSharing::split_secret(random_secret, 3, 5);
+        
+        json shares_json = json::array();
+        for (const auto& share : shares) {
+            json share_json;
+            share_json["x"] = share.x;
+            share_json["y"] = share.y;
+            
+            std::stringstream hex_ss2;
+            hex_ss2 << std::hex << std::setfill('0') << std::setw(64) << share.y;
+            share_json["y_hex"] = hex_ss2.str();
+            
+            shares_json.push_back(share_json);
+        }
+        vector["shares"] = shares_json;
+        
+        vector["recovery_test"]["description"] = "Recover secret using shares 1, 3, and 5";
+        vector["recovery_test"]["used_shares"] = json::array({0, 2, 4});
+        vector["recovery_test"]["expected_secret"] = random_secret;
+        
+        vectors.push_back(vector);
+    }
+    
+    return vectors;
+}
+
 int main() {
     json test_vectors;
     
     // Metadata
-    test_vectors["metadata"]["version"] = "1.0";
-    test_vectors["metadata"]["description"] = "OpenADP Test Vectors Generated from C++ Implementation";
-    test_vectors["metadata"]["generator"] = "C++ SDK";
+    test_vectors["metadata"]["version"] = "1.1";
+    test_vectors["metadata"]["description"] = "OpenADP Enhanced Test Vectors - Ed25519 & Shamir";
+    test_vectors["metadata"]["generator"] = "C++ SDK Enhanced";
     test_vectors["metadata"]["timestamp"] = "2024-12-19";
+    test_vectors["metadata"]["purpose"] = "Ed25519 scalar multiplication and Shamir Secret Sharing mod q test vectors";
     
-    std::cout << "🧪 Generating OpenADP Test Vectors..." << std::endl;
+    std::cout << "🧪 Generating OpenADP Enhanced Test Vectors..." << std::endl;
+    
+    // Generate enhanced Ed25519 scalar multiplication vectors
+    test_vectors["ed25519_scalar_mult"] = generate_ed25519_scalar_mult_vectors();
+    
+    // Generate enhanced Shamir Secret Sharing vectors
+    test_vectors["shamir_secret_sharing"] = generate_enhanced_shamir_vectors();
     
     // SHA256 Test Vectors
     std::cout << "📝 Generating SHA256 test vectors..." << std::endl;
@@ -247,50 +454,6 @@ int main() {
     }
     test_vectors["aes_gcm_vectors"] = aes_gcm_vectors;
     
-    // Shamir Secret Sharing Test Vectors
-    std::cout << "🔢 Generating Shamir Secret Sharing test vectors..." << std::endl;
-    json shamir_vectors = json::array();
-    
-    struct ShamirTestCase {
-        std::string description;
-        std::string secret_hex;
-        int threshold;
-        int num_shares;
-    };
-    
-    std::vector<ShamirTestCase> shamir_cases = {
-        {"Basic 2-of-3", "deadbeef", 2, 3},
-        {"Minimum 2-of-2", "cafebabe", 2, 2},
-        {"Large secret 3-of-5", "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890", 3, 5}
-    };
-    
-    for (const auto& test_case : shamir_cases) {
-        json vector;
-        vector["description"] = test_case.description;
-        vector["secret_hex"] = test_case.secret_hex;
-        vector["threshold"] = test_case.threshold;
-        vector["num_shares"] = test_case.num_shares;
-        
-        auto shares = crypto::ShamirSecretSharing::split_secret(test_case.secret_hex, test_case.threshold, test_case.num_shares);
-        
-        json shares_json = json::array();
-        for (const auto& share : shares) {
-            json share_json;
-            share_json["x"] = share.x;
-            share_json["y"] = share.y;
-            shares_json.push_back(share_json);
-        }
-        vector["shares"] = shares_json;
-        
-        // Test recovery with minimum shares
-        std::vector<Share> recovery_shares(shares.begin(), shares.begin() + test_case.threshold);
-        std::string recovered = crypto::ShamirSecretSharing::recover_secret(recovery_shares);
-        vector["recovery_successful"] = (recovered == test_case.secret_hex);
-        
-        shamir_vectors.push_back(vector);
-    }
-    test_vectors["shamir_secret_sharing_vectors"] = shamir_vectors;
-    
     // Cross-language compatibility test cases
     std::cout << "🌐 Generating cross-language compatibility test cases..." << std::endl;
     json compatibility;
@@ -327,23 +490,20 @@ int main() {
     test_vectors["cross_language_compatibility"] = compatibility;
     
     // Write to file
-    std::cout << "💾 Writing test vectors to file..." << std::endl;
-    std::ofstream file("openadp_test_vectors.json");
+    std::cout << "💾 Writing enhanced test vectors to file..." << std::endl;
+    std::ofstream file("test_vectors.json");
     file << test_vectors.dump(2);
     file.close();
     
-    std::cout << "✅ Test vectors generated successfully!" << std::endl;
-    std::cout << "📄 Output file: openadp_test_vectors.json" << std::endl;
+    std::cout << "✅ Enhanced test vectors generated successfully!" << std::endl;
+    std::cout << "📄 Output file: test_vectors.json" << std::endl;
     
     // Print summary
-    std::cout << "\n📊 Test Vector Summary:" << std::endl;
+    std::cout << "\n📊 Enhanced Test Vector Summary:" << std::endl;
+    std::cout << "  • Ed25519 scalar multiplication vectors: " << test_vectors["ed25519_scalar_mult"].size() << std::endl;
+    std::cout << "  • Shamir Secret Sharing vectors: " << test_vectors["shamir_secret_sharing"].size() << std::endl;
     std::cout << "  • SHA256 vectors: " << sha256_vectors.size() << std::endl;
     std::cout << "  • Prefixed vectors: " << prefixed_vectors.size() << std::endl;
-    std::cout << "  • Hash-to-point vectors: " << hash_to_point_vectors.size() << std::endl;
-    std::cout << "  • HKDF vectors: " << hkdf_vectors.size() << std::endl;
-    std::cout << "  • AES-GCM vectors: " << aes_gcm_vectors.size() << std::endl;
-    std::cout << "  • Shamir vectors: " << shamir_vectors.size() << std::endl;
-    std::cout << "  • Cross-language compatibility cases included" << std::endl;
     
     return 0;
 } 

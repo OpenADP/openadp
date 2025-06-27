@@ -105,16 +105,17 @@ endif()
 if(BUILD_TESTS OR GTest_FOUND OR GTEST_FOUND)
     set(TEST_SOURCES
         tests/test_crypto.cpp
-        tests/test_client.cpp
-        tests/test_keygen.cpp
-        tests/test_ocrypt.cpp
-        tests/test_noise.cpp
-        tests/test_noise_cross_language.cpp
+tests/test_crypto_vectors.cpp
+tests/test_client.cpp
+tests/test_keygen.cpp
+tests/test_ocrypt.cpp
+tests/test_noise.cpp
+tests/test_noise_cross_language.cpp
 tests/test_noise_debug.cpp
-        tests/test_base64.cpp
-        tests/test_hex.cpp
-        tests/test_openadp.cpp
-        tests/test_main.cpp
+tests/test_base64.cpp
+tests/test_hex.cpp
+tests/test_openadp.cpp
+tests/test_main.cpp
     )
 
     # Create test executable
