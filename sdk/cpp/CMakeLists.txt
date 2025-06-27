@@ -92,6 +92,15 @@ target_link_libraries(ocrypt-recover openadp)
 add_executable(noise_server tools/noise_server.cpp)
 target_link_libraries(noise_server openadp)
 
+# Test vector generator
+add_executable(generate_test_vectors generate_test_vectors.cpp)
+if(nlohmann_json_FOUND)
+    target_link_libraries(generate_test_vectors openadp nlohmann_json::nlohmann_json)
+else()
+    target_include_directories(generate_test_vectors PRIVATE ${nlohmann_json_INCLUDE_DIRS})
+    target_link_libraries(generate_test_vectors openadp ${nlohmann_json_LIBRARIES})
+endif()
+
 # Tests (only if Google Test is available)
 if(BUILD_TESTS OR GTest_FOUND OR GTEST_FOUND)
     set(TEST_SOURCES
