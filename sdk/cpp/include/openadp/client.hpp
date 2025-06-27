@@ -38,11 +38,13 @@ struct RegisterSecretRequest {
     int max_guesses;
     int64_t expiration;
     std::string b;
+    std::string auth_code;  // Auth code for this specific server
     
     RegisterSecretRequest(const Identity& identity, const std::string& password, 
-                         int max_guesses, int64_t expiration, const std::string& b)
+                         int max_guesses, int64_t expiration, const std::string& b,
+                         const std::string& auth_code = "")
         : identity(identity), password(password), max_guesses(max_guesses), 
-          expiration(expiration), b(b) {}
+          expiration(expiration), b(b), auth_code(auth_code) {}
 };
 
 // Recover secret request  
@@ -87,6 +89,7 @@ private:
     std::optional<Bytes> public_key_;
     std::unique_ptr<noise::NoiseState> noise_state_;
     bool handshake_complete_;
+    std::string session_id_;  // Store session ID for encrypted requests
     
 public:
     EncryptedOpenADPClient(const std::string& url, const std::optional<Bytes>& public_key, 

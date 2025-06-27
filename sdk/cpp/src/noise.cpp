@@ -2,6 +2,7 @@
 #include "openadp/types.hpp"
 #include "openadp/utils.hpp"
 #include "openadp/crypto.hpp"
+#include "openadp/debug.hpp"
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include <openssl/kdf.h>
@@ -301,6 +302,11 @@ std::pair<Bytes, Bytes> NoiseState::get_transport_keys() const {
 // Helper functions implementation
 
 Bytes perform_dh(const Bytes& private_key, const Bytes& public_key) {
+    if (debug::is_debug_mode_enabled()) {
+        debug::debug_log("DH operation: private_key size=" + std::to_string(private_key.size()) + 
+                        ", public_key size=" + std::to_string(public_key.size()));
+    }
+    
     if (private_key.size() != 32 || public_key.size() != 32) {
         throw OpenADPError("Invalid key size for DH");
     }
@@ -467,6 +473,15 @@ void mix_key(Bytes& ck, Bytes& k, const Bytes& input_key_material) {
 }
 
 Bytes generate_keypair_private() {
+    if (debug::is_debug_mode_enabled()) {
+        // In debug mode, use deterministic ephemeral secret
+        std::string hex_secret = debug::get_deterministic_ephemeral_secret();
+        Bytes key = utils::hex_decode(hex_secret);
+        debug::debug_log("Generated ephemeral key size: " + std::to_string(key.size()) + " bytes");
+        return key;
+    }
+    
+    // In normal mode, use cryptographically secure random
     Bytes private_key(32);
     if (RAND_bytes(private_key.data(), 32) != 1) {
         throw OpenADPError("Failed to generate private key");

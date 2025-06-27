@@ -40,9 +40,9 @@ std::string get_deterministic_main_secret() {
         throw std::runtime_error("get_deterministic_main_secret called outside debug mode");
     }
     
-    // Use the same large deterministic constant as Go implementation
+    // Use the same large deterministic constant as Python and Go implementations
     // This is the hex pattern reduced modulo Ed25519 group order q
-    std::string deterministic_secret = "23456789abcdef0fedcba9876543220ffd555c99f7c5421aa6ca577e195e5e23";
+    std::string deterministic_secret = "23456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23";
     
     debug_log("Using deterministic main secret r = 0x" + deterministic_secret);
     return deterministic_secret;
@@ -115,8 +115,9 @@ std::string get_deterministic_ephemeral_secret() {
     
     // Fixed ephemeral secret for reproducible Noise handshakes
     // This should be 32 bytes (64 hex chars) for X25519
+    // Match Python/Go implementation ending in 04
     debug_log("Using deterministic ephemeral secret");
-    return "0000000000000000000000000000000000000000000000000000000000000002";
+    return "0000000000000000000000000000000000000000000000000000000000000004";
 }
 
 } // namespace debug

@@ -102,10 +102,33 @@ GenerateEncryptionKeyResult generate_encryption_key(
         std::string b_hex = generate_random_scalar();
         
         // Generate base auth code
-        std::string base_auth_code = utils::random_hex(16);
+        std::string base_auth_code;
+        if (debug::is_debug_mode_enabled()) {
+            // Use the same deterministic value as Python
+            base_auth_code = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+            debug::debug_log("Using deterministic base auth code: " + base_auth_code);
+        } else {
+            base_auth_code = utils::random_hex(32); // 32 bytes = 64 hex chars
+        }
         
         // Generate server-specific auth codes
         AuthCodes auth_codes = generate_auth_codes(base_auth_code, server_infos);
+        
+        // Debug: Show auth codes
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("Generated base auth code: " + base_auth_code);
+            for (const auto& server_auth : auth_codes.server_auth_codes) {
+                debug::debug_log("Auth code for server " + server_auth.first + ": " + server_auth.second);
+            }
+        }
+        
+        // Debug: Show auth codes
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("Generated base auth code: " + base_auth_code);
+            for (const auto& server_auth : auth_codes.server_auth_codes) {
+                debug::debug_log("Auth code for server " + server_auth.first + ": " + server_auth.second);
+            }
+        }
         
         // Convert password to bytes
         Bytes password_bytes = utils::string_to_bytes(password);
@@ -137,7 +160,16 @@ GenerateEncryptionKeyResult generate_encryption_key(
             try {
                 client::EncryptedOpenADPClient client(server_info.url, server_info.public_key);
                 
-                client::RegisterSecretRequest request(identity, password, max_guesses, expiration, b_hex);
+                // Find the auth code for this server
+                auto auth_it = auth_codes.server_auth_codes.find(server_info.url);
+                std::string server_auth_code = (auth_it != auth_codes.server_auth_codes.end()) ? 
+                                               auth_it->second : auth_codes.base_auth_code;
+                
+                if (debug::is_debug_mode_enabled()) {
+                    debug::debug_log("Using auth code for server " + server_info.url + ": " + server_auth_code);
+                }
+                
+                client::RegisterSecretRequest request(identity, password, max_guesses, expiration, b_hex, server_auth_code);
                 nlohmann::json response = client.register_secret(request);
                 
                 if (response.contains("success") && response["success"].get<bool>()) {

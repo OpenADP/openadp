@@ -5,6 +5,8 @@
 #include <curl/curl.h>
 #include <sstream>
 #include <iostream>
+#include <unistd.h>
+#include <cstring>
 
 namespace openadp {
 namespace client {
@@ -51,7 +53,13 @@ JsonRpcResponse JsonRpcResponse::from_json(const nlohmann::json& json) {
     }
     
     if (json.contains("id")) {
-        response.id = json["id"].get<std::string>();
+        if (json["id"].is_string()) {
+            response.id = json["id"].get<std::string>();
+        } else if (json["id"].is_number()) {
+            response.id = std::to_string(json["id"].get<int>());
+        } else {
+            response.id = "null";
+        }
     }
     
     return response;
@@ -94,6 +102,12 @@ nlohmann::json BasicOpenADPClient::make_request(const std::string& method, const
     JsonRpcRequest request(method, params);
     std::string json_data = request.to_dict().dump();
     
+    // Debug: Show exactly what URL we're trying to connect to
+    if (debug::is_debug_mode_enabled()) {
+        debug::debug_log("CURL attempting to connect to URL: " + url_);
+        debug::debug_log("Sending JSON-RPC request: " + json_data);
+    }
+    
     // Set up CURL
     CurlResponse response;
     
@@ -119,7 +133,11 @@ nlohmann::json BasicOpenADPClient::make_request(const std::string& method, const
     curl_easy_cleanup(curl);
     
     if (res != CURLE_OK) {
-        throw OpenADPError("HTTP request failed: " + std::string(curl_easy_strerror(res)));
+        std::string error_msg = "HTTP request failed: " + std::string(curl_easy_strerror(res));
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("CURL error details: " + error_msg + " (URL: " + url_ + ")");
+        }
+        throw OpenADPError(error_msg);
     }
     
     if (response.response_code != 200) {
@@ -191,24 +209,27 @@ void EncryptedOpenADPClient::perform_handshake() {
     noise_state_->initialize_handshake(public_key_.value());
     
     // Create handshake payload
-    std::string session_id = utils::random_hex(16); // 16 bytes = 32 hex chars
-    Bytes payload = utils::string_to_bytes(session_id);
+    session_id_ = utils::random_hex(16); // 16 bytes = 32 hex chars
+    Bytes payload = utils::string_to_bytes("test");  // Match Python's b"test" payload
     
     // Write handshake message
     Bytes handshake_message = noise_state_->write_message(payload);
     
-    // Send handshake to server
-    nlohmann::json params;
-    params["payload"] = utils::base64_encode(handshake_message);
+    // Send handshake to server - match Python format with array parameters
+    nlohmann::json params = nlohmann::json::array();
+    params.push_back({
+        {"session", session_id_},
+        {"message", utils::base64_encode(handshake_message)}
+    });
     
-    nlohmann::json response = basic_client_->make_request("NoiseHandshake", params);
+    nlohmann::json response = basic_client_->make_request("noise_handshake", params);
     
-    if (!response.contains("payload")) {
+    if (!response.contains("message")) {
         throw OpenADPError("Invalid handshake response");
     }
     
     // Read server's handshake response
-    Bytes server_message = utils::base64_decode(response["payload"].get<std::string>());
+    Bytes server_message = utils::base64_decode(response["message"].get<std::string>());
     noise_state_->read_message(server_message);
     
     handshake_complete_ = true;
@@ -232,17 +253,20 @@ nlohmann::json EncryptedOpenADPClient::make_encrypted_request(const std::string&
     Bytes encrypted = noise_state_->encrypt(plaintext);
     
     // Send encrypted request
-    nlohmann::json encrypted_params;
-    encrypted_params["encrypted_data"] = utils::base64_encode(encrypted);
+    nlohmann::json encrypted_params = nlohmann::json::array();
+    encrypted_params.push_back({
+        {"session", session_id_},
+        {"data", utils::base64_encode(encrypted)}
+    });
     
-    nlohmann::json response = basic_client_->make_request("EncryptedCall", encrypted_params);
+    nlohmann::json response = basic_client_->make_request("encrypted_call", encrypted_params);
     
-    if (!response.contains("encrypted_data")) {
+    if (!response.contains("data")) {
         throw OpenADPError("Invalid encrypted response");
     }
     
     // Decrypt the response
-    Bytes encrypted_response = utils::base64_decode(response["encrypted_data"].get<std::string>());
+    Bytes encrypted_response = utils::base64_decode(response["data"].get<std::string>());
     Bytes decrypted = noise_state_->decrypt(encrypted_response);
     
     // Parse JSON response
@@ -259,19 +283,31 @@ nlohmann::json EncryptedOpenADPClient::make_encrypted_request(const std::string&
 }
 
 nlohmann::json EncryptedOpenADPClient::register_secret(const RegisterSecretRequest& request) {
-    nlohmann::json params;
-    params["uid"] = request.identity.uid;
-    params["did"] = request.identity.did;
-    params["bid"] = request.identity.bid;
-    params["password"] = request.password;
-    params["max_guesses"] = request.max_guesses;
-    params["expiration"] = request.expiration;
-    params["b"] = request.b;
+    // Get hostname for device ID (matching Python/Go behavior)
+    char hostname[256];
+    if (gethostname(hostname, sizeof(hostname)) != 0) {
+        strncpy(hostname, "unknown", sizeof(hostname) - 1);
+        hostname[sizeof(hostname) - 1] = '\0';
+    }
+    std::string device_id = std::string(hostname);
+    
+    // Server expects array format: [auth_code, uid, did, bid, version, x, y, max_guesses, expiration]
+    nlohmann::json params = nlohmann::json::array();
+    params.push_back(request.auth_code);           // auth_code from request
+    params.push_back(request.identity.uid);        // uid  
+    params.push_back(device_id);                   // did (hostname, not hardcoded)
+    params.push_back(request.identity.bid);        // bid
+    params.push_back(1);                           // version (always 1)
+    params.push_back(1);                           // x (always 1 for registration)
+    params.push_back(request.b);                   // y (the secret value as string)
+    params.push_back(request.max_guesses);         // max_guesses
+    params.push_back(request.expiration);          // expiration
     
     // Debug logging for request
     if (debug::is_debug_mode_enabled()) {
-        debug::debug_log("RegisterSecret request: method=RegisterSecret, uid=" + request.identity.uid + 
-                        ", did=" + request.identity.did + ", bid=" + request.identity.bid + 
+        debug::debug_log("RegisterSecret request: method=RegisterSecret, auth_code=" + request.auth_code + 
+                        ", uid=" + request.identity.uid + 
+                        ", did=" + device_id + ", bid=" + request.identity.bid + 
                         ", max_guesses=" + std::to_string(request.max_guesses) + 
                         ", expiration=" + std::to_string(request.expiration) + 
                         ", b=" + request.b + ", encrypted=" + (has_public_key() ? "true" : "false"));
@@ -357,6 +393,11 @@ nlohmann::json EncryptedOpenADPClient::list_backups(const Identity& identity) {
 std::vector<ServerInfo> get_servers(const std::string& servers_url) {
     std::string url = servers_url.empty() ? "https://servers.openadp.org/servers.json" : servers_url;
     
+    // Debug: Show what URL we're trying to fetch servers from
+    if (debug::is_debug_mode_enabled()) {
+        debug::debug_log("Fetching server list from: " + url);
+    }
+    
     try {
         // For REST endpoints, we need to use HTTP GET instead of JSON-RPC
         CURL* curl = curl_easy_init();
@@ -379,18 +420,43 @@ std::vector<ServerInfo> get_servers(const std::string& servers_url) {
         curl_easy_cleanup(curl);
         
         if (res != CURLE_OK) {
-            throw OpenADPError("HTTP request failed: " + std::string(curl_easy_strerror(res)));
+            std::string error_msg = "HTTP request failed: " + std::string(curl_easy_strerror(res));
+            if (debug::is_debug_mode_enabled()) {
+                debug::debug_log("Server registry fetch failed: " + error_msg);
+            }
+            throw OpenADPError(error_msg);
         }
         
         if (response.response_code != 200) {
-            throw OpenADPError("HTTP error: " + std::to_string(response.response_code));
+            std::string error_msg = "HTTP error: " + std::to_string(response.response_code);
+            if (debug::is_debug_mode_enabled()) {
+                debug::debug_log("Server registry HTTP error: " + error_msg);
+            }
+            throw OpenADPError(error_msg);
         }
         
         // Parse JSON response directly
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("Successfully fetched server registry, parsing JSON...");
+        }
+        
         nlohmann::json json_response = nlohmann::json::parse(response.data);
-        return parse_servers_response(json_response);
+        std::vector<ServerInfo> servers = parse_servers_response(json_response);
+        
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("Parsed " + std::to_string(servers.size()) + " servers from registry");
+            for (const auto& server : servers) {
+                debug::debug_log("  Server: " + server.url);
+            }
+        }
+        
+        return servers;
         
     } catch (const OpenADPError& e) {
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("OpenADPError in get_servers: " + std::string(e.what()));
+        }
+        
         // For explicit unreachable/test URLs, don't fall back - throw the error
         if (url.find("unreachable") != std::string::npos || 
             url.find("192.0.2.") != std::string::npos ||  // Test IP range
@@ -400,15 +466,27 @@ std::vector<ServerInfo> get_servers(const std::string& servers_url) {
             url.find("malformed") != std::string::npos) {
             throw; // Re-throw the original error for test URLs
         }
+        
         // Only fall back for the default server discovery URL
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("Falling back to default servers due to registry failure");
+        }
         return get_fallback_server_info();
     } catch (const std::exception& e) {
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("Exception in get_servers: " + std::string(e.what()));
+        }
+        
         // For parsing errors on test URLs, also throw
         if (url.find("malformed") != std::string::npos ||
             url.find("httpbin.org/html") != std::string::npos) {
             throw OpenADPError("Malformed JSON response");
         }
+        
         // For other parsing errors on real URLs, fall back
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("Falling back to default servers due to parsing error");
+        }
         return get_fallback_server_info();
     }
 }
@@ -427,6 +505,18 @@ ServerInfo parse_server_info(const nlohmann::json& server_json) {
     
     if (server_json.contains("public_key")) {
         std::string public_key_str = server_json["public_key"].get<std::string>();
+        
+        // Handle ed25519: prefix (C++11 compatible)
+        const std::string ed25519_prefix = "ed25519:";
+        if (public_key_str.length() >= ed25519_prefix.length() && 
+            public_key_str.substr(0, ed25519_prefix.length()) == ed25519_prefix) {
+            public_key_str = public_key_str.substr(ed25519_prefix.length());
+        }
+        
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("Parsing server public key: " + public_key_str);
+        }
+        
         Bytes public_key = utils::base64_decode(public_key_str);
         return ServerInfo(url, public_key);
     }
