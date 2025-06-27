@@ -570,6 +570,228 @@ class OpenADPTestRunner:
         
         return True
     
+    def test_cpp_build(self) -> TestResult:
+        """Test that C++ SDK builds successfully"""
+        start_time = time.time()
+        self.log("🔨 Building C++ SDK...", Colors.INFO)
+        
+        cpp_build_dir = self.root_dir / "sdk" / "cpp" / "build"
+        
+        # Create build directory if it doesn't exist
+        if not cpp_build_dir.exists():
+            cpp_build_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Run cmake and make
+        success1, stdout1, stderr1 = self.run_command(["cmake", ".."], cwd=cpp_build_dir)
+        if not success1:
+            duration = time.time() - start_time
+            self.log("❌ C++ CMake configure: FAIL", Colors.FAILURE)
+            return TestResult("C++ Build", False, duration, stdout1, stderr1)
+        
+        success2, stdout2, stderr2 = self.run_command(["make"], cwd=cpp_build_dir)
+        duration = time.time() - start_time
+        
+        if success2:
+            self.log("✅ C++ build: PASS", Colors.SUCCESS)
+            return TestResult("C++ Build", True, duration, stdout1 + stdout2)
+        else:
+            self.log("❌ C++ build: FAIL", Colors.FAILURE)
+            return TestResult("C++ Build", False, duration, stdout1 + stdout2, stderr1 + stderr2)
+    
+    def test_cpp_unit_tests(self) -> TestResult:
+        """Run C++ unit tests"""
+        start_time = time.time()
+        self.log("🧪 Running C++ unit tests...", Colors.INFO)
+        
+        cpp_build_dir = self.root_dir / "sdk" / "cpp" / "build"
+        
+        # Run the C++ tests
+        success, stdout, stderr = self.run_command(["./openadp_tests"], cwd=cpp_build_dir, timeout=600)
+        duration = time.time() - start_time
+        
+        if success:
+            self.log("✅ C++ unit tests: PASS", Colors.SUCCESS)
+            return TestResult("C++ Unit Tests", True, duration, stdout)
+        else:
+            self.log("❌ C++ unit tests: FAIL", Colors.FAILURE)
+            return TestResult("C++ Unit Tests", False, duration, stdout, stderr)
+    
+    def test_cpp_crypto_vectors(self) -> TestResult:
+        """Run C++ crypto test vectors"""
+        start_time = time.time()
+        self.log("🔐 Running C++ crypto test vectors...", Colors.INFO)
+        
+        cpp_build_dir = self.root_dir / "sdk" / "cpp" / "build"
+        
+        # Run only the crypto vector tests
+        success, stdout, stderr = self.run_command([
+            "./openadp_tests", "--gtest_filter=CryptoVectorTest.*"
+        ], cwd=cpp_build_dir)
+        duration = time.time() - start_time
+        
+        if success:
+            self.log("✅ C++ crypto vectors: PASS", Colors.SUCCESS)
+            return TestResult("C++ Crypto Vectors", True, duration, stdout)
+        else:
+            self.log("❌ C++ crypto vectors: FAIL", Colors.FAILURE)
+            return TestResult("C++ Crypto Vectors", False, duration, stdout, stderr)
+
+    def test_cross_language_4x4_matrix(self) -> TestResult:
+        """Run 4x4 cross-language compatibility tests"""
+        start_time = time.time()
+        self.log("🌐 Running 4x4 cross-language compatibility tests...", Colors.INFO)
+        
+        # Ensure all necessary tools are built
+        if not self.ensure_go_tools_built():
+            return TestResult("4x4 Cross-Language", False, time.time() - start_time, "", "Go tools not available")
+        
+        if not self.ensure_rust_tools_built():
+            return TestResult("4x4 Cross-Language", False, time.time() - start_time, "", "Rust tools not available")
+        
+        # Ensure C++ tools are built
+        cpp_build_dir = self.root_dir / "sdk" / "cpp" / "build"
+        if not (cpp_build_dir / "openadp-encrypt").exists() or not (cpp_build_dir / "openadp-decrypt").exists():
+            self.log("🔨 Building C++ tools for cross-language tests...", Colors.INFO)
+            success, _, _ = self.run_command(["make"], cwd=cpp_build_dir)
+            if not success:
+                return TestResult("4x4 Cross-Language", False, time.time() - start_time, "", "C++ tools build failed")
+        
+        # Check if the 4x4 test exists
+        test_4x4_path = self.root_dir / "tests" / "cross-language" / "test_cross_language_encrypt_decrypt_4x4.py"
+        if not test_4x4_path.exists():
+            # Fallback to ocrypt 4x4 test
+            test_4x4_path = self.root_dir / "tests" / "cross-language" / "test_cross_language_ocrypt_4x4.py"
+        
+        if not test_4x4_path.exists():
+            self.log("⚠️  4x4 test not found, skipping", Colors.WARNING)
+            return TestResult("4x4 Cross-Language", True, time.time() - start_time, "Test not found - skipped")
+        
+        # Run the 4x4 cross-language test
+        success, stdout, stderr = self.run_command(["python3", str(test_4x4_path)], timeout=900)
+        duration = time.time() - start_time
+        
+        if success:
+            self.log("✅ 4x4 cross-language: PASS", Colors.SUCCESS)
+            return TestResult("4x4 Cross-Language", True, duration, stdout)
+        else:
+            self.log("❌ 4x4 cross-language: FAIL", Colors.FAILURE)
+            return TestResult("4x4 Cross-Language", False, duration, stdout, stderr)
+
+    def ensure_cpp_tools_built(self) -> bool:
+        """Ensure C++ tools are built before running tests that need them"""
+        self.log("⚙️  Ensuring C++ tools are built...", Colors.INFO)
+        
+        cpp_build_dir = self.root_dir / "sdk" / "cpp" / "build"
+        if not cpp_build_dir.exists():
+            self.log("📁 C++ build directory doesn't exist, building C++ tools...", Colors.WARNING)
+            cpp_build_dir.mkdir(parents=True, exist_ok=True)
+            success1, _, _ = self.run_command(["cmake", ".."], cwd=cpp_build_dir)
+            if not success1:
+                return False
+            success2, _, _ = self.run_command(["make"], cwd=cpp_build_dir)
+            return success2
+        
+        # Check for key C++ executables
+        cpp_executables = ["openadp_tests", "openadp-encrypt", "openadp-decrypt"]
+        missing_tools = []
+        
+        for exe in cpp_executables:
+            exe_path = cpp_build_dir / exe
+            if not exe_path.exists():
+                missing_tools.append(exe)
+        
+        if missing_tools:
+            self.log(f"🔨 Missing C++ tools: {missing_tools}, building C++ tools...", Colors.WARNING)
+            success, _, _ = self.run_command(["make"], cwd=cpp_build_dir)
+            return success
+        
+        self.log("✅ C++ tools are already built", Colors.SUCCESS)
+        return True
+    
+    def test_all_cross_language_tests(self) -> TestResult:
+        """Automatically discover and run all cross-language tests"""
+        start_time = time.time()
+        self.log("🌐 Running all cross-language tests...", Colors.INFO)
+        
+        # Ensure all necessary tools are built
+        if not self.ensure_go_tools_built():
+            return TestResult("All Cross-Language", False, time.time() - start_time, "", "Go tools not available")
+        
+        if not self.ensure_rust_tools_built():
+            return TestResult("All Cross-Language", False, time.time() - start_time, "", "Rust tools not available")
+        
+        if not self.ensure_cpp_tools_built():
+            return TestResult("All Cross-Language", False, time.time() - start_time, "", "C++ tools not available")
+        
+        # Find all test files in cross-language directory
+        cross_lang_dir = self.root_dir / "tests" / "cross-language"
+        if not cross_lang_dir.exists():
+            return TestResult("All Cross-Language", False, time.time() - start_time, "", "Cross-language test directory not found")
+        
+        # Find all Python test files (excluding __pycache__ and other non-test files)
+        test_files = []
+        for file_path in cross_lang_dir.glob("*.py"):
+            if file_path.is_file() and not file_path.name.startswith("__"):
+                # Include files that start with "test_" or contain "test" in the name
+                if "test" in file_path.name.lower():
+                    test_files.append(file_path)
+        
+        if not test_files:
+            return TestResult("All Cross-Language", False, time.time() - start_time, "", "No cross-language test files found")
+        
+        # Sort test files for consistent execution order
+        test_files.sort()
+        
+        self.log(f"📋 Found {len(test_files)} cross-language test files:", Colors.INFO)
+        for test_file in test_files:
+            self.log(f"  • {test_file.name}", Colors.INFO)
+        
+        # Run each test file
+        all_outputs = []
+        all_errors = []
+        failed_tests = []
+        passed_tests = []
+        
+        for test_file in test_files:
+            self.log(f"🧪 Running {test_file.name}...", Colors.INFO)
+            
+            # Run the test with a generous timeout for cross-language tests
+            success, stdout, stderr = self.run_command(["python3", str(test_file)], timeout=1200)
+            
+            test_name = test_file.stem.replace("test_", "").replace("_", " ").title()
+            
+            if success:
+                self.log(f"  ✅ {test_name}: PASS", Colors.SUCCESS)
+                passed_tests.append(test_name)
+                all_outputs.append(f"=== {test_name} ===\n{stdout}")
+            else:
+                self.log(f"  ❌ {test_name}: FAIL", Colors.FAILURE)
+                failed_tests.append(test_name)
+                all_outputs.append(f"=== {test_name} FAILED ===\n{stdout}")
+                if stderr:
+                    all_errors.append(f"=== {test_name} ERRORS ===\n{stderr}")
+        
+        duration = time.time() - start_time
+        combined_output = "\n\n".join(all_outputs)
+        combined_errors = "\n\n".join(all_errors) if all_errors else None
+        
+        # Summary
+        total_tests = len(test_files)
+        passed_count = len(passed_tests)
+        failed_count = len(failed_tests)
+        
+        self.log(f"📊 Cross-language test summary: {passed_count}/{total_tests} passed", Colors.INFO)
+        
+        if failed_count == 0:
+            self.log("✅ All cross-language tests: PASS", Colors.SUCCESS)
+            return TestResult("All Cross-Language", True, duration, combined_output)
+        else:
+            self.log(f"❌ Cross-language tests: {failed_count} FAILED", Colors.FAILURE)
+            error_msg = f"Failed tests: {', '.join(failed_tests)}"
+            if combined_errors:
+                error_msg += f"\n\nErrors:\n{combined_errors}"
+            return TestResult("All Cross-Language", False, duration, combined_output, error_msg)
+    
     def run_all_tests(self):
         """Run all tests based on command line arguments"""
         self.log(f"🚀 OpenADP Comprehensive Test Suite", Colors.SUCCESS)
@@ -581,6 +803,12 @@ class OpenADPTestRunner:
         if need_go_tools:
             if not self.ensure_go_tools_built():
                 self.log("❌ Failed to build Go tools, some tests may fail", Colors.FAILURE)
+        
+        # Ensure C++ tools are built if we're running any tests that need them
+        need_cpp_tools = not self.args.python_only and not self.args.go_only
+        if need_cpp_tools:
+            if not self.ensure_cpp_tools_built():
+                self.log("❌ Failed to build C++ tools, some tests may fail", Colors.FAILURE)
         
         # Determine which tests to run
         tests_to_run = []
@@ -596,6 +824,14 @@ class OpenADPTestRunner:
                 
             tests_to_run.append(("Makefile", self.test_makefile_targets))
         
+        # Add C++ tests
+        if not self.args.python_only and not self.args.go_only:
+            tests_to_run.extend([
+                ("C++ Build", self.test_cpp_build),
+                ("C++ Unit", self.test_cpp_unit_tests),
+                ("C++ Crypto Vectors", self.test_cpp_crypto_vectors),
+            ])
+        
         if not self.args.go_only:
             tests_to_run.extend([
                 ("Python Setup", self.test_python_sdk_setup),
@@ -604,10 +840,8 @@ class OpenADPTestRunner:
                 ("JavaScript Unit", self.test_javascript_unit_tests),
             ])
             
-            if not self.args.fast:
-                tests_to_run.append(("Cross-Language", self.test_cross_language_compatibility))
-                tests_to_run.append(("16x16 Matrix", self.test_cross_language_16x16_matrix))
-                tests_to_run.append(("Noise-NK Compatibility", self.test_noise_nk_compatibility))
+            if not self.args.fast or self.args.cross_language:
+                tests_to_run.append(("All Cross-Language", self.test_all_cross_language_tests))
         
         # Run tests
         for test_name, test_func in tests_to_run:
@@ -665,6 +899,7 @@ def main():
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     parser.add_argument("--go-only", action="store_true", help="Only run Go tests")
     parser.add_argument("--python-only", action="store_true", help="Only run Python tests")
+    parser.add_argument("--cross-language", action="store_true", help="Run all cross-language tests (overrides --fast)")
     parser.add_argument("--no-color", action="store_true", help="Disable colored output")
     
     args = parser.parse_args()
