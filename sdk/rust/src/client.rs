@@ -264,7 +264,7 @@ impl OpenADPClient {
         let request = JsonRpcRequest::new(method.to_string(), params);
         let json_body = serde_json::to_string(&request)?;
         
-        println!("🔍 DEBUG: Making HTTP request to URL: {}", self.url);
+
         let response = timeout(self.timeout, 
             self.client
                 .post(&self.url)
@@ -349,7 +349,7 @@ impl OpenADPClient {
             request.b,
             request.guess_num
         ]);
-        println!("🔍 DEBUG: Sending encrypted request: method=RecoverSecret, params={}", params);
+
         let result = self.make_request("RecoverSecret", Some(params)).await?;
         
         // Server returns a dictionary for RecoverSecret
@@ -658,7 +658,7 @@ impl EncryptedOpenADPClient {
                     "id": 1
                 });
                 
-                println!("🔍 DEBUG: Starting Noise-NK handshake with URL: {}", self.basic_client.url);
+        
                 let handshake_response = timeout(self.basic_client.timeout,
                     self.basic_client.client
                         .post(&self.basic_client.url)
@@ -703,7 +703,7 @@ impl EncryptedOpenADPClient {
                 .ok_or_else(|| OpenADPError::Crypto("No session ID available".to_string()))?;
             
             let request = JsonRpcRequest::new(method.to_string(), params);
-            println!("🔍 DEBUG: Sending encrypted request: method={}, params={:?}", method, request.params);
+    
             
             let request_json = serde_json::to_vec(&request.to_dict())?;
             
@@ -839,10 +839,7 @@ impl EncryptedOpenADPClient {
             request.encrypted = true;
         }
         
-        println!("🔍 DEBUG: request.encrypted={}, has_public_key={}", request.encrypted, self.has_public_key());
-        
         if request.encrypted && self.has_public_key() {
-            println!("🔍 DEBUG: Taking ENCRYPTED path for RecoverSecret");
             // Use encrypted request - server expects array of parameters
             let params = Some(json!([
                 request.auth_code,
@@ -855,7 +852,7 @@ impl EncryptedOpenADPClient {
             
             let response = self.make_encrypted_request("RecoverSecret", params).await?;
 
-            println!("🔍 DEBUG: Raw JSON response from server: {}", serde_json::to_string_pretty(&response).unwrap_or_else(|_| format!("{:?}", response)));
+
 
             let version = response.get("version").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
             let x = response.get("x").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
@@ -875,7 +872,6 @@ impl EncryptedOpenADPClient {
                 expiration,
             })
         } else {
-            println!("🔍 DEBUG: Taking UNENCRYPTED path for RecoverSecret");
             // Use unencrypted request
             self.basic_client.recover_secret_standardized(request).await
         }

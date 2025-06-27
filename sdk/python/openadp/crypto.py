@@ -273,27 +273,15 @@ def H(uid: bytes, did: bytes, bid: bytes, pin: bytes) -> Point4D:
     
     This function deterministically maps input parameters to a point on the Ed25519 curve.
     """
-    # DEBUG: Print H function inputs
-    print(f"🔍 Python H DEBUG: uid={list(uid)}, did={list(did)}, bid={list(bid)}, pin={list(pin)}")
-    
     # Concatenate all inputs with length prefixes
     prefixed_uid = prefixed(uid)
     prefixed_did = prefixed(did)
     prefixed_bid = prefixed(bid)
     
-    print(f"🔍 Python H DEBUG: prefixed_uid={prefixed_uid.hex()}")
-    print(f"🔍 Python H DEBUG: prefixed_did={prefixed_did.hex()}")
-    print(f"🔍 Python H DEBUG: prefixed_bid={prefixed_bid.hex()}")
-    print(f"🔍 Python H DEBUG: pin={pin.hex()}")
-    
     data = prefixed_uid + prefixed_did + prefixed_bid + pin
-    
-    print(f"🔍 Python H DEBUG: combined data={data.hex()}")
     
     # Hash and convert to point
     hash_bytes = sha256_hash(data)
-    
-    print(f"🔍 Python H DEBUG: hash_bytes={hash_bytes.hex()}")
     
     # Convert hash to big integer (little-endian)
     y_base = 0
@@ -302,19 +290,13 @@ def H(uid: bytes, did: bytes, bid: bytes, pin: bytes) -> Point4D:
             if (hash_bytes[i] >> bit) & 1:
                 y_base |= (1 << (i * 8 + bit))
     
-    print(f"🔍 Python H DEBUG: y_base_full={hex(y_base)}")
-    
     sign = (y_base >> 255) & 1
     y_base &= (1 << 255) - 1  # Clear sign bit
-    
-    print(f"🔍 Python H DEBUG: sign={sign}, y_base_cleared={hex(y_base)}")
     
     counter = 0
     while counter < 1000:  # Safety limit
         # XOR with counter to find valid point
         y = y_base ^ counter
-        
-        print(f"🔍 Python H DEBUG: counter={counter}, y={hex(y)}")
         
         x = recover_x(y, sign)
         if x is not None:
@@ -322,8 +304,6 @@ def H(uid: bytes, did: bytes, bid: bytes, pin: bytes) -> Point4D:
             point = Point4D(x, y, 1, (x * y) % P)
             point = point_mul8(point)
             if is_valid_point(point):
-                print(f"🔍 Python H DEBUG: Found valid point at counter={counter}, x={hex(x)}, y={hex(y)}")
-                print(f"🔍 Python H DEBUG: Final point: x={hex(point.x)}, y={hex(point.y)}")
                 return point
         
         counter += 1

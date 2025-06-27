@@ -451,7 +451,7 @@ async fn recover_encryption_key_with_server_info(
 
     let encryption_key = result.encryption_key.ok_or("No encryption key returned")?;
     println!("✅ Key recovered successfully");
-    println!("🔍 DEBUG: Recovered encryption key: {}", hex::encode(&encryption_key[..16.min(encryption_key.len())]));
+    
     Ok(encryption_key)
 }
 
