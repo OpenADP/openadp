@@ -138,7 +138,9 @@ async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, b
             throw new Error(result.error);
         }
 
-        console.log(`✅ Generated encryption key with ${result.serverUrls.length} servers`);
+        // Extract server URLs from serverInfos
+        const serverUrls = result.serverInfos.map(serverInfo => serverInfo.url);
+        console.log(`✅ Generated encryption key with ${serverUrls.length} servers`);
 
         // Step 3: Wrap the long-term secret with AES-256-GCM using WebCrypto API
         console.log('🔐 Wrapping long-term secret...');
@@ -147,7 +149,7 @@ async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, b
         // Step 4: Create metadata
         const metadata = {
             // Standard openadp-encrypt metadata
-            servers: result.serverUrls,
+            servers: serverUrls,
             threshold: result.threshold,
             version: '1.0',
             auth_code: result.authCodes.baseAuthCode,
@@ -164,7 +166,7 @@ async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, b
         const metadataBytes = new TextEncoder().encode(JSON.stringify(metadata));
 
         console.log(`📦 Created metadata (${metadataBytes.length} bytes)`);
-        console.log(`🎯 Threshold: ${result.threshold}-of-${result.serverUrls.length} recovery`);
+        console.log(`🎯 Threshold: ${result.threshold}-of-${serverUrls.length} recovery`);
 
         return metadataBytes;
     } catch (error) {
