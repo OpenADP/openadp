@@ -820,12 +820,21 @@ export async function getServers(registryUrl = "") {
     const finalUrl = registryUrl || "https://servers.openadp.org/api/servers.json";
     
     try {
-        const response = await fetch(finalUrl);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
+        let data;
         
-        const data = await response.json();
+        // Handle file:// URLs for local testing
+        if (finalUrl.startsWith('file://')) {
+            const fs = await import('fs');
+            const path = finalUrl.replace('file://', '');
+            const fileContent = fs.readFileSync(path, 'utf8');
+            data = JSON.parse(fileContent);
+        } else {
+            const response = await fetch(finalUrl);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            data = await response.json();
+        }
         if (Array.isArray(data)) {
             return data.map(server => new ServerInfo(
                 server.url || server.URL,

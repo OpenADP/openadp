@@ -18,9 +18,10 @@ import path from 'path';
 import {
     H, deriveEncKey, pointMul, pointCompress, pointDecompress,
     ShamirSecretSharing, recoverPointSecret, PointShare, Point2D, Point4D,
-    expand, unexpand, Q, modInverse, sha256Hash
+    expand, unexpand, Q, modInverse, sha256Hash, logPoint
 } from './crypto.js';
 import { OpenADPClient, EncryptedOpenADPClient, ServerInfo } from './client.js';
+import * as debug from './debug.js';
 
 /**
  * Authentication codes for OpenADP servers
@@ -202,26 +203,50 @@ export async function generateEncryptionKey(
         console.log(`OpenADP: Using ${clients.length} live servers`);
         
         // Step 4: Generate authentication codes for live servers
-        const authCodes = generateAuthCodes(liveServerUrls);
-        authCodes.userId = identity.uid;
+        let authCodes;
+        if (debug.isDebugModeEnabled()) {
+            // Use deterministic auth codes in debug mode
+            const deterministicBaseAuthCode = debug.getDeterministicBaseAuthCode();
+            const serverAuthCodes = {};
+            for (const serverUrl of liveServerUrls) {
+                // Derive server-specific code using SHA256 (same as Go/Python implementation)
+                const combined = `${deterministicBaseAuthCode}:${serverUrl}`;
+                const hashBytes = sha256Hash(Buffer.from(combined, 'utf8'));
+                const serverCode = Buffer.from(hashBytes).toString('hex');
+                serverAuthCodes[serverUrl] = serverCode;
+            }
+            authCodes = new AuthCodes(deterministicBaseAuthCode, serverAuthCodes, identity.uid);
+            debug.debugLog(`Using deterministic base auth code: ${deterministicBaseAuthCode}`);
+        } else {
+            authCodes = generateAuthCodes(liveServerUrls);
+            authCodes.userId = identity.uid;
+        }
         
         // Step 5: Calculate threshold - require majority of servers
         const threshold = Math.floor(clients.length / 2) + 1;
         console.log(`OpenADP: Using threshold ${threshold}/${clients.length} servers`);
         
-        // Step 6: Generate RANDOM secret for this encryption operation
-        // SECURITY FIX: Use random secret for Shamir secret sharing, not deterministic
+        // Step 6: Generate secret for this encryption operation
         let secret = BigInt(0);
-        // Generate random secret from 0 to Q-1
-        // Note: secret can be 0 - this is valid for Shamir secret sharing
-        const randomBytes = new Uint8Array(32);
-        crypto.getRandomValues(randomBytes);
-        let secretBig = BigInt(0);
-        for (let i = 0; i < randomBytes.length; i++) {
-            secretBig = (secretBig << BigInt(8)) | BigInt(randomBytes[i]);
+        if (debug.isDebugModeEnabled()) {
+            // Use deterministic secret in debug mode
+            const deterministicSecretHex = debug.getDeterministicMainSecret();
+            secret = BigInt('0x' + deterministicSecretHex);
+            debug.debugLog(`Main secret: 0x${deterministicSecretHex}`);
+            debug.debugLog(`Secret (decimal): ${secret.toString()}`);
+        } else {
+            // SECURITY FIX: Use random secret for Shamir secret sharing, not deterministic
+            // Generate random secret from 0 to Q-1
+            // Note: secret can be 0 - this is valid for Shamir secret sharing
+            const randomBytes = new Uint8Array(32);
+            crypto.getRandomValues(randomBytes);
+            let secretBig = BigInt(0);
+            for (let i = 0; i < randomBytes.length; i++) {
+                secretBig = (secretBig << BigInt(8)) | BigInt(randomBytes[i]);
+            }
+            secret = secretBig % Q;
+            console.log(`OpenADP: Generated random secret for encryption key derivation`);
         }
-        secret = secretBig % Q;
-        console.log(`OpenADP: Generated random secret for encryption key derivation`);
         
         // Step 7: Split secret into shares using Shamir secret sharing
         const shares = ShamirSecretSharing.splitSecret(secret, threshold, clients.length);
@@ -229,9 +254,15 @@ export async function generateEncryptionKey(
         
         // Step 8: Compute point H(uid, did, bid, pin) for point-based shares
         const hPoint = H(identity.uid, identity.did, identity.bid, pin); // U = H(uid, did, bid, pin)
+        if (debug.isDebugModeEnabled()) {
+            logPoint(`Computed U point for identity: UID=${identity.uid}, DID=${identity.did}, BID=${identity.bid}`, hPoint);
+        }
         
         // Step 9.5: Compute S = secret * U (this is the point used for key derivation, like Go)
         const sPoint = pointMul(secret, hPoint); // S = secret * U
+        if (debug.isDebugModeEnabled()) {
+            logPoint("Computed S = secret * U", sPoint);
+        }
         
         const hCompressed = pointCompress(hPoint);
         const hBase64 = Buffer.from(hCompressed).toString('base64');

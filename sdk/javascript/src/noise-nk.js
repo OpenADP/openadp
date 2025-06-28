@@ -16,6 +16,7 @@ import { sha256 } from '@noble/hashes/sha256';
 import { hkdf } from '@noble/hashes/hkdf';
 // Use Node.js crypto for both AES-GCM and randomBytes
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
+import * as debug from './debug.js';
 
 const PROTOCOL_NAME = "Noise_NK_25519_AESGCM_SHA256";
 const DHLEN = 32;
@@ -238,7 +239,14 @@ export class NoiseNK {
      * Generate ephemeral key pair
      */
     _generateEphemeralKeyPair() {
-        const privateKey = randomBytes(32);
+        let privateKey;
+        if (debug.isDebugModeEnabled()) {
+            // Use deterministic ephemeral secret in debug mode
+            privateKey = debug.getDeterministicEphemeralSecret();
+            debug.debugLog("Using deterministic ephemeral secret for Noise handshake");
+        } else {
+            privateKey = randomBytes(32);
+        }
         const publicKey = x25519.getPublicKey(privateKey);
         return { privateKey, publicKey };
     }
@@ -474,6 +482,17 @@ export class NoiseNK {
         this.receiveKey = k2;   // initiator receives with k2
         this.sendNonce = 0;     // start nonce counters at 0
         this.receiveNonce = 0;
+        
+        // Debug transport keys
+        if (debug.isDebugModeEnabled()) {
+            debug.debugLog("🔑 JAVASCRIPT INITIATOR: Transport key assignment complete");
+            debug.debugLog("  - send_cipher: k1 (initiator->responder)");
+            debug.debugLog("  - recv_cipher: k2 (responder->initiator)");
+            debug.debugLog("  - JavaScript uses k1 for send, k2 for recv (initiator)");
+            debug.debugLog("🔑 JAVASCRIPT INITIATOR: Transport cipher information");
+            debug.debugLog(`  - send key: ${Array.from(k1).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            debug.debugLog(`  - recv key: ${Array.from(k2).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+        }
 
         return {
             payload,

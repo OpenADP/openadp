@@ -11,6 +11,7 @@
 
 import { sha256 } from '@noble/hashes/sha256';
 import { hkdf } from '@noble/hashes/hkdf';
+import * as debug from './debug.js';
 
 // Ed25519 curve parameters
 export const P = BigInt('57896044618658097711785492504343953926634992332820282019728792003956564819949'); // 2^255 - 19
@@ -436,6 +437,42 @@ export function H(uid, did, bid, pin) {
 }
 
 /**
+ * Convert a 4D point to 2D affine coordinates for consistent logging
+ * This ensures that equivalent points in different coordinate systems appear identical
+ */
+export function point4DTo2D(point4d) {
+    if (point4d.z === 0n) {
+        throw new Error('Cannot convert point at infinity to 2D');
+    }
+    
+    const zInv = modInverse(point4d.z, P);
+    const x = (point4d.x * zInv) % P;
+    const y = (point4d.y * zInv) % P;
+    
+    return new Point2D(x, y);
+}
+
+/**
+ * Log a point in a consistent format (always as 2D affine coordinates)
+ */
+export function logPoint(label, point) {
+    if (debug.isDebugModeEnabled()) {
+        if (point instanceof Point4D) {
+            const point2d = point4DTo2D(point);
+            const xHex = point2d.x.toString(16).padStart(64, '0');
+            const yHex = point2d.y.toString(16).padStart(64, '0');
+            debug.debugLog(`${label} (converted from 4D): (${xHex}, ${yHex})`);
+        } else if (point instanceof Point2D) {
+            const xHex = point.x.toString(16).padStart(64, '0');
+            const yHex = point.y.toString(16).padStart(64, '0');
+            debug.debugLog(`${label}: (${xHex}, ${yHex})`);
+        } else {
+            debug.debugLog(`${label}: ${point.toString()}`);
+        }
+    }
+}
+
+/**
  * Derive encryption key from point using HKDF (matches Go DeriveEncKey)
  */
 export function deriveEncKey(point) {
@@ -472,18 +509,34 @@ export class ShamirSecretSharing {
             return shares;
         }
         
-        // Generate random coefficients for polynomial
+        // Generate coefficients for polynomial
         const coefficients = [secretBig]; // a0 = secret
+        if (debug.isDebugModeEnabled()) {
+            debug.debugLog(`Polynomial coefficient a0 (secret): ${secretBig.toString()}`);
+        }
+        
         for (let i = 1; i < threshold; i++) {
-            // Generate random coefficient in the field (mod Q)
-            const randomBytes = new Uint8Array(32);
-            crypto.getRandomValues(randomBytes);
-            let coeff = 0n;
-            for (let j = 0; j < 32; j++) {
-                coeff = (coeff << 8n) | BigInt(randomBytes[j]);
+            let coeff;
+            if (debug.isDebugModeEnabled()) {
+                // Use deterministic coefficients in debug mode
+                coeff = debug.getDeterministicPolynomialCoefficient();
+            } else {
+                // Generate random coefficient in the field (mod Q)
+                const randomBytes = new Uint8Array(32);
+                crypto.getRandomValues(randomBytes);
+                let coeffBig = 0n;
+                for (let j = 0; j < 32; j++) {
+                    coeffBig = (coeffBig << 8n) | BigInt(randomBytes[j]);
+                }
+                // Use the proper field modulus Q
+                coeff = coeffBig % Q;
             }
-            // Use the proper field modulus Q
-            coefficients.push(coeff % Q);
+            coefficients.push(coeff);
+        }
+        
+        if (debug.isDebugModeEnabled()) {
+            const coeffStrs = coefficients.map(c => c.toString());
+            debug.debugLog(`Polynomial coefficients: [${coeffStrs.join(', ')}]`);
         }
         
         // Evaluate polynomial at x = 1, 2, ..., numShares
@@ -498,6 +551,10 @@ export class ShamirSecretSharing {
             }
             
             shares.push([x, y]); // Keep y as BigInt to avoid precision loss
+            
+            if (debug.isDebugModeEnabled()) {
+                debug.debugLog(`Share ${shares.length} (x=${x}): y=${y.toString()}`);
+            }
         }
         
         return shares;

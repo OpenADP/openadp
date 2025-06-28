@@ -14,6 +14,7 @@ import { Buffer } from 'buffer';
 import { Command } from 'commander';
 import { generateEncryptionKey, Identity } from './src/keygen.js';
 import { getServers, getFallbackServerInfo, ServerInfo, OpenADPClient } from './src/client.js';
+import * as debug from './src/debug.js';
 
 const VERSION = "1.0.0";
 const NONCE_SIZE = 12; // AES-GCM nonce size
@@ -105,10 +106,20 @@ async function encryptFile(inputFilename, password, userId, serverInfos, servers
     
     // Generate encryption key using OpenADP with full distributed protocol
     console.log("🔄 Generating encryption key using OpenADP servers...");
-    // Create Identity from filename, userId, and hostname (matching old derive_identifiers behavior)
+    // Create Identity from filename, userId, and device ID
+    let deviceId;
+    if (debug.isDebugModeEnabled()) {
+        // Use consistent device ID in debug mode to match other SDKs
+        deviceId = "beast";
+        debug.debugLog(`Using deterministic device ID: ${deviceId}`);
+    } else {
+        // Use hostname in production mode
+        deviceId = getHostname();
+    }
+    
     const identity = new Identity(
         userId,
-        getHostname(),
+        deviceId,
         `file://${path.basename(inputFilename)}`
     );
     const result = await generateEncryptionKey(identity, password, 10, 0, serverInfos);
@@ -217,10 +228,17 @@ async function main() {
         .option('--user-id <id>', 'User ID for secret ownership (will prompt if not provided)')
         .option('--servers <urls>', 'Comma-separated list of server URLs (optional)')
         .option('--servers-url <url>', 'URL to scrape for server list', 'https://servers.openadp.org/api/servers.json')
+        .option('--debug', 'Enable debug mode for deterministic operations')
         .allowUnknownOption()
         .parse();
     
     const options = program.opts();
+    
+    // Enable debug mode if requested
+    if (options.debug) {
+        debug.setDebugMode(true);
+        console.log("🐛 Debug mode enabled - using deterministic constants");
+    }
     
     if (!options.file) {
         console.log("Error: --file is required");

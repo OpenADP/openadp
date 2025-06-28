@@ -81,37 +81,42 @@ class CrossLanguageDebugTest:
         return test_file
     
     def extract_debug_operations(self, debug_output):
-        """Extract key cryptographic operations from debug output"""
+        """Extract debug operations from stderr output"""
         operations = []
         
-        # Enhanced patterns to capture key crypto operations
-        patterns = [
-            r"\[DEBUG\] (Using deterministic .+)",
-            r"\[DEBUG\] (Generated deterministic .+)",
-            r"\[DEBUG\] (Main secret: .+)",
-            r"\[DEBUG\] (Secret.*: .+)",
-            r"\[DEBUG\] (Polynomial coefficient \d+: .+)",
-            r"\[DEBUG\] (Share \d+ \(x=\d+\): .+)",
-            r"\[DEBUG\] (Ephemeral secret: .+)",
-            r"\[DEBUG\] (Public key: .+)",
-            r"\[DEBUG\] (Ed25519 public key: .+)",
-            r"\[DEBUG\] (Base auth code: .+)",
-            r"\[DEBUG\] (Auth code for server .+)",
-            r"\[DEBUG\] (Noise handshake .+)",
-            r"\[DEBUG\] (AES-GCM .+)",
-            r"\[DEBUG\] (HKDF .+)",
-            r"\[DEBUG\] (SHA256 .+)",
-            r"\[DEBUG\] (Y coordinate .+)",
-            r"\[DEBUG\] (Computed .+)",
-        ]
+        # Split by lines and look for debug patterns
+        lines = debug_output.split('\n')
         
-        for line in debug_output.split('\n'):
-            for pattern in patterns:
-                match = re.search(pattern, line)
-                if match:
-                    operations.append(match.group(1))
+        for line in lines:
+            line = line.strip()
+            
+            # Look for various debug patterns
+            if any(pattern in line for pattern in [
+                "Using deterministic",
+                "Computed U point",
+                "Computed S =",
+                "Auth code for server",
+                "Generated deterministic"
+            ]):
+                # Clean up the line
+                if line.startswith('[DEBUG]'):
+                    line = line[7:].strip()
+                elif 'DEBUG]' in line:
+                    # Handle Go format: "2025/06/28 12:30:09 [DEBUG] message"
+                    debug_pos = line.find('[DEBUG]')
+                    if debug_pos >= 0:
+                        line = line[debug_pos + 7:].strip()
+                
+                if line:
+                    operations.append(line)
         
         return operations
+    
+    def extract_debug_operations_combined(self, stdout, stderr):
+        """Extract debug operations from both stdout and stderr"""
+        # Combine outputs and extract from both
+        combined_output = stderr + "\n" + stdout
+        return self.extract_debug_operations(combined_output)
     
     def run_python_encrypt(self, test_file):
         """Run Python encryption with debug output"""
@@ -231,6 +236,42 @@ class CrossLanguageDebugTest:
             log(f"❌ C++ encryption failed: {e}")
             return -1, "", str(e)
     
+    def run_javascript_encrypt(self, test_file):
+        """Run JavaScript encryption with debug output"""
+        log("🟨 Running JavaScript encryption with debug...")
+        
+        # Check for JavaScript encrypt script
+        js_scripts = [
+            "sdk/javascript/openadp-encrypt.js",
+        ]
+        
+        js_script = None
+        for script in js_scripts:
+            if os.path.exists(script):
+                js_script = script
+                break
+        
+        if not js_script:
+            log("❌ JavaScript encrypt script not found")
+            return None, None, "JavaScript encrypt script not found"
+        
+        cmd = [
+            "node", js_script,
+            "--file", test_file,
+            "--password", "cross_lang_debug_pass",
+            "--user-id", "cross_lang_debug_user",
+            "--servers-url", self.servers_url,
+            "--debug"
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            log(f"JavaScript exit code: {result.returncode}")
+            return result.returncode, result.stdout, result.stderr
+        except Exception as e:
+            log(f"❌ JavaScript encryption failed: {e}")
+            return -1, "", str(e)
+    
     def compare_implementations(self):
         """Run and compare all implementations"""
         log("🔍 Running cross-language debug comparison...")
@@ -242,7 +283,8 @@ class CrossLanguageDebugTest:
         implementations = {
             "Python": self.run_python_encrypt(test_file),
             "Go": self.run_go_encrypt(test_file), 
-            "C++": self.run_cpp_encrypt(test_file)
+            "C++": self.run_cpp_encrypt(test_file),
+            "JavaScript": self.run_javascript_encrypt(test_file)
         }
         
         # Check for failures
@@ -270,7 +312,7 @@ class CrossLanguageDebugTest:
         # Extract debug operations
         debug_operations = {}
         for name, (code, stdout, stderr) in implementations.items():
-            operations = self.extract_debug_operations(stderr)
+            operations = self.extract_debug_operations_combined(stdout, stderr)
             debug_operations[name] = operations
             log(f"✅ {name}: {len(operations)} debug operations extracted")
         

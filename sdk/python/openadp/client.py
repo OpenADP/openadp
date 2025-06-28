@@ -771,21 +771,50 @@ class EncryptedOpenADPClient:
                 debug_log("  - recv_cipher: cs2 (responder->initiator)")
                 debug_log("  - Python uses cs1 for send, cs2 for recv (initiator)")
                 
-                # Log transport cipher information (what we can access)
+                # Log transport cipher information
                 debug_log("🔑 PYTHON INITIATOR: Transport cipher information")
-                debug_log(f"  - cs1 nonce: {cs1.n if hasattr(cs1, 'n') else 'unknown'}")
-                debug_log(f"  - cs2 nonce: {cs2.n if hasattr(cs2, 'n') else 'unknown'}")
-                debug_log(f"  - cs1 key: {cs1.k.hex() if hasattr(cs1, 'k') and cs1.k else 'unknown'}")
-                debug_log(f"  - cs2 key: {cs2.k.hex() if hasattr(cs2, 'k') and cs2.k else 'unknown'}")
                 
-                # Try to access additional information
-                if hasattr(cs1, 'cipher'):
-                    debug_log(f"  - cs1 cipher type: {type(cs1.cipher)}")
-                if hasattr(cs2, 'cipher'):
-                    debug_log(f"  - cs2 cipher type: {type(cs2.cipher)}")
+                # Extract actual keys from CipherState objects
+                send_key = None
+                recv_key = None
+                
+                # Try different ways to access the key data
+                if hasattr(cs1, 'k') and cs1.k is not None:
+                    send_key = cs1.k
+                elif hasattr(cs1, 'cipher') and hasattr(cs1.cipher, 'key'):
+                    send_key = cs1.cipher.key
+                elif hasattr(cs1, '_key'):
+                    send_key = cs1._key
+                
+                if hasattr(cs2, 'k') and cs2.k is not None:
+                    recv_key = cs2.k
+                elif hasattr(cs2, 'cipher') and hasattr(cs2.cipher, 'key'):
+                    recv_key = cs2.cipher.key
+                elif hasattr(cs2, '_key'):
+                    recv_key = cs2._key
+                
+                # Log the keys
+                if send_key is not None:
+                    debug_log(f"  - send key: {send_key.hex()}")
+                else:
+                    debug_log("  - send key: not accessible")
+                    
+                if recv_key is not None:
+                    debug_log(f"  - recv key: {recv_key.hex()}")
+                else:
+                    debug_log("  - recv key: not accessible")
+                
+                # Additional debugging info
+                debug_log(f"  - cs1 type: {type(cs1)}")
+                debug_log(f"  - cs2 type: {type(cs2)}")
+                debug_log(f"  - cs1 attributes: {[attr for attr in dir(cs1) if not attr.startswith('_')]}")
+                debug_log(f"  - cs2 attributes: {[attr for attr in dir(cs2) if not attr.startswith('_')]}")
                     
             except Exception as e:
                 debug_log(f"  - Failed to extract transport keys for debugging: {e}")
+                debug_log(f"  - Exception type: {type(e)}")
+                import traceback
+                debug_log(f"  - Traceback: {traceback.format_exc()}")
                 
         except Exception as e:
             debug_log(f"Failed to complete handshake: {e}")
