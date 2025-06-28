@@ -536,17 +536,42 @@ Bytes decrypt_and_hash(const Bytes& ciphertext, Bytes& h, const Bytes& k, uint64
 }
 
 void mix_hash(Bytes& h, const Bytes& data) {
+    // Debug hash mixing
+    if (debug::is_debug_mode_enabled()) {
+        debug::debug_log("🔑 C++ NOISE: mix_hash called");
+        debug::debug_log("  - Input data length: " + std::to_string(data.size()) + " bytes");
+        debug::debug_log("  - Input data hex: " + crypto::bytes_to_hex(data));
+        debug::debug_log("  - Previous h: " + crypto::bytes_to_hex(h));
+    }
+    
     // Mix data into hash state: h = SHA256(h || data)
     Bytes combined = h;
     combined.insert(combined.end(), data.begin(), data.end());
     h = crypto::sha256_hash(combined);
+    
+    if (debug::is_debug_mode_enabled()) {
+        debug::debug_log("  - Updated h: " + crypto::bytes_to_hex(h));
+    }
 }
 
 void mix_key(Bytes& ck, Bytes& k, const Bytes& input_key_material) {
+    // Debug key mixing
+    if (debug::is_debug_mode_enabled()) {
+        debug::debug_log("🔑 C++ NOISE: mix_key called");
+        debug::debug_log("  - Input key material length: " + std::to_string(input_key_material.size()) + " bytes");
+        debug::debug_log("  - Input key material hex: " + crypto::bytes_to_hex(input_key_material));
+        debug::debug_log("  - Previous ck: " + crypto::bytes_to_hex(ck));
+    }
+    
     // Mix key material into chaining key and derive new symmetric key
     auto keys = hkdf_2(ck, input_key_material);
     ck = keys.first;
     k = keys.second;
+    
+    if (debug::is_debug_mode_enabled()) {
+        debug::debug_log("  - Updated ck: " + crypto::bytes_to_hex(ck));
+        debug::debug_log("  - Derived temp k: " + crypto::bytes_to_hex(k));
+    }
 }
 
 Bytes generate_keypair_private() {

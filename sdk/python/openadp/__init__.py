@@ -65,7 +65,6 @@ from .keygen import (
     Identity,
     generate_encryption_key,
     recover_encryption_key,
-    password_to_pin,
     generate_auth_codes
 )
 
@@ -81,12 +80,10 @@ from .debug import (
     is_debug_mode_enabled,
     debug_log,
     get_deterministic_main_secret,
-    get_deterministic_polynomial_coefficient,
     get_deterministic_random_hex,
     get_deterministic_random_bytes,
     get_deterministic_ephemeral_secret,
     secure_random_scalar,
-    secure_random_coefficient
 )
 
 # Client implementations
@@ -152,17 +149,14 @@ __all__ = [
     
     # Keygen
     "Identity", "generate_encryption_key", "recover_encryption_key",
-    "password_to_pin", "generate_auth_codes",
     
     # Ocrypt
     "ocrypt_register", "ocrypt_recover",
     
     # Debug
     "set_debug_mode", "is_debug_mode_enabled", "debug_log",
-    "get_deterministic_main_secret", "get_deterministic_polynomial_coefficient",
     "get_deterministic_random_hex", "get_deterministic_random_bytes",
     "get_deterministic_ephemeral_secret", "secure_random_scalar",
-    "secure_random_coefficient",
     
     # Client classes
     "OpenADPClient", "EncryptedOpenADPClient", "MultiServerClient",

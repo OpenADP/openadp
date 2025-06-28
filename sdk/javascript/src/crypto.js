@@ -557,6 +557,15 @@ export class ShamirSecretSharing {
             }
         }
         
+        // Debug summary of all shares (matching C++ format)
+        if (debug.isDebugModeEnabled()) {
+            debug.debugLog("📊 JAVASCRIPT SHAMIR: Generated shares summary:");
+            for (let i = 0; i < shares.length; i++) {
+                const [x, y] = shares[i];
+                debug.debugLog(`  Share ${i + 1}: (x=${x}, y=${y.toString()})`);
+            }
+        }
+        
         return shares;
     }
     

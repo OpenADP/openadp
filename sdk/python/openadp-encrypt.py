@@ -57,7 +57,7 @@ OPTIONS:
     --password <password>  Password for key derivation (will prompt if not provided)
     --user-id <id>         User ID for secret ownership (will prompt if not provided)
     --servers <urls>       Comma-separated list of server URLs (optional)
-    --servers-url <url>    URL to scrape for server list (default: https://servers.openadp.org)
+    --servers-url <url>    URL to scrape for server list (default: https://servers.openadp.org/api/servers.json)
     --debug                Enable debug mode for deterministic operations
     --version              Show version information
     --help                 Show this help message
@@ -140,7 +140,7 @@ def encrypt_file(input_filename, password, user_id, server_infos, servers_url):
     # Extract information from the result
     enc_key = result.encryption_key
     auth_codes = result.auth_codes
-    actual_server_urls = [server_info.url for server_info in result.server_infos]
+    actual_server_urls = [server_info.url for server_info in result.server_infos] if result.server_infos else []
     threshold = result.threshold
     
     debug_log(f"Encryption key generated successfully ({len(enc_key)} bytes)")
@@ -225,8 +225,8 @@ def main():
     parser.add_argument("--password", help="Password for key derivation (will prompt if not provided)")
     parser.add_argument("--user-id", dest="user_id", help="User ID for secret ownership (will prompt if not provided)")
     parser.add_argument("--servers", help="Comma-separated list of server URLs (optional)")
-    parser.add_argument("--servers-url", dest="servers_url", default="https://servers.openadp.org", 
-                       help="URL to scrape for server list (default: https://servers.openadp.org)")
+    parser.add_argument("--servers-url", dest="servers_url", default="https://servers.openadp.org/api/servers.json", 
+                       help="URL to scrape for server list (default: https://servers.openadp.org/api/servers.json)")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode for deterministic operations")
     parser.add_argument("--version", action="store_true", help="Show version information")
     parser.add_argument("--help", action="store_true", help="Show help information")

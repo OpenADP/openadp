@@ -381,8 +381,8 @@ func (s *Server) handleRegisterSecret(params []interface{}) (interface{}, error)
 		}
 
 		// Validate base64 decoded values
-		// Note: y is already in little-endian format (per API spec), so we need to reverse it
-		// to convert to big-endian for SetBytes validation
+		// Note: y is in little-endian format (per API spec), so we need to convert it
+		// to big-endian for SetBytes validation by reversing the bytes
 		yBytes := make([]byte, len(y))
 		copy(yBytes, y)
 		// Reverse bytes to convert from little-endian to big-endian for SetBytes
@@ -390,8 +390,8 @@ func (s *Server) handleRegisterSecret(params []interface{}) (interface{}, error)
 			yBytes[i], yBytes[j] = yBytes[j], yBytes[i]
 		}
 		yInt := new(big.Int).SetBytes(yBytes)
-		if yInt.Cmp(common.P) >= 0 {
-			return nil, fmt.Errorf("invalid y coordinate: value must be less than prime modulus P")
+		if yInt.Cmp(common.Q) >= 0 {
+			return nil, fmt.Errorf("invalid y coordinate: value must be less than group order Q")
 		}
 
 		// Note: y is kept in little-endian format for storage (as received from client)

@@ -17,7 +17,7 @@ from typing import Tuple, List, Optional, Union
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.backends import default_backend
-from .debug import debug_log, is_debug_mode_enabled, get_deterministic_polynomial_coefficient
+from .debug import debug_log, is_debug_mode_enabled
 
 # Ed25519 curve parameters
 P = 2**255 - 19  # Field prime
@@ -399,10 +399,10 @@ class ShamirSecretSharing:
         coefficients = [secret]  # a0 = secret
         debug_log(f"Polynomial coefficient a0 (secret): {secret}")
         
-        for i in range(threshold - 1):
+        for i in range(1, threshold):
             if is_debug_mode_enabled():
                 # Use deterministic coefficients in debug mode
-                coeff = get_deterministic_polynomial_coefficient()
+                coeff = i
                 debug_log(f"Using deterministic polynomial coefficient a{i+1}: {coeff}")
             else:
                 coeff = secrets.randbelow(Q)

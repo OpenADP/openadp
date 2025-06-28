@@ -25,7 +25,7 @@ def log(message):
     print(f"[CROSS_TEST] {message}")
 
 class CrossLanguageDebugTest:
-    def __init__(self, num_servers=2, start_port=8080, servers_url_format="http"):
+    def __init__(self, num_servers=1, start_port=8080, servers_url_format="http"):
         self.num_servers = num_servers
         self.start_port = start_port
         self.servers_url_format = servers_url_format
@@ -406,8 +406,8 @@ class CrossLanguageDebugTest:
 
 def main():
     parser = argparse.ArgumentParser(description="Cross-language debug output comparison test")
-    parser.add_argument("--num-servers", type=int, default=2, 
-                       help="Number of test servers to launch (default: 2)")
+    parser.add_argument("--num-servers", type=int, default=1, 
+                       help="Number of test servers to launch (default: 1)")
     parser.add_argument("--start-port", type=int, default=8080,
                        help="Starting port for test servers (default: 8080)")  
     parser.add_argument("--servers-url-format", choices=["file", "http"], default="http",

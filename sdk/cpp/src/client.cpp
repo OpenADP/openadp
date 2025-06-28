@@ -107,7 +107,7 @@ nlohmann::json BasicOpenADPClient::make_request(const std::string& method, const
     // Debug: Show exactly what URL we're trying to connect to
     if (debug::is_debug_mode_enabled()) {
         debug::debug_log("CURL attempting to connect to URL: " + url_);
-        debug::debug_log("Sending JSON-RPC request: " + json_data);
+        debug::debug_log("📤 C++: Unencrypted JSON request: " + request.to_dict().dump(2));
     }
     
     // Set up CURL
@@ -150,6 +150,10 @@ nlohmann::json BasicOpenADPClient::make_request(const std::string& method, const
     try {
         nlohmann::json json_response = nlohmann::json::parse(response.data);
         JsonRpcResponse rpc_response = JsonRpcResponse::from_json(json_response);
+        
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("📥 C++: Unencrypted JSON response: " + json_response.dump(2));
+        }
         
         if (rpc_response.has_error()) {
             throw OpenADPError("JSON-RPC error: " + rpc_response.error.dump());
@@ -225,16 +229,26 @@ void EncryptedOpenADPClient::perform_handshake() {
         {"message", utils::base64_encode(handshake_msg)}
     });
     
-    openadp::debug::debug_log("📡 Sending handshake JSON-RPC request:");
-    openadp::debug::debug_log("  - method: noise_handshake");
-    openadp::debug::debug_log("  - session: " + session_id_);
-    openadp::debug::debug_log("  - message (base64): " + utils::base64_encode(handshake_msg));
-    openadp::debug::debug_log("  - message size: " + std::to_string(handshake_msg.size()) + " bytes");
+    if (openadp::debug::is_debug_mode_enabled()) {
+        nlohmann::json handshake_request_json = {
+            {"jsonrpc", "2.0"},
+            {"method", "noise_handshake"},
+            {"params", handshake_params},
+            {"id", 1}
+        };
+        openadp::debug::debug_log("📤 C++: Handshake JSON request: " + handshake_request_json.dump(2));
+    }
     
     nlohmann::json handshake_response = basic_client_->make_request("noise_handshake", handshake_params);
     
-    openadp::debug::debug_log("📨 Received handshake response:");
-    openadp::debug::debug_log("  - response: " + handshake_response.dump());
+    if (openadp::debug::is_debug_mode_enabled()) {
+        nlohmann::json handshake_response_json = {
+            {"jsonrpc", "2.0"},
+            {"result", handshake_response},
+            {"id", 1}
+        };
+        openadp::debug::debug_log("📥 C++: Handshake JSON response: " + handshake_response_json.dump(2));
+    }
     
     if (!handshake_response.contains("message")) {
         throw OpenADPError("Invalid handshake response");
@@ -308,16 +322,26 @@ nlohmann::json EncryptedOpenADPClient::make_encrypted_request(const std::string&
         {"data", utils::base64_encode(encrypted)}
     });
     
-    openadp::debug::debug_log("📡 Sending encrypted_call JSON-RPC request:");
-    openadp::debug::debug_log("  - method: encrypted_call");
-    openadp::debug::debug_log("  - session: " + session_id_);
-    openadp::debug::debug_log("  - data (base64): " + utils::base64_encode(encrypted));
-    openadp::debug::debug_log("  - data size: " + std::to_string(encrypted.size()) + " bytes");
+    if (openadp::debug::is_debug_mode_enabled()) {
+        nlohmann::json encrypted_request_json = {
+            {"jsonrpc", "2.0"},
+            {"method", "encrypted_call"},
+            {"params", encrypted_params},
+            {"id", 2}
+        };
+        openadp::debug::debug_log("📤 C++: Encrypted call JSON request: " + encrypted_request_json.dump(2));
+    }
     
     nlohmann::json response = basic_client_->make_request("encrypted_call", encrypted_params);
     
-    openadp::debug::debug_log("📨 Received encrypted response:");
-    openadp::debug::debug_log("  - response: " + response.dump());
+    if (openadp::debug::is_debug_mode_enabled()) {
+        nlohmann::json encrypted_response_json = {
+            {"jsonrpc", "2.0"},
+            {"result", response},
+            {"id", 2}
+        };
+        openadp::debug::debug_log("📥 C++: Encrypted call JSON response: " + encrypted_response_json.dump(2));
+    }
     
     if (!response.contains("data")) {
         throw OpenADPError("Invalid encrypted response");

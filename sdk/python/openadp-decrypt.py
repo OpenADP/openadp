@@ -268,7 +268,7 @@ def decrypt_file(input_filename, password, user_id, override_servers):
         print("   🔍 Fetching server information from secure registry...")
         
         # Use the default servers.json registry URL
-        servers_url = "https://servers.openadp.org"
+        servers_url = "https://servers.openadp.org/api/servers.json"
         
         # Try to get full server information including public keys from the registry
         try:

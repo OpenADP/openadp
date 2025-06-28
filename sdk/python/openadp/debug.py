@@ -68,16 +68,6 @@ def get_deterministic_main_secret() -> str:
     debug_log(f"Using deterministic main secret r = 0x{deterministic_secret}")
     return deterministic_secret
 
-def get_deterministic_polynomial_coefficient() -> int:
-    """
-    Return deterministic polynomial coefficients for Shamir secret sharing.
-    These are sequential: 1, 2, 3, ... for reproducible results.
-    """
-    global _deterministic_counter
-    
-    if not _debug_mode:
-        raise RuntimeError("get_deterministic_polynomial_coefficient called outside debug mode")
-    
     with _debug_lock:
         _deterministic_counter += 1
         debug_log(f"Using deterministic polynomial coefficient: {_deterministic_counter}")
@@ -161,13 +151,3 @@ def secure_random_scalar() -> Optional[str]:
     if _debug_mode:
         return get_deterministic_main_secret()
     return None
-
-def secure_random_coefficient() -> Optional[int]:
-    """
-    Return either deterministic or cryptographically secure random coefficient.
-    In debug mode, returns sequential deterministic coefficients.
-    In normal mode, returns None (caller should generate secure random).
-    """
-    if _debug_mode:
-        return get_deterministic_polynomial_coefficient()
-    return None 

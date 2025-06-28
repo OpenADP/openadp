@@ -10,6 +10,7 @@
  */
 
 import { NoiseNK, generateStaticKeyPair } from './noise-nk.js';
+import * as debug from './debug.js';
 
 // Error codes matching Python implementation
 export const ErrorCode = {
@@ -284,6 +285,10 @@ export class OpenADPClient {
     async _makeRequest(method, params = null) {
         const request = new JSONRPCRequest(method, params, this.requestId++);
 
+        if (debug.isDebugModeEnabled()) {
+            debug.debugLog(`📤 JAVASCRIPT: Unencrypted JSON request: ${JSON.stringify(request.toDict(), null, 2)}`);
+        }
+
         try {
             const response = await fetch(this.url, {
                 method: 'POST',
@@ -303,6 +308,11 @@ export class OpenADPClient {
             }
 
             const responseData = await response.json();
+            
+            if (debug.isDebugModeEnabled()) {
+                debug.debugLog(`📥 JAVASCRIPT: Unencrypted JSON response: ${JSON.stringify(responseData, null, 2)}`);
+            }
+            
             const jsonRpcResponse = JSONRPCResponse.fromDict(responseData);
 
             if (jsonRpcResponse.error) {
@@ -473,6 +483,10 @@ export class EncryptedOpenADPClient {
     async _makeUnencryptedRequest(method, params = null) {
         const request = new JSONRPCRequest(method, params, this.requestId++);
 
+        if (debug.isDebugModeEnabled()) {
+            debug.debugLog(`📤 JAVASCRIPT: Unencrypted JSON request: ${JSON.stringify(request.toDict(), null, 2)}`);
+        }
+
         try {
             const response = await fetch(this.url, {
                 method: 'POST',
@@ -492,6 +506,11 @@ export class EncryptedOpenADPClient {
             }
 
             const responseData = await response.json();
+            
+            if (debug.isDebugModeEnabled()) {
+                debug.debugLog(`📥 JAVASCRIPT: Unencrypted JSON response: ${JSON.stringify(responseData, null, 2)}`);
+            }
+            
             const jsonRpcResponse = JSONRPCResponse.fromDict(responseData);
 
             if (jsonRpcResponse.error) {
@@ -569,6 +588,10 @@ export class EncryptedOpenADPClient {
                 id: this.requestId++
             };
 
+            if (debug.isDebugModeEnabled()) {
+                debug.debugLog(`📤 JAVASCRIPT: Encrypted call JSON request: ${JSON.stringify(encryptedRequest, null, 2)}`);
+            }
+
             const response = await fetch(this.url, {
                 method: 'POST',
                 headers: {
@@ -587,6 +610,10 @@ export class EncryptedOpenADPClient {
             }
 
             const encryptedResponse = await response.json();
+
+            if (debug.isDebugModeEnabled()) {
+                debug.debugLog(`📥 JAVASCRIPT: Encrypted call JSON response: ${JSON.stringify(encryptedResponse, null, 2)}`);
+            }
 
             if (encryptedResponse.error) {
                 throw new OpenADPError(
@@ -637,8 +664,10 @@ export class EncryptedOpenADPClient {
     }
 
     async _performHandshake() {
-        // Step 1: Generate session ID
-        const sessionID = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        // Generate session ID
+        const sessionID = debug.isDebugModeEnabled() 
+            ? "deterministic_session_javascript"
+            : `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         
         // Step 2: Initialize Noise-NK as initiator
         this.noise = new NoiseNK();
@@ -657,6 +686,10 @@ export class EncryptedOpenADPClient {
             }],
             id: this.requestId++
         };
+
+        if (debug.isDebugModeEnabled()) {
+            debug.debugLog(`📤 JAVASCRIPT: Handshake JSON request: ${JSON.stringify(handshakeRequest, null, 2)}`);
+        }
 
         const response1 = await fetch(this.url, {
             method: 'POST',
@@ -677,6 +710,10 @@ export class EncryptedOpenADPClient {
 
         const handshakeResponse = await response1.json();
         
+        if (debug.isDebugModeEnabled()) {
+            debug.debugLog(`📥 JAVASCRIPT: Handshake JSON response: ${JSON.stringify(handshakeResponse, null, 2)}`);
+        }
+
         if (handshakeResponse.error) {
             throw new OpenADPError(
                 ErrorCode.ENCRYPTION_FAILED,
@@ -698,6 +735,29 @@ export class EncryptedOpenADPClient {
                 "Noise-NK handshake failed to complete",
                 `URL: ${this.url}`
             );
+        }
+
+        // Debug transport keys after handshake completion
+        if (debug.isDebugModeEnabled()) {
+            debug.debugLog("Noise-NK handshake completed successfully");
+            debug.debugLog("🔑 JAVASCRIPT INITIATOR: Transport key assignment complete");
+            debug.debugLog("  - send_cipher: k1 (initiator->responder)");
+            debug.debugLog("  - recv_cipher: k2 (responder->initiator)");
+            debug.debugLog("  - JavaScript uses sendKey for encrypt, receiveKey for decrypt (initiator)");
+            
+            // Log transport cipher information
+            debug.debugLog("🔑 JAVASCRIPT INITIATOR: Transport cipher information");
+            if (this.noise.sendKey) {
+                debug.debugLog(`  - send key: ${Array.from(this.noise.sendKey).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            } else {
+                debug.debugLog("  - send key: not accessible");
+            }
+            
+            if (this.noise.receiveKey) {
+                debug.debugLog(`  - recv key: ${Array.from(this.noise.receiveKey).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            } else {
+                debug.debugLog("  - recv key: not accessible");
+            }
         }
 
         this.handshakeComplete = true;

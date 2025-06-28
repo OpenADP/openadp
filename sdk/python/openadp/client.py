@@ -12,6 +12,7 @@ All clients implement standardized interfaces for cross-language compatibility.
 """
 
 import json
+import secrets
 import time
 import base64
 import hashlib
@@ -242,7 +243,7 @@ class OpenADPClient:
         self.request_id += 1
         
         debug_log(f"Request ID: {request.id}")
-        debug_log(f"JSON-RPC request: {request.to_dict()}")
+        debug_log(f"📤 PYTHON: Unencrypted JSON request: {json.dumps(request.to_dict(), indent=2)}")
         
         try:
             response = self.session.post(
@@ -260,7 +261,7 @@ class OpenADPClient:
         
         try:
             response_data = response.json()
-            debug_log(f"Response received: {response_data}")
+            debug_log(f"📥 PYTHON: Unencrypted JSON response: {json.dumps(response_data, indent=2)}")
         except json.JSONDecodeError as e:
             debug_log(f"Invalid JSON response: {e}")
             raise OpenADPError(
@@ -658,8 +659,8 @@ class EncryptedOpenADPClient:
         debug_log(f"Parameters (before encryption): {params}")
         debug_log(f"Auth data: {auth_data}")
         
-        # Step 1: Generate session ID
-        session_id = f"session_{int(time.time() * 1000000)}"
+        # Generate session ID
+        session_id = secrets.randbelow(1 << 128).to_bytes(16, 'little').hex()
         debug_log(f"Generated session ID: {session_id}")
         
         # Step 2: Initialize Noise-NK as initiator
@@ -675,8 +676,9 @@ class EncryptedOpenADPClient:
         
         # Step 3: Start handshake
         try:
-            handshake_msg1 = noise_client.write_message(b"test")
+            handshake_msg1 = noise_client.write_message(b"")
             debug_log(f"Created handshake message 1: {len(handshake_msg1)} bytes")
+            debug_log(f"Handshake message 1 hex: {handshake_msg1.hex()}")
         except Exception as e:
             debug_log(f"Failed to create handshake message: {e}")
             raise OpenADPError(
@@ -698,6 +700,7 @@ class EncryptedOpenADPClient:
         )
         
         debug_log(f"Sending handshake request (ID: {request_id})")
+        debug_log(f"📤 PYTHON: Handshake JSON request: {json.dumps(handshake_request.to_dict(), indent=2)}")
         
         try:
             response = self.session.post(
@@ -715,7 +718,7 @@ class EncryptedOpenADPClient:
         
         try:
             handshake_resp_data = response.json()
-            debug_log(f"Handshake response received: {handshake_resp_data}")
+            debug_log(f"📥 PYTHON: Handshake JSON response: {json.dumps(handshake_resp_data, indent=2)}")
         except json.JSONDecodeError as e:
             debug_log(f"Failed to parse handshake response: {e}")
             raise OpenADPError(
@@ -751,6 +754,7 @@ class EncryptedOpenADPClient:
         try:
             handshake_msg2 = base64.b64decode(handshake_msg_b64)
             debug_log(f"Received handshake message 2: {len(handshake_msg2)} bytes")
+            debug_log(f"Handshake message 2 hex: {handshake_msg2.hex()}")
         except Exception as e:
             debug_log(f"Failed to decode handshake message: {e}")
             raise OpenADPError(
@@ -870,6 +874,7 @@ class EncryptedOpenADPClient:
         )
         
         debug_log(f"Sending encrypted call (ID: {self.request_id + 1})")
+        debug_log(f"📤 PYTHON: Encrypted call JSON request: {json.dumps(encrypted_request.to_dict(), indent=2)}")
         
         try:
             response2 = self.session.post(
@@ -887,7 +892,7 @@ class EncryptedOpenADPClient:
         
         try:
             encrypted_resp_data = response2.json()
-            debug_log(f"Encrypted response received: {encrypted_resp_data}")
+            debug_log(f"📥 PYTHON: Encrypted call JSON response: {json.dumps(encrypted_resp_data, indent=2)}")
         except json.JSONDecodeError as e:
             debug_log(f"Failed to parse encrypted response: {e}")
             raise OpenADPError(

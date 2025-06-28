@@ -99,27 +99,58 @@ export class NoiseNK {
 
         this.ck.set(this.h);
         this.k = null;
+        
+        // Debug symmetric state initialization
+        if (debug.isDebugModeEnabled()) {
+            debug.debugLog("🔑 JAVASCRIPT NOISE: Symmetric state initialized");
+            debug.debugLog(`  - Protocol: ${PROTOCOL_NAME}`);
+            debug.debugLog(`  - Initial h: ${Array.from(this.h).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            debug.debugLog(`  - Initial ck: ${Array.from(this.ck).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+        }
     }
 
     /**
      * Mix data into handshake hash
      */
     _mixHash(data) {
-        // Mix data into hash state: h = SHA256(h || data)
+        // Debug hash mixing
+        if (debug.isDebugModeEnabled()) {
+            debug.debugLog("🔑 JAVASCRIPT NOISE: _mixHash called");
+            debug.debugLog(`  - Input data length: ${data.length} bytes`);
+            debug.debugLog(`  - Input data hex: ${Array.from(data).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            debug.debugLog(`  - Previous h: ${Array.from(this.h).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+        }
+        
         const combined = new Uint8Array(this.h.length + data.length);
         combined.set(this.h);
         combined.set(data, this.h.length);
-        const hash_result = sha256(combined);
-        this.h.set(hash_result);
+        this.h = sha256(combined);
+        
+        if (debug.isDebugModeEnabled()) {
+            debug.debugLog(`  - Updated h: ${Array.from(this.h).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+        }
     }
 
     /**
-     * Mix key material into chaining key and derive new symmetric key
+     * Mix key material into chaining key and update cipher key
      */
     _mixKey(inputKeyMaterial) {
         const output = noiseHKDF(this.ck, inputKeyMaterial, 2);
-        this.ck.set(output.slice(0, HASHLEN));
-        this.k = output.slice(HASHLEN, HASHLEN + 32);
+        const newCk = output.slice(0, 32);
+        const tempK = output.slice(32, 64);
+        
+        // Debug key mixing
+        if (debug.isDebugModeEnabled()) {
+            debug.debugLog("🔑 JAVASCRIPT NOISE: _mixKey called");
+            debug.debugLog(`  - Input key material length: ${inputKeyMaterial.length} bytes`);
+            debug.debugLog(`  - Input key material hex: ${Array.from(inputKeyMaterial).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            debug.debugLog(`  - Previous ck: ${Array.from(this.ck).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            debug.debugLog(`  - Updated ck: ${Array.from(newCk).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            debug.debugLog(`  - Derived temp k: ${Array.from(tempK).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+        }
+        
+        this.ck = newCk;
+        this.k = tempK;
         this.n = 0;
     }
 
@@ -256,6 +287,15 @@ export class NoiseNK {
      */
     _dh(keyPair, publicKey) {
         const shared = x25519.getSharedSecret(keyPair.privateKey, publicKey);
+        
+        // Debug DH operation
+        if (debug.isDebugModeEnabled()) {
+            debug.debugLog("🔑 JAVASCRIPT NOISE: Diffie-Hellman operation");
+            debug.debugLog(`  - Private key: ${Array.from(keyPair.privateKey).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            debug.debugLog(`  - Public key: ${Array.from(publicKey).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            debug.debugLog(`  - Shared secret: ${Array.from(shared).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+        }
+        
         return shared;
     }
 
@@ -266,6 +306,16 @@ export class NoiseNK {
         const output = noiseHKDF(this.ck, new Uint8Array(0), 2);
         const k1 = output.slice(0, 32);  // initiator to responder
         const k2 = output.slice(32, 64); // responder to initiator
+        
+        // Debug key splitting
+        if (debug.isDebugModeEnabled()) {
+            debug.debugLog("🔑 JAVASCRIPT NOISE: _split called - deriving transport keys");
+            debug.debugLog(`  - Final ck: ${Array.from(this.ck).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            debug.debugLog(`  - Input key material: (empty - 0 bytes)`);
+            debug.debugLog(`  - Derived k1 (initiator->responder): ${Array.from(k1).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            debug.debugLog(`  - Derived k2 (responder->initiator): ${Array.from(k2).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+        }
+        
         return { k1, k2 };
     }
 
@@ -298,6 +348,17 @@ export class NoiseNK {
         const nonceBuffer = Buffer.from(nonce);
         const plaintextBuffer = Buffer.from(plaintext);
 
+        // Debug transport encryption
+        if (debug.isDebugModeEnabled()) {
+            debug.debugLog("🔐 JAVASCRIPT TRANSPORT: Encrypting message");
+            debug.debugLog(`  - Plaintext length: ${plaintext.length} bytes`);
+            debug.debugLog(`  - Plaintext hex: ${Array.from(plaintext).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            debug.debugLog(`  - Send key: ${Array.from(this.sendKey).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            debug.debugLog(`  - Nonce: ${Array.from(nonce).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            debug.debugLog(`  - Send nonce counter: ${this.sendNonce}`);
+            debug.debugLog(`  - AAD: (empty - no AAD for transport messages)`);
+        }
+
         try {
             const cipher = createCipheriv('aes-256-gcm', keyBuffer, nonceBuffer);
 
@@ -312,6 +373,14 @@ export class NoiseNK {
             ciphertext.set(new Uint8Array(tag), encrypted.length);
 
             this.sendNonce++;
+
+            // Debug encryption result
+            if (debug.isDebugModeEnabled()) {
+                debug.debugLog(`  - Ciphertext length: ${ciphertext.length} bytes (${encrypted.length} + 16 tag)`);
+                debug.debugLog(`  - Ciphertext hex: ${Array.from(ciphertext).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+                debug.debugLog(`  - Auth tag: ${Array.from(tag).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+                debug.debugLog(`  - Updated send nonce: ${this.sendNonce}`);
+            }
 
             return ciphertext;
         } catch (error) {
@@ -349,6 +418,18 @@ export class NoiseNK {
         const encrypted = ciphertextBuffer.slice(0, -16);
         const tag = ciphertextBuffer.slice(-16);
 
+        // Debug transport decryption
+        if (debug.isDebugModeEnabled()) {
+            debug.debugLog("🔓 JAVASCRIPT TRANSPORT: Decrypting message");
+            debug.debugLog(`  - Ciphertext length: ${ciphertext.length} bytes`);
+            debug.debugLog(`  - Ciphertext hex: ${Array.from(ciphertext).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            debug.debugLog(`  - Receive key: ${Array.from(this.receiveKey).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            debug.debugLog(`  - Nonce: ${Array.from(nonce).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            debug.debugLog(`  - Receive nonce counter: ${this.receiveNonce}`);
+            debug.debugLog(`  - Auth tag: ${Array.from(tag).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            debug.debugLog(`  - AAD: (empty - no AAD for transport messages)`);
+        }
+
         try {
             const decipher = createDecipheriv('aes-256-gcm', keyBuffer, nonceBuffer);
             decipher.setAuthTag(tag);
@@ -357,6 +438,13 @@ export class NoiseNK {
             decipher.final();
 
             this.receiveNonce++;
+
+            // Debug decryption result
+            if (debug.isDebugModeEnabled()) {
+                debug.debugLog(`  - Plaintext length: ${decrypted.length} bytes`);
+                debug.debugLog(`  - Plaintext hex: ${Array.from(decrypted).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+                debug.debugLog(`  - Updated receive nonce: ${this.receiveNonce}`);
+            }
 
             // Convert back to Uint8Array for consistency
             return new Uint8Array(decrypted);
@@ -425,6 +513,12 @@ export class NoiseNK {
             throw new Error('Handshake already complete');
         }
 
+        // Debug handshake message A
+        if (debug.isDebugModeEnabled()) {
+            debug.debugLog("🤝 JAVASCRIPT NOISE: Creating handshake message A (-> e, es)");
+            debug.debugLog(`  - Payload length: ${payload.length} bytes`);
+        }
+
         // Generate ephemeral key pair
         this.e = this._generateEphemeralKeyPair();
 
@@ -442,6 +536,12 @@ export class NoiseNK {
         const message = new Uint8Array(DHLEN + ciphertext.length);
         message.set(this.e.publicKey);
         message.set(ciphertext, DHLEN);
+
+        // Debug handshake message A result
+        if (debug.isDebugModeEnabled()) {
+            debug.debugLog(`  - Ephemeral public key: ${Array.from(this.e.publicKey).map(b => b.toString(16).padStart(2, '0')).join('')}`);
+            debug.debugLog(`  - Message length: ${message.length} bytes (${DHLEN} pubkey + ${ciphertext.length} ciphertext)`);
+        }
 
         return message;
     }

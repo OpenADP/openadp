@@ -51,9 +51,9 @@ class GenerateEncryptionKeyResult:
     """Result of encryption key generation."""
     encryption_key: Optional[bytes] = None
     error: Optional[str] = None
-    server_infos: Optional[List[ServerInfo]] = None
     threshold: Optional[int] = None
     auth_codes: Optional[Dict[str, Any]] = None
+    server_infos: Optional[List['ServerInfo']] = None
 
 
 @dataclass
@@ -61,21 +61,6 @@ class RecoverEncryptionKeyResult:
     """Result of encryption key recovery."""
     encryption_key: Optional[bytes] = None
     error: Optional[str] = None
-
-
-def password_to_pin(password: str) -> bytes:
-    """
-    Convert user password to PIN bytes for cryptographic operations (matches Go PasswordToPin).
-    
-    Args:
-        password: User-provided password string
-        
-    Returns:
-        PIN as bytes suitable for crypto.H()
-    """
-    # Use password bytes directly (no unnecessary hashing/truncation)
-    return password.encode('utf-8')
-
 
 def generate_auth_codes(server_urls: List[str]) -> AuthCodes:
     """
@@ -159,7 +144,7 @@ def generate_encryption_key(
     
     try:
         # Step 1: Convert password to PIN
-        pin = password_to_pin(password)
+        pin = password.encode('utf-8')
         
         # Step 2: Check if we have servers
         if not server_infos:
@@ -245,6 +230,7 @@ def generate_encryption_key(
         version = 1
         registration_errors = []
         successful_registrations = 0
+        successful_server_infos = []
         
         for i, (x, y) in enumerate(shares):
             if i >= len(clients):
@@ -253,6 +239,13 @@ def generate_encryption_key(
             client = clients[i]
             server_url = live_server_urls[i]
             auth_code = auth_codes.server_auth_codes[server_url]
+            
+            # Find the corresponding server_info for this server
+            server_info = None
+            for si in server_infos:
+                if si.url == server_url:
+                    server_info = si
+                    break
             
             # Convert share Y to base64-encoded 32-byte little-endian format (per API spec)
             # Y is the Y coordinate from Shamir secret sharing polynomial
@@ -273,6 +266,8 @@ def generate_encryption_key(
                     enc_status = "encrypted" if encrypted else "unencrypted"
                     print(f"OpenADP: Registered share {x} with server {i+1} ({server_url}) [{enc_status}]")
                     successful_registrations += 1
+                    if server_info:
+                        successful_server_infos.append(server_info)
                     
             except Exception as e:
                 registration_errors.append(f"Server {i+1} ({server_url}): {e}")
@@ -288,9 +283,9 @@ def generate_encryption_key(
         
         return GenerateEncryptionKeyResult(
             encryption_key=enc_key,
-            server_infos=server_infos,
             threshold=threshold,
-            auth_codes=auth_codes
+            auth_codes=auth_codes,
+            server_infos=successful_server_infos
         )
         
     except Exception as e:
@@ -344,7 +339,7 @@ def recover_encryption_key(
     
     try:
         # Step 1: Convert password to same PIN
-        pin = password_to_pin(password)
+        pin = password.encode('utf-8')
         
         # Step 2: Fetch remaining guesses for all servers and select the best ones
         print("OpenADP: Fetching remaining guesses from servers...")

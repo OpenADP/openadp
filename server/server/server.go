@@ -30,7 +30,7 @@ type RegisterSecretRequest struct {
 	AuthCode   string `json:"auth_code"`
 	Version    int    `json:"version"`
 	X          int    `json:"x"`
-	Y          string `json:"y"` // Base64 encoded
+	Y          string `json:"y"` // Base64 encoded, little-endian
 	MaxGuesses int    `json:"max_guesses"`
 	Expiration int64  `json:"expiration"`
 }
