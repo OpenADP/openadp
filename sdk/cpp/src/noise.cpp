@@ -143,9 +143,14 @@ Bytes NoiseState::write_message(const Bytes& payload) {
         Bytes ciphertext = encrypt_and_hash(payload, pimpl_->h, pimpl_->k, nonce);
         
         // Split transport keys
+        openadp::debug::debug_log("🔑 RESPONDER: About to call hkdf_2 for transport keys");
+        openadp::debug::debug_log("  - chaining key: " + openadp::crypto::bytes_to_hex(pimpl_->ck));
         auto transport_keys = hkdf_2(pimpl_->ck, Bytes());
-        pimpl_->recv_key = transport_keys.first;
-        pimpl_->send_key = transport_keys.second;
+        pimpl_->recv_key = transport_keys.first;   // Responder receives with k1 (initiator->responder)
+        pimpl_->send_key = transport_keys.second;  // Responder sends with k2 (responder->initiator)
+        openadp::debug::debug_log("🔑 RESPONDER: Transport key assignment complete");
+        openadp::debug::debug_log("  - recv_key: " + openadp::crypto::bytes_to_hex(pimpl_->recv_key));
+        openadp::debug::debug_log("  - send_key: " + openadp::crypto::bytes_to_hex(pimpl_->send_key));
         pimpl_->handshake_finished = true;
         
         // Build message: e + encrypted_payload
@@ -161,6 +166,7 @@ Bytes NoiseState::write_message() {
 }
 
 Bytes NoiseState::read_message(const Bytes& message) {
+    openadp::debug::debug_log("🔍 READ_MESSAGE CALLED - message size: " + std::to_string(message.size()));
     if (message.size() < 32) {
         throw OpenADPError("Message too short");
     }
@@ -191,9 +197,14 @@ Bytes NoiseState::read_message(const Bytes& message) {
         }
         
         // Split transport keys
+        openadp::debug::debug_log("🔑 INITIATOR: About to call hkdf_2 for transport keys");
+        openadp::debug::debug_log("  - chaining key: " + openadp::crypto::bytes_to_hex(pimpl_->ck));
         auto transport_keys = hkdf_2(pimpl_->ck, Bytes());
         pimpl_->send_key = transport_keys.first;
         pimpl_->recv_key = transport_keys.second;
+        openadp::debug::debug_log("🔑 INITIATOR: Transport key assignment complete");
+        openadp::debug::debug_log("  - send_key: " + openadp::crypto::bytes_to_hex(pimpl_->send_key));
+        openadp::debug::debug_log("  - recv_key: " + openadp::crypto::bytes_to_hex(pimpl_->recv_key));
         pimpl_->handshake_finished = true;
         
         return payload;
@@ -236,11 +247,11 @@ Bytes NoiseState::encrypt(const Bytes& plaintext) {
         throw OpenADPError("Handshake not finished");
     }
     
-    debug_log("🔐 TRANSPORT ENCRYPT");
-    debug_log("  - plaintext length: " + std::to_string(plaintext.size()));
-    debug_log("  - plaintext hex: " + crypto::bytes_to_hex(plaintext));
-    debug_log("  - send key: " + crypto::bytes_to_hex(pimpl_->send_key));
-    debug_log("  - send nonce: " + std::to_string(pimpl_->send_nonce));
+    openadp::debug::debug_log("🔐 TRANSPORT ENCRYPT");
+    openadp::debug::debug_log("  - plaintext length: " + std::to_string(plaintext.size()));
+    openadp::debug::debug_log("  - plaintext hex: " + openadp::crypto::bytes_to_hex(plaintext));
+    openadp::debug::debug_log("  - send key: " + openadp::crypto::bytes_to_hex(pimpl_->send_key));
+    openadp::debug::debug_log("  - send nonce: " + std::to_string(pimpl_->send_nonce));
     
     // Create nonce (12 bytes: 4 zeros + 8-byte counter big-endian)
     Bytes nonce(12, 0);
@@ -253,28 +264,28 @@ Bytes NoiseState::encrypt(const Bytes& plaintext) {
     nonce[10] = (pimpl_->send_nonce >> 8) & 0xFF;
     nonce[11] = pimpl_->send_nonce & 0xFF;
     
-    debug_log("  - nonce (12 bytes): " + crypto::bytes_to_hex(nonce));
+    openadp::debug::debug_log("  - nonce (12 bytes): " + openadp::crypto::bytes_to_hex(nonce));
     
     // Encrypt with NO AAD (matching Python/Go)
     Bytes empty_aad; // Empty AAD for transport encryption
-    debug_log("  - AAD length: " + std::to_string(empty_aad.size()));
-    debug_log("  - AAD: " + crypto::bytes_to_hex(empty_aad));
+    openadp::debug::debug_log("  - AAD length: " + std::to_string(empty_aad.size()));
+    openadp::debug::debug_log("  - AAD: " + openadp::crypto::bytes_to_hex(empty_aad));
     
-    auto result = crypto::aes_gcm_encrypt(plaintext, pimpl_->send_key, nonce, empty_aad);
+    auto result = openadp::crypto::aes_gcm_encrypt(plaintext, pimpl_->send_key, nonce, empty_aad);
     
     // Combine ciphertext and tag (AES-GCM format)
     Bytes ciphertext = result.ciphertext;
     ciphertext.insert(ciphertext.end(), result.tag.begin(), result.tag.end());
     
-    debug_log("  - ciphertext length: " + std::to_string(result.ciphertext.size()));
-    debug_log("  - ciphertext hex: " + crypto::bytes_to_hex(result.ciphertext));
-    debug_log("  - tag length: " + std::to_string(result.tag.size()));
-    debug_log("  - tag hex: " + crypto::bytes_to_hex(result.tag));
-    debug_log("  - combined length: " + std::to_string(ciphertext.size()));
-    debug_log("  - combined hex: " + crypto::bytes_to_hex(ciphertext));
+    openadp::debug::debug_log("  - ciphertext length: " + std::to_string(result.ciphertext.size()));
+    openadp::debug::debug_log("  - ciphertext hex: " + openadp::crypto::bytes_to_hex(result.ciphertext));
+    openadp::debug::debug_log("  - tag length: " + std::to_string(result.tag.size()));
+    openadp::debug::debug_log("  - tag hex: " + openadp::crypto::bytes_to_hex(result.tag));
+    openadp::debug::debug_log("  - combined length: " + std::to_string(ciphertext.size()));
+    openadp::debug::debug_log("  - combined hex: " + openadp::crypto::bytes_to_hex(ciphertext));
     
     pimpl_->send_nonce++;
-    debug_log("  - incremented send nonce to: " + std::to_string(pimpl_->send_nonce));
+    openadp::debug::debug_log("  - incremented send nonce to: " + std::to_string(pimpl_->send_nonce));
     
     return ciphertext;
 }
@@ -284,11 +295,11 @@ Bytes NoiseState::decrypt(const Bytes& ciphertext) {
         throw OpenADPError("Handshake not finished");
     }
     
-    debug_log("🔓 TRANSPORT DECRYPT");
-    debug_log("  - ciphertext length: " + std::to_string(ciphertext.size()));
-    debug_log("  - ciphertext hex: " + crypto::bytes_to_hex(ciphertext));
-    debug_log("  - recv key: " + crypto::bytes_to_hex(pimpl_->recv_key));
-    debug_log("  - recv nonce: " + std::to_string(pimpl_->recv_nonce));
+    openadp::debug::debug_log("🔓 TRANSPORT DECRYPT");
+    openadp::debug::debug_log("  - ciphertext length: " + std::to_string(ciphertext.size()));
+    openadp::debug::debug_log("  - ciphertext hex: " + openadp::crypto::bytes_to_hex(ciphertext));
+    openadp::debug::debug_log("  - recv key: " + openadp::crypto::bytes_to_hex(pimpl_->recv_key));
+    openadp::debug::debug_log("  - recv nonce: " + std::to_string(pimpl_->recv_nonce));
     
     // Create nonce (12 bytes: 4 zeros + 8-byte counter big-endian)
     Bytes nonce(12, 0);
@@ -301,7 +312,7 @@ Bytes NoiseState::decrypt(const Bytes& ciphertext) {
     nonce[10] = (pimpl_->recv_nonce >> 8) & 0xFF;
     nonce[11] = pimpl_->recv_nonce & 0xFF;
     
-    debug_log("  - nonce (12 bytes): " + crypto::bytes_to_hex(nonce));
+    openadp::debug::debug_log("  - nonce (12 bytes): " + openadp::crypto::bytes_to_hex(nonce));
     
     if (ciphertext.size() < 16) {
         throw OpenADPError("Ciphertext too short for decryption");
@@ -311,23 +322,23 @@ Bytes NoiseState::decrypt(const Bytes& ciphertext) {
     Bytes tag(ciphertext.end() - 16, ciphertext.end());
     Bytes data(ciphertext.begin(), ciphertext.end() - 16);
     
-    debug_log("  - data length: " + std::to_string(data.size()));
-    debug_log("  - data hex: " + crypto::bytes_to_hex(data));
-    debug_log("  - tag length: " + std::to_string(tag.size()));
-    debug_log("  - tag hex: " + crypto::bytes_to_hex(tag));
+    openadp::debug::debug_log("  - data length: " + std::to_string(data.size()));
+    openadp::debug::debug_log("  - data hex: " + openadp::crypto::bytes_to_hex(data));
+    openadp::debug::debug_log("  - tag length: " + std::to_string(tag.size()));
+    openadp::debug::debug_log("  - tag hex: " + openadp::crypto::bytes_to_hex(tag));
     
     // Decrypt with NO AAD (matching Python/Go)
     Bytes empty_aad; // Empty AAD for transport encryption
-    debug_log("  - AAD length: " + std::to_string(empty_aad.size()));
-    debug_log("  - AAD: " + crypto::bytes_to_hex(empty_aad));
+    openadp::debug::debug_log("  - AAD length: " + std::to_string(empty_aad.size()));
+    openadp::debug::debug_log("  - AAD: " + openadp::crypto::bytes_to_hex(empty_aad));
     
-    Bytes plaintext = crypto::aes_gcm_decrypt(data, tag, nonce, pimpl_->recv_key, empty_aad);
+    Bytes plaintext = openadp::crypto::aes_gcm_decrypt(data, tag, nonce, pimpl_->recv_key, empty_aad);
     
-    debug_log("  - plaintext length: " + std::to_string(plaintext.size()));
-    debug_log("  - plaintext hex: " + crypto::bytes_to_hex(plaintext));
+    openadp::debug::debug_log("  - plaintext length: " + std::to_string(plaintext.size()));
+    openadp::debug::debug_log("  - plaintext hex: " + openadp::crypto::bytes_to_hex(plaintext));
     
     pimpl_->recv_nonce++;
-    debug_log("  - incremented recv nonce to: " + std::to_string(pimpl_->recv_nonce));
+    openadp::debug::debug_log("  - incremented recv nonce to: " + std::to_string(pimpl_->recv_nonce));
     
     return plaintext;
 }
@@ -417,14 +428,39 @@ Bytes perform_dh(const Bytes& private_key, const Bytes& public_key) {
 std::pair<Bytes, Bytes> hkdf_2(const Bytes& ck, const Bytes& input_key_material) {
     // Use HKDF to derive two 32-byte keys following Noise spec
     Bytes salt = ck.empty() ? Bytes(32, 0) : ck;
-    Bytes ikm = input_key_material.empty() ? Bytes(1, 0) : input_key_material;
     
-    // HKDF-Extract then HKDF-Expand for 64 bytes total
-    Bytes output = crypto::hkdf_derive(ikm, salt, Bytes(), 64);
+    // Debug logging
+    openadp::debug::debug_log("🔑 HKDF_2 DEBUG:");
+    openadp::debug::debug_log("  - chaining key (ck): " + openadp::crypto::bytes_to_hex(ck));
+    openadp::debug::debug_log("  - input key material: " + openadp::crypto::bytes_to_hex(input_key_material));
+    openadp::debug::debug_log("  - salt: " + openadp::crypto::bytes_to_hex(salt));
+    
+    Bytes output;
+    if (input_key_material.empty()) {
+        // For Noise Split() operation: use HKDF-Expand-Only with manually computed PRK
+        // This is the correct workaround for OpenSSL's zero-length IKM limitation
+        openadp::debug::debug_log("  - using HKDF-Expand-Only mode (Split operation)");
+        
+        // Step 1: Manually compute PRK = HMAC-SHA256(salt, empty_input)
+        Bytes prk = crypto::hmac_sha256(salt, Bytes());  // HMAC with empty input
+        openadp::debug::debug_log("  - computed PRK via HMAC: " + openadp::crypto::bytes_to_hex(prk));
+        
+        // Step 2: Use HKDF-Expand-Only with the computed PRK
+        output = crypto::hkdf_expand_only(prk, Bytes(), 64);
+    } else {
+        // For normal operations: use full HKDF-Extract-then-Expand
+        openadp::debug::debug_log("  - using full HKDF-Extract-then-Expand mode");
+        output = crypto::hkdf_derive(input_key_material, salt, Bytes(), 64);
+    }
+    
+    openadp::debug::debug_log("  - HKDF output (64 bytes): " + openadp::crypto::bytes_to_hex(output));
     
     // Split into two 32-byte keys
     Bytes output1(output.begin(), output.begin() + 32);
     Bytes output2(output.begin() + 32, output.end());
+    
+    openadp::debug::debug_log("  - k1 (initiator->responder): " + openadp::crypto::bytes_to_hex(output1));
+    openadp::debug::debug_log("  - k2 (responder->initiator): " + openadp::crypto::bytes_to_hex(output2));
     
     return std::make_pair(output1, output2);
 }

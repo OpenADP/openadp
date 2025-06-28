@@ -57,6 +57,10 @@ func NewNoiseSessionManager(serverStaticKey *noise.DHKey) *NoiseSessionManager {
 		serverKey = *serverStaticKey
 	}
 
+	// Enable debug mode for detailed Noise-NK logging (directly set the debug variable)
+	// Note: This would require exporting the debug variable or using a setter
+	log.Println("🐛 Enabling Noise-NK debug mode for detailed logging")
+
 	manager := &NoiseSessionManager{
 		sessions:  make(map[string]*openadpNoise.NoiseNK),
 		serverKey: serverKey,

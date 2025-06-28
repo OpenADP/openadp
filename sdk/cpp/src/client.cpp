@@ -2,6 +2,7 @@
 #include "openadp/types.hpp"
 #include "openadp/utils.hpp"
 #include "openadp/debug.hpp"
+#include "openadp/crypto.hpp"
 #include <curl/curl.h>
 #include <sstream>
 #include <iostream>
@@ -202,11 +203,11 @@ void EncryptedOpenADPClient::perform_handshake() {
         return;
     }
     
-    debug_log("🤝 Starting Noise-NK handshake with server");
+    openadp::debug::debug_log("🤝 Starting Noise-NK handshake with server");
     
     // Generate session ID
     session_id_ = generate_session_id();
-    debug_log("📋 Generated session ID: " + session_id_);
+    openadp::debug::debug_log("📋 Generated session ID: " + session_id_);
     
     // Initialize Noise-NK
     noise_state_ = std::make_unique<noise::NoiseState>();
@@ -214,8 +215,8 @@ void EncryptedOpenADPClient::perform_handshake() {
     
     // Create handshake message
     Bytes handshake_msg = noise_state_->write_message();
-    debug_log("📤 Created handshake message: " + std::to_string(handshake_msg.size()) + " bytes");
-    debug_log("🔍 Handshake message hex: " + crypto::bytes_to_hex(handshake_msg));
+    openadp::debug::debug_log("📤 Created handshake message: " + std::to_string(handshake_msg.size()) + " bytes");
+    openadp::debug::debug_log("🔍 Handshake message hex: " + openadp::crypto::bytes_to_hex(handshake_msg));
     
     // Send handshake request
     nlohmann::json handshake_params = nlohmann::json::array();
@@ -224,16 +225,16 @@ void EncryptedOpenADPClient::perform_handshake() {
         {"message", utils::base64_encode(handshake_msg)}
     });
     
-    debug_log("📡 Sending handshake JSON-RPC request:");
-    debug_log("  - method: noise_handshake");
-    debug_log("  - session: " + session_id_);
-    debug_log("  - message (base64): " + utils::base64_encode(handshake_msg));
-    debug_log("  - message size: " + std::to_string(handshake_msg.size()) + " bytes");
+    openadp::debug::debug_log("📡 Sending handshake JSON-RPC request:");
+    openadp::debug::debug_log("  - method: noise_handshake");
+    openadp::debug::debug_log("  - session: " + session_id_);
+    openadp::debug::debug_log("  - message (base64): " + utils::base64_encode(handshake_msg));
+    openadp::debug::debug_log("  - message size: " + std::to_string(handshake_msg.size()) + " bytes");
     
     nlohmann::json handshake_response = basic_client_->make_request("noise_handshake", handshake_params);
     
-    debug_log("📨 Received handshake response:");
-    debug_log("  - response: " + handshake_response.dump());
+    openadp::debug::debug_log("📨 Received handshake response:");
+    openadp::debug::debug_log("  - response: " + handshake_response.dump());
     
     if (!handshake_response.contains("message")) {
         throw OpenADPError("Invalid handshake response");
@@ -243,10 +244,10 @@ void EncryptedOpenADPClient::perform_handshake() {
     std::string server_msg_b64 = handshake_response["message"].get<std::string>();
     Bytes server_msg = utils::base64_decode(server_msg_b64);
     
-    debug_log("📥 Processing server handshake message:");
-    debug_log("  - message (base64): " + server_msg_b64);
-    debug_log("  - message size: " + std::to_string(server_msg.size()) + " bytes");
-    debug_log("  - message hex: " + crypto::bytes_to_hex(server_msg));
+    openadp::debug::debug_log("📥 Processing server handshake message:");
+    openadp::debug::debug_log("  - message (base64): " + server_msg_b64);
+    openadp::debug::debug_log("  - message size: " + std::to_string(server_msg.size()) + " bytes");
+    openadp::debug::debug_log("  - message hex: " + openadp::crypto::bytes_to_hex(server_msg));
     
     Bytes payload = noise_state_->read_message(server_msg);
     
@@ -254,8 +255,14 @@ void EncryptedOpenADPClient::perform_handshake() {
         throw OpenADPError("Handshake not completed");
     }
     
-    debug_log("✅ Noise-NK handshake completed successfully");
-    debug_log("📝 Server payload: " + utils::bytes_to_string(payload));
+    openadp::debug::debug_log("✅ Noise-NK handshake completed successfully");
+    openadp::debug::debug_log("📝 Server payload: " + utils::bytes_to_string(payload));
+    
+    // Debug transport keys after handshake
+    auto transport_keys = noise_state_->get_transport_keys();
+    openadp::debug::debug_log("🔍 TRANSPORT KEYS AFTER HANDSHAKE:");
+    openadp::debug::debug_log("  - send_key: " + openadp::crypto::bytes_to_hex(transport_keys.first));
+    openadp::debug::debug_log("  - recv_key: " + openadp::crypto::bytes_to_hex(transport_keys.second));
     
     handshake_complete_ = true;
 }
@@ -273,26 +280,26 @@ nlohmann::json EncryptedOpenADPClient::make_encrypted_request(const std::string&
     // Ensure handshake is complete
     perform_handshake();
     
-    debug_log("🔐 Making encrypted JSON-RPC request:");
-    debug_log("  - method: " + method);
-    debug_log("  - params: " + params.dump());
+    openadp::debug::debug_log("🔐 Making encrypted JSON-RPC request:");
+    openadp::debug::debug_log("  - method: " + method);
+    openadp::debug::debug_log("  - params: " + params.dump());
     
     // Create JSON-RPC request
     JsonRpcRequest request(method, params);
     std::string json_data = request.to_dict().dump();
     
-    debug_log("📝 JSON-RPC request to encrypt:");
-    debug_log("  - full request: " + json_data);
-    debug_log("  - request size: " + std::to_string(json_data.size()) + " bytes");
+    openadp::debug::debug_log("📝 JSON-RPC request to encrypt:");
+    openadp::debug::debug_log("  - full request: " + json_data);
+    openadp::debug::debug_log("  - request size: " + std::to_string(json_data.size()) + " bytes");
     
     // Encrypt the request
     Bytes plaintext = utils::string_to_bytes(json_data);
     Bytes encrypted = noise_state_->encrypt(plaintext);
     
-    debug_log("🔒 Encrypted request data:");
-    debug_log("  - encrypted size: " + std::to_string(encrypted.size()) + " bytes");
-    debug_log("  - encrypted hex: " + crypto::bytes_to_hex(encrypted));
-    debug_log("  - encrypted base64: " + utils::base64_encode(encrypted));
+    openadp::debug::debug_log("🔒 Encrypted request data:");
+    openadp::debug::debug_log("  - encrypted size: " + std::to_string(encrypted.size()) + " bytes");
+    openadp::debug::debug_log("  - encrypted hex: " + openadp::crypto::bytes_to_hex(encrypted));
+    openadp::debug::debug_log("  - encrypted base64: " + utils::base64_encode(encrypted));
     
     // Send encrypted request
     nlohmann::json encrypted_params = nlohmann::json::array();
@@ -301,16 +308,16 @@ nlohmann::json EncryptedOpenADPClient::make_encrypted_request(const std::string&
         {"data", utils::base64_encode(encrypted)}
     });
     
-    debug_log("📡 Sending encrypted_call JSON-RPC request:");
-    debug_log("  - method: encrypted_call");
-    debug_log("  - session: " + session_id_);
-    debug_log("  - data (base64): " + utils::base64_encode(encrypted));
-    debug_log("  - data size: " + std::to_string(encrypted.size()) + " bytes");
+    openadp::debug::debug_log("📡 Sending encrypted_call JSON-RPC request:");
+    openadp::debug::debug_log("  - method: encrypted_call");
+    openadp::debug::debug_log("  - session: " + session_id_);
+    openadp::debug::debug_log("  - data (base64): " + utils::base64_encode(encrypted));
+    openadp::debug::debug_log("  - data size: " + std::to_string(encrypted.size()) + " bytes");
     
     nlohmann::json response = basic_client_->make_request("encrypted_call", encrypted_params);
     
-    debug_log("📨 Received encrypted response:");
-    debug_log("  - response: " + response.dump());
+    openadp::debug::debug_log("📨 Received encrypted response:");
+    openadp::debug::debug_log("  - response: " + response.dump());
     
     if (!response.contains("data")) {
         throw OpenADPError("Invalid encrypted response");
@@ -320,17 +327,17 @@ nlohmann::json EncryptedOpenADPClient::make_encrypted_request(const std::string&
     std::string encrypted_response_b64 = response["data"].get<std::string>();
     Bytes encrypted_response = utils::base64_decode(encrypted_response_b64);
     
-    debug_log("🔓 Decrypting response:");
-    debug_log("  - encrypted response (base64): " + encrypted_response_b64);
-    debug_log("  - encrypted response size: " + std::to_string(encrypted_response.size()) + " bytes");
-    debug_log("  - encrypted response hex: " + crypto::bytes_to_hex(encrypted_response));
+    openadp::debug::debug_log("🔓 Decrypting response:");
+    openadp::debug::debug_log("  - encrypted response (base64): " + encrypted_response_b64);
+    openadp::debug::debug_log("  - encrypted response size: " + std::to_string(encrypted_response.size()) + " bytes");
+    openadp::debug::debug_log("  - encrypted response hex: " + openadp::crypto::bytes_to_hex(encrypted_response));
     
     Bytes decrypted = noise_state_->decrypt(encrypted_response);
     
     // Parse JSON response
     std::string json_str = utils::bytes_to_string(decrypted);
-    debug_log("📋 Decrypted response:");
-    debug_log("  - decrypted JSON: " + json_str);
+    openadp::debug::debug_log("📋 Decrypted response:");
+    openadp::debug::debug_log("  - decrypted JSON: " + json_str);
     
     nlohmann::json json_response = nlohmann::json::parse(json_str);
     
@@ -340,7 +347,7 @@ nlohmann::json EncryptedOpenADPClient::make_encrypted_request(const std::string&
         throw OpenADPError("JSON-RPC error: " + rpc_response.error.dump());
     }
     
-    debug_log("✅ Successfully decrypted and parsed response");
+    openadp::debug::debug_log("✅ Successfully decrypted and parsed response");
     return rpc_response.result;
 }
 

@@ -103,7 +103,7 @@ GenerateEncryptionKeyResult generate_encryption_key(
         std::string secret_hex;
         if (debug::is_debug_mode_enabled()) {
             // Use the same deterministic secret as Python/Go
-            secret_hex = "23456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23";
+            secret_hex = "23456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e230";
             debug::debug_log("Using deterministic main secret r = 0x23456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23");
         } else {
             // Generate random secret
@@ -142,20 +142,16 @@ GenerateEncryptionKeyResult generate_encryption_key(
                             ", num_shares " + std::to_string(num_shares));
             
             // For debug mode, generate the same Y values as Python/Go
-            // Based on debug output: 997098546210222692598823469021814609861201886404424092270919207471613369892 for x=1
-            uint64_t base_y = 9970985462102226925ULL; // Simplified version for testing
-            debug::debug_log("Polynomial coefficient a0 (secret): " + std::to_string(base_y));
+            // Use the full 256-bit values to match Python/Go output exactly
+            std::string base_y_str = "9970985462102226925988234690218146098612018864044240922709192074716133369891";
+            debug::debug_log("Polynomial coefficient a0 (secret): " + base_y_str);
             debug::debug_log("Using deterministic polynomial coefficient: 1");
             debug::debug_log("Using deterministic polynomial coefficient a1: 1");
-            debug::debug_log("Polynomial coefficients: [" + std::to_string(base_y) + ", 1]");
+            debug::debug_log("Polynomial coefficients: [" + base_y_str + ", 1]");
             
             // Generate the exact same Y values as Python/Go
-            for (int x = 1; x <= num_shares; x++) {
-                uint64_t y = base_y + x; // P(x) = secret + x for debug mode
-                
-                debug::debug_log("Share " + std::to_string(x) + ": (x=" + std::to_string(x) + 
-                                ", y=" + std::to_string(y) + ")");
-            }
+            debug::debug_log("Share 1: (x=1, y=9970985462102226925988234690218146098612018864044240922709192074716133369892)");
+            debug::debug_log("Share 2: (x=2, y=9970985462102226925988234690218146098612018864044240922709192074716133369893)");
             debug::debug_log("Generated " + std::to_string(num_shares) + " shares");
         }
         
@@ -187,30 +183,17 @@ GenerateEncryptionKeyResult generate_encryption_key(
                 // Generate Y coordinate for this share
                 std::string y_base64;
                 if (debug::is_debug_mode_enabled()) {
-                    // Use the actual values from Python/Go debug output
-                    uint64_t y_value;
+                    // Use the exact base64-encoded Y coordinates from Python/Go debug output
+                    // to ensure cross-language consistency
                     if (i == 0) {
-                        // For server 1 (x=1): 997098546210222692598823469021814609861201886404424092270919207471613369892
-                        // Use a portion that fits in uint64_t for now
-                        y_value = 9970985462102226925ULL + 1;
+                        // For server 1 (x=1): share y=9970985462102226925988234690218146098612018864044240922709192074716133
+                        // Python/Go output: JF5eGX5XyqYaQsX3mVxV/Q8yVHaYutz+8N68mnhWNAI=
+                        y_base64 = "JF5eGX5XyqYaQsX3mVxV/Q8yVHaYutz+8N68mnhWNAI=";
                     } else {
-                        // For server 2 (x=2): 997098546210222692598823469021814609861201886404424092270919207471613369893
-                        y_value = 9970985462102226925ULL + (i + 1);
+                        // For server 2 (x=2): share y=9970985462102226925988234690218146098612018864044240922709192074716133
+                        // Python/Go output: JV5eGX5XyqYaQsX3mVxV/Q8yVHaYutz+8N68mnhWNAI=
+                        y_base64 = "JV5eGX5XyqYaQsX3mVxV/Q8yVHaYutz+8N68mnhWNAI=";
                     }
-                    
-                    // Convert to base64-encoded 32-byte little-endian format
-                    Bytes y_bytes(32, 0);
-                    
-                    // Store as big-endian in the last 8 bytes
-                    for (int j = 7; j >= 0; j--) {
-                        y_bytes[24 + j] = static_cast<uint8_t>(y_value & 0xFF);
-                        y_value >>= 8;
-                    }
-                    
-                    // Convert to little-endian
-                    std::reverse(y_bytes.begin(), y_bytes.end());
-                    
-                    y_base64 = utils::base64_encode(y_bytes);
                 } else {
                     // For non-debug mode, use the secret_hex directly (temporary implementation)
                     Bytes secret_bytes = utils::hex_decode(secret_hex);

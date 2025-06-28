@@ -476,6 +476,14 @@ class NoiseNK:
         debug_log(f"  - plaintext length: {len(plaintext)}")
         debug_log(f"  - plaintext hex: {plaintext.hex()}")
         
+        # Debug transport keys being used
+        try:
+            cs1, cs2 = self.split_keys()
+            debug_log(f"  - send key (cs1): {cs1.k.hex() if hasattr(cs1, 'k') else 'unknown'}")
+            debug_log(f"  - recv key (cs2): {cs2.k.hex() if hasattr(cs2, 'k') else 'unknown'}")
+        except Exception as e:
+            debug_log(f"  - Failed to extract keys for debug: {e}")
+        
         try:
             encrypted = self.noise.encrypt(plaintext)
             debug_log(f"  - encrypted length: {len(encrypted)}")
@@ -754,6 +762,31 @@ class EncryptedOpenADPClient:
         try:
             noise_client.read_message(handshake_msg2)
             debug_log("Noise-NK handshake completed successfully")
+            
+            # Debug transport keys after handshake completion
+            try:
+                cs1, cs2 = noise_client.split_keys()
+                debug_log("🔑 PYTHON INITIATOR: Transport key assignment complete")
+                debug_log("  - send_cipher: cs1 (initiator->responder)")
+                debug_log("  - recv_cipher: cs2 (responder->initiator)")
+                debug_log("  - Python uses cs1 for send, cs2 for recv (initiator)")
+                
+                # Log transport cipher information (what we can access)
+                debug_log("🔑 PYTHON INITIATOR: Transport cipher information")
+                debug_log(f"  - cs1 nonce: {cs1.n if hasattr(cs1, 'n') else 'unknown'}")
+                debug_log(f"  - cs2 nonce: {cs2.n if hasattr(cs2, 'n') else 'unknown'}")
+                debug_log(f"  - cs1 key: {cs1.k.hex() if hasattr(cs1, 'k') and cs1.k else 'unknown'}")
+                debug_log(f"  - cs2 key: {cs2.k.hex() if hasattr(cs2, 'k') and cs2.k else 'unknown'}")
+                
+                # Try to access additional information
+                if hasattr(cs1, 'cipher'):
+                    debug_log(f"  - cs1 cipher type: {type(cs1.cipher)}")
+                if hasattr(cs2, 'cipher'):
+                    debug_log(f"  - cs2 cipher type: {type(cs2.cipher)}")
+                    
+            except Exception as e:
+                debug_log(f"  - Failed to extract transport keys for debugging: {e}")
+                
         except Exception as e:
             debug_log(f"Failed to complete handshake: {e}")
             raise OpenADPError(

@@ -42,7 +42,7 @@ std::string get_deterministic_main_secret() {
     
     // Use the same large deterministic constant as Python and Go implementations
     // This is the hex pattern reduced modulo Ed25519 group order q
-    std::string deterministic_secret = "23456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23";
+    std::string deterministic_secret = "23456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e230";
     
     debug_log("Using deterministic main secret r = 0x" + deterministic_secret);
     return deterministic_secret;
@@ -81,8 +81,12 @@ std::string get_deterministic_random_hex(size_t length) {
     deterministic_counter++;
     std::stringstream ss;
     
-    // Generate deterministic hex string
-    for (size_t i = 0; i < length; i++) {
+    // Generate deterministic hex string with C++ prefix to avoid session ID conflicts
+    // Use 'C' (0x43) as first byte to make C++ session IDs unique from Python/Go
+    ss << "43"; // 'C' in hex
+    
+    // Generate the rest of the hex string
+    for (size_t i = 2; i < length; i++) {
         ss << std::hex << std::setfill('0') << std::setw(2) 
            << ((deterministic_counter + i) % 256);
     }

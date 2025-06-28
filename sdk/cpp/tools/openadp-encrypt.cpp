@@ -139,7 +139,7 @@ int main(int argc, char* argv[]) {
         Bytes plaintext = utils::read_file(input_file);
         
         // Create identity
-        std::string device_id = "cpp_device";
+        std::string device_id = "beast";
         std::string backup_id = "file://" + input_file;
         Identity identity(user_id, device_id, backup_id);
         

@@ -9,6 +9,7 @@
 #include <openssl/aes.h>
 #include <openssl/ec.h>
 #include <openssl/bn.h>
+#include <openssl/hmac.h>
 #include <cstring>
 #include <algorithm>
 #include <numeric>
@@ -1111,7 +1112,11 @@ Bytes hkdf_derive(const Bytes& input_key, const Bytes& salt, const Bytes& info, 
         throw OpenADPError("Failed to set HKDF hash function");
     }
     
-    if (EVP_PKEY_CTX_set1_hkdf_key(ctx, input_key.data(), input_key.size()) != 1) {
+    // Handle empty input key material - OpenSSL doesn't accept zero-length keys
+    // Use single zero byte as workaround (standard approach for Noise Protocol implementations)
+    Bytes effective_key = input_key.empty() ? Bytes(1, 0) : input_key;
+    
+    if (EVP_PKEY_CTX_set1_hkdf_key(ctx, effective_key.data(), effective_key.size()) != 1) {
         EVP_PKEY_CTX_free(ctx);
         throw OpenADPError("Failed to set HKDF input key");
     }
@@ -1140,6 +1145,93 @@ Bytes hkdf_derive(const Bytes& input_key, const Bytes& salt, const Bytes& info, 
     
     EVP_PKEY_CTX_free(ctx);
     output.resize(out_len);
+    
+    return output;
+}
+
+// HKDF-Expand-Only key derivation (for Noise Split operation)
+Bytes hkdf_expand_only(const Bytes& prk, const Bytes& info, size_t output_length) {
+    if (output_length == 0) {
+        throw OpenADPError("HKDF output length must be greater than 0");
+    }
+    
+    if (output_length > 8160) { // RFC 5869 limit: 255 * hash_length (255 * 32 for SHA-256)
+        throw OpenADPError("HKDF output length exceeds maximum allowed");
+    }
+    
+    if (prk.size() < 32) { // For SHA-256, PRK should be at least 32 bytes
+        throw OpenADPError("PRK too short for HKDF-Expand");
+    }
+    
+    EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, nullptr);
+    if (!ctx) {
+        throw OpenADPError("Failed to create HKDF context");
+    }
+    
+    if (EVP_PKEY_derive_init(ctx) != 1) {
+        EVP_PKEY_CTX_free(ctx);
+        throw OpenADPError("Failed to initialize HKDF");
+    }
+    
+    // Set HKDF mode to expand-only
+    if (EVP_PKEY_CTX_hkdf_mode(ctx, EVP_PKEY_HKDEF_MODE_EXPAND_ONLY) != 1) {
+        EVP_PKEY_CTX_free(ctx);
+        throw OpenADPError("Failed to set HKDF expand-only mode");
+    }
+    
+    if (EVP_PKEY_CTX_set_hkdf_md(ctx, EVP_sha256()) != 1) {
+        EVP_PKEY_CTX_free(ctx);
+        throw OpenADPError("Failed to set HKDF hash function");
+    }
+    
+    // Set PRK as the key for expand-only mode
+    if (EVP_PKEY_CTX_set1_hkdf_key(ctx, prk.data(), prk.size()) != 1) {
+        EVP_PKEY_CTX_free(ctx);
+        throw OpenADPError("Failed to set HKDF PRK");
+    }
+    
+    if (!info.empty()) {
+        if (EVP_PKEY_CTX_add1_hkdf_info(ctx, info.data(), info.size()) != 1) {
+            EVP_PKEY_CTX_free(ctx);
+            throw OpenADPError("Failed to set HKDF info");
+        }
+    }
+    
+    Bytes output(output_length);
+    size_t out_len = output_length;
+    
+    if (EVP_PKEY_derive(ctx, output.data(), &out_len) != 1) {
+        EVP_PKEY_CTX_free(ctx);
+        throw OpenADPError("HKDF expand-only derivation failed");
+    }
+    
+    EVP_PKEY_CTX_free(ctx);
+    output.resize(out_len);
+    
+    return output;
+}
+
+// HMAC-SHA256 function (supports empty data)
+Bytes hmac_sha256(const Bytes& key, const Bytes& data) {
+    if (key.empty()) {
+        throw OpenADPError("HMAC key cannot be empty");
+    }
+    
+    unsigned char* result = nullptr;
+    unsigned int result_len = 0;
+    
+    // Use HMAC with SHA256
+    result = HMAC(EVP_sha256(), 
+                  key.data(), static_cast<int>(key.size()),
+                  data.empty() ? nullptr : data.data(), data.size(),
+                  nullptr, &result_len);
+    
+    if (!result) {
+        throw OpenADPError("HMAC-SHA256 computation failed");
+    }
+    
+    // Copy result to Bytes vector
+    Bytes output(result, result + result_len);
     
     return output;
 }

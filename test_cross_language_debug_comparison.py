@@ -254,19 +254,17 @@ class CrossLanguageDebugTest:
                 if stderr:
                     log(f"   stderr: {stderr[:200]}...")
         
+        # Show detailed output for ALL implementations to compare transport keys
+        for name, (code, stdout, stderr) in implementations.items():
+            log(f"\n{'='*60}")
+            log(f"{name} DETAILED OUTPUT:")
+            log("="*60)
+            log(f"Exit code: {code}")
+            log(f"stdout: {stdout}")
+            log(f"stderr: {stderr}")
+        
         if failed_implementations:
             log(f"❌ Failed implementations: {failed_implementations}")
-            
-            # Show detailed output for failed implementations
-            for name in failed_implementations:
-                code, stdout, stderr = implementations[name]
-                log(f"\n{'='*60}")
-                log(f"{name} DETAILED OUTPUT:")
-                log("="*60)
-                log(f"Exit code: {code}")
-                log(f"stdout: {stdout}")
-                log(f"stderr: {stderr}")
-            
             return False
         
         # Extract debug operations

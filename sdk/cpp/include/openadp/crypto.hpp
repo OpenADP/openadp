@@ -98,6 +98,10 @@ Bytes aes_gcm_decrypt(const Bytes& ciphertext, const Bytes& tag, const Bytes& no
 
 // HKDF key derivation
 Bytes hkdf_derive(const Bytes& input_key, const Bytes& salt, const Bytes& info, size_t output_length);
+Bytes hkdf_expand_only(const Bytes& prk, const Bytes& info, size_t output_length);
+
+// HMAC functions
+Bytes hmac_sha256(const Bytes& key, const Bytes& data);
 
 } // namespace crypto
 } // namespace openadp 
