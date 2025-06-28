@@ -236,6 +236,12 @@ Bytes NoiseState::encrypt(const Bytes& plaintext) {
         throw OpenADPError("Handshake not finished");
     }
     
+    debug_log("🔐 TRANSPORT ENCRYPT");
+    debug_log("  - plaintext length: " + std::to_string(plaintext.size()));
+    debug_log("  - plaintext hex: " + crypto::bytes_to_hex(plaintext));
+    debug_log("  - send key: " + crypto::bytes_to_hex(pimpl_->send_key));
+    debug_log("  - send nonce: " + std::to_string(pimpl_->send_nonce));
+    
     // Create nonce (12 bytes: 4 zeros + 8-byte counter big-endian)
     Bytes nonce(12, 0);
     nonce[4] = (pimpl_->send_nonce >> 56) & 0xFF;
@@ -247,16 +253,30 @@ Bytes NoiseState::encrypt(const Bytes& plaintext) {
     nonce[10] = (pimpl_->send_nonce >> 8) & 0xFF;
     nonce[11] = pimpl_->send_nonce & 0xFF;
     
-    // Encrypt with AES-GCM using handshake hash as AAD
-    auto result = crypto::aes_gcm_encrypt(plaintext, pimpl_->send_key, nonce, pimpl_->h);
+    debug_log("  - nonce (12 bytes): " + crypto::bytes_to_hex(nonce));
+    
+    // Encrypt with NO AAD (matching Python/Go)
+    Bytes empty_aad; // Empty AAD for transport encryption
+    debug_log("  - AAD length: " + std::to_string(empty_aad.size()));
+    debug_log("  - AAD: " + crypto::bytes_to_hex(empty_aad));
+    
+    auto result = crypto::aes_gcm_encrypt(plaintext, pimpl_->send_key, nonce, empty_aad);
+    
+    // Combine ciphertext and tag (AES-GCM format)
+    Bytes ciphertext = result.ciphertext;
+    ciphertext.insert(ciphertext.end(), result.tag.begin(), result.tag.end());
+    
+    debug_log("  - ciphertext length: " + std::to_string(result.ciphertext.size()));
+    debug_log("  - ciphertext hex: " + crypto::bytes_to_hex(result.ciphertext));
+    debug_log("  - tag length: " + std::to_string(result.tag.size()));
+    debug_log("  - tag hex: " + crypto::bytes_to_hex(result.tag));
+    debug_log("  - combined length: " + std::to_string(ciphertext.size()));
+    debug_log("  - combined hex: " + crypto::bytes_to_hex(ciphertext));
     
     pimpl_->send_nonce++;
+    debug_log("  - incremented send nonce to: " + std::to_string(pimpl_->send_nonce));
     
-    // Return ciphertext + tag (AES-GCM format)
-    Bytes encrypted = result.ciphertext;
-    encrypted.insert(encrypted.end(), result.tag.begin(), result.tag.end());
-    
-    return encrypted;
+    return ciphertext;
 }
 
 Bytes NoiseState::decrypt(const Bytes& ciphertext) {
@@ -264,9 +284,11 @@ Bytes NoiseState::decrypt(const Bytes& ciphertext) {
         throw OpenADPError("Handshake not finished");
     }
     
-    if (ciphertext.size() < 16) {
-        throw OpenADPError("Ciphertext too short for decryption");
-    }
+    debug_log("🔓 TRANSPORT DECRYPT");
+    debug_log("  - ciphertext length: " + std::to_string(ciphertext.size()));
+    debug_log("  - ciphertext hex: " + crypto::bytes_to_hex(ciphertext));
+    debug_log("  - recv key: " + crypto::bytes_to_hex(pimpl_->recv_key));
+    debug_log("  - recv nonce: " + std::to_string(pimpl_->recv_nonce));
     
     // Create nonce (12 bytes: 4 zeros + 8-byte counter big-endian)
     Bytes nonce(12, 0);
@@ -279,14 +301,33 @@ Bytes NoiseState::decrypt(const Bytes& ciphertext) {
     nonce[10] = (pimpl_->recv_nonce >> 8) & 0xFF;
     nonce[11] = pimpl_->recv_nonce & 0xFF;
     
-    // Extract components
+    debug_log("  - nonce (12 bytes): " + crypto::bytes_to_hex(nonce));
+    
+    if (ciphertext.size() < 16) {
+        throw OpenADPError("Ciphertext too short for decryption");
+    }
+    
+    // Extract components: last 16 bytes are the tag
     Bytes tag(ciphertext.end() - 16, ciphertext.end());
     Bytes data(ciphertext.begin(), ciphertext.end() - 16);
     
-    // Decrypt with AES-GCM using handshake hash as AAD
-    Bytes plaintext = crypto::aes_gcm_decrypt(data, tag, nonce, pimpl_->recv_key, pimpl_->h);
+    debug_log("  - data length: " + std::to_string(data.size()));
+    debug_log("  - data hex: " + crypto::bytes_to_hex(data));
+    debug_log("  - tag length: " + std::to_string(tag.size()));
+    debug_log("  - tag hex: " + crypto::bytes_to_hex(tag));
+    
+    // Decrypt with NO AAD (matching Python/Go)
+    Bytes empty_aad; // Empty AAD for transport encryption
+    debug_log("  - AAD length: " + std::to_string(empty_aad.size()));
+    debug_log("  - AAD: " + crypto::bytes_to_hex(empty_aad));
+    
+    Bytes plaintext = crypto::aes_gcm_decrypt(data, tag, nonce, pimpl_->recv_key, empty_aad);
+    
+    debug_log("  - plaintext length: " + std::to_string(plaintext.size()));
+    debug_log("  - plaintext hex: " + crypto::bytes_to_hex(plaintext));
     
     pimpl_->recv_nonce++;
+    debug_log("  - incremented recv nonce to: " + std::to_string(pimpl_->recv_nonce));
     
     return plaintext;
 }

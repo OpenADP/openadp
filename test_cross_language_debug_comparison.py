@@ -5,6 +5,11 @@ Cross-Language Debug Output Comparison Test
 This test runs encryption/decryption operations with Python, Go, and C++ implementations
 in debug mode and compares their debug output to ensure they perform identical 
 cryptographic operations.
+
+Enhanced to support:
+- Dynamic server management with proper public keys
+- file://, http://, and https:// server URL formats
+- Consistent server URL handling across all SDKs
 """
 
 import os
@@ -13,363 +18,407 @@ import subprocess
 import tempfile
 import time
 import re
-import threading
-import http.server
-import socketserver
+import argparse
+from manage_test_servers import TestServerManager
 
 def log(message):
-    print(f"[TEST] {message}")
+    print(f"[CROSS_TEST] {message}")
 
-def start_registry_server():
-    """Start a simple HTTP server to serve the registry JSON file for C++"""
-    log("Starting registry server on port 8082...")
-    
-    class RegistryHandler(http.server.SimpleHTTPRequestHandler):
-        def do_GET(self):
-            if self.path == '/servers.json':
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                with open('test_servers_registry.json', 'rb') as f:
-                    self.wfile.write(f.read())
-            else:
-                self.send_response(404)
-                self.end_headers()
-    
-    try:
-        httpd = socketserver.TCPServer(("", 8082), RegistryHandler)
+class CrossLanguageDebugTest:
+    def __init__(self, num_servers=2, start_port=8080, servers_url_format="http"):
+        self.num_servers = num_servers
+        self.start_port = start_port
+        self.servers_url_format = servers_url_format
+        self.server_manager = TestServerManager()
+        self.servers_url = None
+        self.test_files = []
         
-        # Start server in background thread
-        server_thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-        server_thread.start()
+    def setup(self):
+        """Setup test servers and get servers URL"""
+        log(f"🔧 Setting up {self.num_servers} test servers...")
         
-        # Wait a bit for server to start
-        time.sleep(1)
+        # Launch test servers
+        success = self.server_manager.launch_servers(self.num_servers, self.start_port)
+        if not success:
+            log("❌ Failed to launch test servers")
+            return False
         
-        log("✅ Registry server started successfully")
-        return httpd
-        
-    except Exception as e:
-        log(f"❌ Failed to start registry server: {e}")
-        return None
-
-def start_test_server():
-    """Start a test server for the debug comparison"""
-    log("Starting test server on port 8080...")
-    
-    # Create temporary database
-    temp_db = tempfile.mktemp(suffix="_debug_test.db")
-    
-    cmd = [
-        "build/openadp-server",
-        "-port", "8080",
-        "-db", temp_db,
-        "-auth", "true"
-    ]
-    
-    try:
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
-        
-        # Wait for server to start
-        time.sleep(3)
-        
-        # Test if server is responding
-        ping_cmd = ["curl", "-s", "http://127.0.0.1:8080"]
-        result = subprocess.run(ping_cmd, capture_output=True, timeout=5)
-        
-        if result.returncode == 0:
-            log("✅ Test server started successfully")
-            return process, temp_db
-        else:
-            log("❌ Test server failed to start properly")
-            process.terminate()
-            return None, temp_db
-            
-    except Exception as e:
-        log(f"❌ Failed to start test server: {e}")
-        return None, temp_db
-
-def cleanup_server(process, temp_db):
-    """Clean up the test server"""
-    if process:
+        # Get servers URL in the requested format
         try:
-            process.terminate()
-            process.wait(timeout=5)
-        except:
+            self.servers_url = self.server_manager.get_servers_url(self.servers_url_format)
+            log(f"✅ Servers URL: {self.servers_url}")
+            return True
+        except Exception as e:
+            log(f"❌ Failed to get servers URL: {e}")
+            return False
+    
+    def cleanup(self):
+        """Cleanup test infrastructure"""
+        log("🧹 Cleaning up test infrastructure...")
+        
+        # Cleanup server manager
+        self.server_manager.teardown()
+        
+        # Clean up test files
+        for test_file in self.test_files:
             try:
-                process.kill()
+                if os.path.exists(test_file):
+                    os.remove(test_file)
             except:
                 pass
-    
-    try:
-        if os.path.exists(temp_db):
-            os.remove(temp_db)
-    except:
-        pass
-
-def extract_debug_operations(debug_output):
-    """Extract key cryptographic operations from debug output"""
-    operations = []
-    
-    # Look for key debug patterns
-    patterns = [
-        r"\[DEBUG\] (Using deterministic .+)",
-        r"\[DEBUG\] (Main secret: .+)",
-        r"\[DEBUG\] (Polynomial coefficient \d+: .+)",
-        r"\[DEBUG\] (Share \d+ \(x=\d+\): .+)",
-        r"\[DEBUG\] (Ephemeral secret: .+)",
-        r"\[DEBUG\] (Ed25519 public key: .+)",
-        r"\[DEBUG\] (Noise handshake .+)",
-        r"\[DEBUG\] (AES-GCM .+)",
-        r"\[DEBUG\] (HKDF .+)",
-        r"\[DEBUG\] (SHA256 .+)",
-    ]
-    
-    for line in debug_output.split('\n'):
-        for pattern in patterns:
-            match = re.search(pattern, line)
-            if match:
-                operations.append(match.group(1))
-    
-    return operations
-
-def run_python_debug_encrypt():
-    """Run Python encryption with debug output"""
-    log("Running Python encryption with debug...")
-    
-    cmd = [
-        "python3", "sdk/python/openadp-encrypt.py",
-        "--file", "test_debug_input.txt",
-        "--password", "debug_test_pass",
-        "--user-id", "debug_test_user",
-        "--servers", "http://127.0.0.1:8080",
-        "--debug"
-    ]
-    
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-    return result.returncode, result.stdout, result.stderr
-
-def run_go_debug_encrypt():
-    """Run Go encryption with debug output"""
-    log("Running Go encryption with debug...")
-    
-    cmd = [
-        "build/openadp-encrypt",
-        "--file", "test_debug_input.txt",
-        "--password", "debug_test_pass",
-        "--user-id", "debug_test_user",
-        "--servers", "http://127.0.0.1:8080",
-        "--debug"
-    ]
-    
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-    return result.returncode, result.stdout, result.stderr
-
-def run_cpp_debug_encrypt():
-    """Run C++ encryption with debug output"""
-    log("Running C++ encryption with debug...")
-    
-    # C++ uses different interface - needs input, output, metadata files and registry URL
-    cmd = [
-        "sdk/cpp/build/openadp-encrypt",
-        "--input", "test_debug_input.txt",
-        "--output", "test_debug_input_cpp.enc",
-        "--metadata", "test_debug_input_cpp.meta",
-        "--password", "debug_test_pass",
-        "--user-id", "debug_test_user",
-        "--servers-url", "http://127.0.0.1:8082/servers.json",  # Use our local registry
-        "--debug"
-    ]
-    
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-    return result.returncode, result.stdout, result.stderr
-
-def compare_debug_outputs():
-    """Compare debug outputs between Python, Go, and C++ implementations"""
-    log("🔍 Starting cross-language debug comparison...")
-    
-    # Create test input file
-    test_content = b"Hello, debug comparison test! This tests identical crypto operations."
-    with open("test_debug_input.txt", 'wb') as f:
-        f.write(test_content)
-    
-    # Start registry server for C++
-    registry_server = start_registry_server()
-    if not registry_server:
-        log("❌ Cannot start registry server")
-        return False
-    
-    # Start test server
-    server_process, temp_db = start_test_server()
-    if not server_process:
-        log("❌ Cannot start test server")
-        if registry_server:
-            registry_server.shutdown()
-        return False
-    
-    try:
-        # Run Python encryption with debug
-        py_code, py_stdout, py_stderr = run_python_debug_encrypt()
-        log(f"Python exit code: {py_code}")
         
-        if py_code != 0:
-            log("❌ Python encryption failed")
-            log(f"Python stdout: {py_stdout}")
-            log(f"Python stderr: {py_stderr}")
-            return False
+        log("✅ Cleanup complete")
+    
+    def create_test_input(self):
+        """Create test input file"""
+        test_content = b"Cross-language debug test: identical crypto operations verification"
+        test_file = "cross_lang_debug_input.txt"
         
-        # Clean up Python output file for Go test
-        if os.path.exists("test_debug_input.txt.enc"):
-            os.remove("test_debug_input.txt.enc")
+        with open(test_file, 'wb') as f:
+            f.write(test_content)
         
-        # Run Go encryption with debug  
-        go_code, go_stdout, go_stderr = run_go_debug_encrypt()
-        log(f"Go exit code: {go_code}")
+        self.test_files.append(test_file)
+        return test_file
+    
+    def extract_debug_operations(self, debug_output):
+        """Extract key cryptographic operations from debug output"""
+        operations = []
         
-        if go_code != 0:
-            log("❌ Go encryption failed")
-            log(f"Go stdout: {go_stdout}")
-            log(f"Go stderr: {go_stderr}")
-            return False
+        # Enhanced patterns to capture key crypto operations
+        patterns = [
+            r"\[DEBUG\] (Using deterministic .+)",
+            r"\[DEBUG\] (Generated deterministic .+)",
+            r"\[DEBUG\] (Main secret: .+)",
+            r"\[DEBUG\] (Secret.*: .+)",
+            r"\[DEBUG\] (Polynomial coefficient \d+: .+)",
+            r"\[DEBUG\] (Share \d+ \(x=\d+\): .+)",
+            r"\[DEBUG\] (Ephemeral secret: .+)",
+            r"\[DEBUG\] (Public key: .+)",
+            r"\[DEBUG\] (Ed25519 public key: .+)",
+            r"\[DEBUG\] (Base auth code: .+)",
+            r"\[DEBUG\] (Auth code for server .+)",
+            r"\[DEBUG\] (Noise handshake .+)",
+            r"\[DEBUG\] (AES-GCM .+)",
+            r"\[DEBUG\] (HKDF .+)",
+            r"\[DEBUG\] (SHA256 .+)",
+            r"\[DEBUG\] (Y coordinate .+)",
+            r"\[DEBUG\] (Computed .+)",
+        ]
         
-        # Clean up Go output file for C++ test
-        if os.path.exists("test_debug_input.txt.enc"):
-            os.remove("test_debug_input.txt.enc")
+        for line in debug_output.split('\n'):
+            for pattern in patterns:
+                match = re.search(pattern, line)
+                if match:
+                    operations.append(match.group(1))
         
-        # Run C++ encryption with debug
-        cpp_code, cpp_stdout, cpp_stderr = run_cpp_debug_encrypt()
-        log(f"C++ exit code: {cpp_code}")
+        return operations
+    
+    def run_python_encrypt(self, test_file):
+        """Run Python encryption with debug output"""
+        log("🐍 Running Python encryption with debug...")
         
-        if cpp_code != 0:
-            log("❌ C++ encryption failed")
-            log(f"C++ stdout: {cpp_stdout}")
-            log(f"C++ stderr: {cpp_stderr}")
+        # Try different Python entry points
+        python_scripts = [
+            "sdk/python/openadp-encrypt.py",
+            "sdk/python/openadp/openadp-encrypt.py",
+        ]
+        
+        python_script = None
+        for script in python_scripts:
+            if os.path.exists(script):
+                python_script = script
+                break
+        
+        if not python_script:
+            log("❌ Python encrypt script not found")
+            return None, None, "Python encrypt script not found"
+        
+        cmd = [
+            "python3", python_script,
+            "--file", test_file,
+            "--password", "cross_lang_debug_pass",
+            "--user-id", "cross_lang_debug_user",
+            "--servers-url", self.servers_url,  # Use --servers-url instead of --servers
+            "--debug"
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            log(f"Python exit code: {result.returncode}")
+            return result.returncode, result.stdout, result.stderr
+        except Exception as e:
+            log(f"❌ Python encryption failed: {e}")
+            return -1, "", str(e)
+    
+    def run_go_encrypt(self, test_file):
+        """Run Go encryption with debug output"""
+        log("🐹 Running Go encryption with debug...")
+        
+        # Check for Go binary
+        go_binaries = [
+            "build/openadp-encrypt",
+            "cmd/openadp-encrypt/openadp-encrypt",
+        ]
+        
+        go_binary = None
+        for binary in go_binaries:
+            if os.path.exists(binary):
+                go_binary = binary
+                break
+        
+        if not go_binary:
+            log("❌ Go encrypt binary not found")
+            return None, None, "Go encrypt binary not found"
+        
+        cmd = [
+            go_binary,
+            "--file", test_file,
+            "--password", "cross_lang_debug_pass",
+            "--user-id", "cross_lang_debug_user",
+            "--servers-url", self.servers_url,  # Use --servers-url
+            "--debug"
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            log(f"Go exit code: {result.returncode}")
+            return result.returncode, result.stdout, result.stderr
+        except Exception as e:
+            log(f"❌ Go encryption failed: {e}")
+            return -1, "", str(e)
+    
+    def run_cpp_encrypt(self, test_file):
+        """Run C++ encryption with debug output"""
+        log("⚙️ Running C++ encryption with debug...")
+        
+        # Check for C++ binary
+        cpp_binaries = [
+            "sdk/cpp/build/openadp-encrypt",
+            "build/cpp/openadp-encrypt",
+        ]
+        
+        cpp_binary = None
+        for binary in cpp_binaries:
+            if os.path.exists(binary):
+                cpp_binary = binary
+                break
+        
+        if not cpp_binary:
+            log("❌ C++ encrypt binary not found")
+            return None, None, "C++ encrypt binary not found"
+        
+        # C++ uses different parameter names
+        output_file = test_file + "_cpp.enc"
+        metadata_file = test_file + "_cpp.meta"
+        self.test_files.extend([output_file, metadata_file])
+        
+        cmd = [
+            cpp_binary,
+            "--input", test_file,
+            "--output", output_file,
+            "--metadata", metadata_file,
+            "--password", "cross_lang_debug_pass",
+            "--user-id", "cross_lang_debug_user",
+            "--servers-url", self.servers_url,  # C++ should support this format
+            "--debug"
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            log(f"C++ exit code: {result.returncode}")
+            return result.returncode, result.stdout, result.stderr
+        except Exception as e:
+            log(f"❌ C++ encryption failed: {e}")
+            return -1, "", str(e)
+    
+    def compare_implementations(self):
+        """Run and compare all implementations"""
+        log("🔍 Running cross-language debug comparison...")
+        
+        # Create test input
+        test_file = self.create_test_input()
+        
+        # Run all implementations
+        implementations = {
+            "Python": self.run_python_encrypt(test_file),
+            "Go": self.run_go_encrypt(test_file), 
+            "C++": self.run_cpp_encrypt(test_file)
+        }
+        
+        # Check for failures
+        failed_implementations = []
+        for name, (code, stdout, stderr) in implementations.items():
+            if code is None or code != 0:
+                failed_implementations.append(name)
+                log(f"❌ {name} failed with exit code {code}")
+                if stderr:
+                    log(f"   stderr: {stderr[:200]}...")
+        
+        if failed_implementations:
+            log(f"❌ Failed implementations: {failed_implementations}")
+            
+            # Show detailed output for failed implementations
+            for name in failed_implementations:
+                code, stdout, stderr = implementations[name]
+                log(f"\n{'='*60}")
+                log(f"{name} DETAILED OUTPUT:")
+                log("="*60)
+                log(f"Exit code: {code}")
+                log(f"stdout: {stdout}")
+                log(f"stderr: {stderr}")
+            
             return False
         
         # Extract debug operations
-        log("📊 Extracting debug operations...")
+        debug_operations = {}
+        for name, (code, stdout, stderr) in implementations.items():
+            operations = self.extract_debug_operations(stderr)
+            debug_operations[name] = operations
+            log(f"✅ {name}: {len(operations)} debug operations extracted")
         
-        py_operations = extract_debug_operations(py_stderr)
-        go_operations = extract_debug_operations(go_stderr)
-        cpp_operations = extract_debug_operations(cpp_stderr)
+        # Display raw debug output
+        log("\n" + "="*80)
+        log("RAW DEBUG OUTPUT COMPARISON")
+        log("="*80)
         
-        log(f"Python debug operations: {len(py_operations)}")
-        log(f"Go debug operations: {len(go_operations)}")
-        log(f"C++ debug operations: {len(cpp_operations)}")
+        for name, (code, stdout, stderr) in implementations.items():
+            log(f"\n{'-'*60}")
+            log(f"{name} DEBUG OUTPUT:")
+            log("-"*60)
+            log(stderr)
         
-        # Show raw debug output for analysis
-        log("\n" + "="*60)
-        log("RAW PYTHON DEBUG OUTPUT:")
-        log("="*60)
-        log(py_stderr)
+        # Display extracted operations
+        log("\n" + "="*80)
+        log("EXTRACTED DEBUG OPERATIONS COMPARISON")
+        log("="*80)
         
-        log("\n" + "="*60)
-        log("RAW GO DEBUG OUTPUT:")
-        log("="*60)
-        log(go_stderr)
-        
-        log("\n" + "="*60)
-        log("RAW C++ DEBUG OUTPUT:")
-        log("="*60)
-        log(cpp_stderr)
-        
-        # Display operations for comparison
-        log("\n" + "="*60)
-        log("PYTHON DEBUG OPERATIONS:")
-        log("="*60)
-        for i, op in enumerate(py_operations, 1):
-            log(f" {i:2}. {op}")
-        
-        log("\n" + "="*60)
-        log("GO DEBUG OPERATIONS:")
-        log("="*60)
-        for i, op in enumerate(go_operations, 1):
-            log(f" {i:2}. {op}")
-        
-        log("\n" + "="*60)
-        log("C++ DEBUG OPERATIONS:")
-        log("="*60)
-        for i, op in enumerate(cpp_operations, 1):
-            log(f" {i:2}. {op}")
+        for name, operations in debug_operations.items():
+            log(f"\n{'-'*60}")
+            log(f"{name} OPERATIONS ({len(operations)}):")
+            log("-"*60)
+            for i, op in enumerate(operations, 1):
+                log(f" {i:2}. {op}")
         
         # Compare operations
-        log("\n" + "="*60)
-        log("COMPARISON RESULTS:")
-        log("="*60)
+        log("\n" + "="*80)
+        log("COMPARISON ANALYSIS")
+        log("="*80)
         
-        # Check if all have same number of operations
-        if len(py_operations) == len(go_operations) == len(cpp_operations):
-            log(f"✅ All implementations have {len(py_operations)} debug operations")
-            
-            # Check if operations match
-            all_match = True
-            for i, (py_op, go_op, cpp_op) in enumerate(zip(py_operations, go_operations, cpp_operations)):
-                if py_op == go_op == cpp_op:
-                    log(f"✅ Operation {i+1}: All match")
-                else:
-                    log(f"❌ Operation {i+1}: Mismatch")
-                    log(f"   Python: {py_op}")
-                    log(f"   Go:     {go_op}")
-                    log(f"   C++:    {cpp_op}")
-                    all_match = False
-            
-            if all_match:
-                log("✅ All debug operations match perfectly!")
-                log("🎉 Cross-language cryptographic operations are identical!")
-                return True
-            else:
-                log("❌ Some debug operations don't match")
-                return False
+        # Get operation counts
+        op_counts = {name: len(ops) for name, ops in debug_operations.items()}
+        log(f"Operation counts: {op_counts}")
+        
+        # Check if counts match
+        if len(set(op_counts.values())) == 1:
+            log("✅ All implementations have the same number of debug operations")
         else:
-            log(f"❌ Different number of operations: Python={len(py_operations)}, Go={len(go_operations)}, C++={len(cpp_operations)}")
+            log("⚠️ Different number of debug operations between implementations")
+        
+        # Compare operations pairwise
+        implementation_names = list(debug_operations.keys())
+        comparison_results = {}
+        
+        for i in range(len(implementation_names)):
+            for j in range(i + 1, len(implementation_names)):
+                name1, name2 = implementation_names[i], implementation_names[j]
+                ops1, ops2 = debug_operations[name1], debug_operations[name2]
+                
+                matches = 0
+                total = max(len(ops1), len(ops2))
+                
+                for k in range(min(len(ops1), len(ops2))):
+                    if ops1[k] == ops2[k]:
+                        matches += 1
+                
+                match_percentage = (matches / total * 100) if total > 0 else 0
+                comparison_results[f"{name1} vs {name2}"] = (matches, total, match_percentage)
+                
+                log(f"{name1} vs {name2}: {matches}/{total} operations match ({match_percentage:.1f}%)")
+        
+        # Determine overall result
+        all_perfect = all(matches == total for matches, total, _ in comparison_results.values())
+        
+        if all_perfect:
+            log("\n🎉 PERFECT MATCH: All implementations produce identical debug operations!")
+            return True
+        else:
+            log("\n⚠️ PARTIAL MATCH: Some differences found between implementations")
             return False
     
-    finally:
-        # Cleanup
-        cleanup_server(server_process, temp_db)
-        if registry_server:
-            registry_server.shutdown()
+    def run(self):
+        """Run the complete cross-language debug comparison test"""
+        log("🚀 Starting Cross-Language Debug Comparison Test")
+        log(f"Testing {self.num_servers} servers with {self.servers_url_format} URL format")
         
-        # Clean up test files
-        for file in ["test_debug_input.txt", "test_debug_input.txt.enc", 
-                     "test_debug_input_cpp.enc", "test_debug_input_cpp.meta"]:
-            try:
-                if os.path.exists(file):
-                    os.remove(file)
-            except:
-                pass
+        try:
+            # Setup
+            if not self.setup():
+                return False
+            
+            # Run comparison
+            result = self.compare_implementations()
+            
+            return result
+            
+        finally:
+            # Always cleanup
+            self.cleanup()
 
 def main():
-    log("🚀 Cross-Language Debug Output Comparison Test (Python, Go, C++)")
-    log("This test verifies that all implementations produce identical cryptographic operations")
+    parser = argparse.ArgumentParser(description="Cross-language debug output comparison test")
+    parser.add_argument("--num-servers", type=int, default=2, 
+                       help="Number of test servers to launch (default: 2)")
+    parser.add_argument("--start-port", type=int, default=8080,
+                       help="Starting port for test servers (default: 8080)")  
+    parser.add_argument("--servers-url-format", choices=["file", "http"], default="http",
+                       help="Format for servers URL (default: http)")
+    parser.add_argument("--verbose", "-v", action="store_true",
+                       help="Enable verbose output")
     
-    # Check if tools exist
-    if not os.path.exists("sdk/python/openadp-encrypt.py"):
-        log("❌ Python encrypt tool not found")
+    args = parser.parse_args()
+    
+    # Check required tools
+    required_tools = [
+        ("build/openadp-server", "Go server"),
+        ("build/openadp-serverinfo", "Server info tool"),
+    ]
+    
+    missing_tools = []
+    for tool_path, tool_name in required_tools:
+        if not os.path.exists(tool_path):
+            # Try alternative location
+            alt_path = tool_path.replace("build/", "cmd/").replace("/", "/") + "/" + os.path.basename(tool_path)
+            if not os.path.exists(alt_path):
+                missing_tools.append(f"{tool_name} ({tool_path})")
+    
+    if missing_tools:
+        log("❌ Missing required tools:")
+        for tool in missing_tools:
+            log(f"   - {tool}")
+        log("Please build the required tools first.")
         return 1
     
-    if not os.path.exists("build/openadp-encrypt"):
-        log("❌ Go encrypt tool not found")
-        return 1
+    # Run the test
+    test = CrossLanguageDebugTest(
+        num_servers=args.num_servers,
+        start_port=args.start_port,
+        servers_url_format=args.servers_url_format
+    )
     
-    if not os.path.exists("sdk/cpp/build/openadp-encrypt"):
-        log("❌ C++ encrypt tool not found")
-        return 1
-    
-    if not os.path.exists("build/openadp-server"):
-        log("❌ Go server not found")
-        return 1
-    
-    # Run the comparison
-    if compare_debug_outputs():
-        log("🎉 Cross-language debug comparison PASSED!")
-        return 0
-    else:
-        log("💥 Cross-language debug comparison FAILED!")
+    try:
+        if test.run():
+            log("🎉 Cross-language debug comparison PASSED!")
+            log("All implementations produce identical cryptographic operations.")
+            return 0
+        else:
+            log("💥 Cross-language debug comparison FAILED!")
+            log("Implementations have differences in cryptographic operations.")
+            return 1
+    except KeyboardInterrupt:
+        log("Test interrupted by user")
+        return 130
+    except Exception as e:
+        log(f"❌ Test failed with error: {e}")
         return 1
 
 if __name__ == "__main__":

@@ -71,8 +71,21 @@ EncryptResult encrypt_data(
         throw OpenADPError("No servers available");
     }
     
-    // Get server public keys
+    // Get server public keys (only if not already provided by registry)
     for (auto& server_info : server_infos) {
+        if (server_info.public_key.has_value()) {
+            // Public key already available from registry
+            if (debug::is_debug_mode_enabled()) {
+                debug::debug_log("Using public key from registry for server: " + server_info.url);
+            }
+            continue;
+        }
+        
+        // Public key not available, need to fetch from server
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("Public key not in registry, calling GetServerInfo for: " + server_info.url);
+        }
+        
         try {
             client::BasicOpenADPClient client(server_info.url);
             nlohmann::json info = client.get_server_info();
@@ -80,8 +93,19 @@ EncryptResult encrypt_data(
             if (info.contains("public_key")) {
                 std::string public_key_str = info["public_key"].get<std::string>();
                 server_info.public_key = utils::base64_decode(public_key_str);
+                
+                if (debug::is_debug_mode_enabled()) {
+                    debug::debug_log("Successfully fetched public key via GetServerInfo for: " + server_info.url);
+                }
+            } else {
+                if (debug::is_debug_mode_enabled()) {
+                    debug::debug_log("GetServerInfo response missing public_key for: " + server_info.url);
+                }
             }
-        } catch (...) {
+        } catch (const std::exception& e) {
+            if (debug::is_debug_mode_enabled()) {
+                debug::debug_log("Failed to get public key via GetServerInfo for " + server_info.url + ": " + e.what());
+            }
             // Continue without public key (will use unencrypted)
         }
     }
@@ -147,8 +171,21 @@ Bytes decrypt_data(
         server_infos = client::get_servers(servers_url);
     }
     
-    // Get server public keys
+    // Get server public keys (only if not already provided by registry)
     for (auto& server_info : server_infos) {
+        if (server_info.public_key.has_value()) {
+            // Public key already available from registry
+            if (debug::is_debug_mode_enabled()) {
+                debug::debug_log("Using public key from registry for server: " + server_info.url);
+            }
+            continue;
+        }
+        
+        // Public key not available, need to fetch from server
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("Public key not in registry, calling GetServerInfo for: " + server_info.url);
+        }
+        
         try {
             client::BasicOpenADPClient client(server_info.url);
             nlohmann::json info = client.get_server_info();
@@ -156,8 +193,19 @@ Bytes decrypt_data(
             if (info.contains("public_key")) {
                 std::string public_key_str = info["public_key"].get<std::string>();
                 server_info.public_key = utils::base64_decode(public_key_str);
+                
+                if (debug::is_debug_mode_enabled()) {
+                    debug::debug_log("Successfully fetched public key via GetServerInfo for: " + server_info.url);
+                }
+            } else {
+                if (debug::is_debug_mode_enabled()) {
+                    debug::debug_log("GetServerInfo response missing public_key for: " + server_info.url);
+                }
             }
-        } catch (...) {
+        } catch (const std::exception& e) {
+            if (debug::is_debug_mode_enabled()) {
+                debug::debug_log("Failed to get public key via GetServerInfo for " + server_info.url + ": " + e.what());
+            }
             // Continue without public key
         }
     }

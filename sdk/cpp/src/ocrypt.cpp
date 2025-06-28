@@ -77,7 +77,7 @@ Bytes register_with_bid(
         }
         
         // Create identity
-        std::string device_id = "cpp_device"; // Could be made configurable
+        std::string device_id = utils::get_hostname(); // Use hostname like Python/Go for cross-language consistency
         Identity identity(user_id, device_id, backup_id);
         
         // Generate encryption key using OpenADP

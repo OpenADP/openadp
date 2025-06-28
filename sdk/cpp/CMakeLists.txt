@@ -58,6 +58,7 @@ set(OPENADP_SOURCES
     src/base64.cpp
     src/hex.cpp
     src/debug.cpp
+    src/utils.cpp
     src/openadp.cpp
 )
 

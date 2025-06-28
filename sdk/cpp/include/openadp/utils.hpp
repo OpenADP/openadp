@@ -18,6 +18,9 @@ Bytes hex_decode(const std::string& hex);
 Bytes string_to_bytes(const std::string& str);
 std::string bytes_to_string(const Bytes& data);
 
+// System utilities
+std::string get_hostname();
+
 // Random number generation
 Bytes random_bytes(size_t length);
 std::string random_hex(size_t byte_length);

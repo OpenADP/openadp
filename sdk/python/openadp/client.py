@@ -234,8 +234,15 @@ class OpenADPClient:
     
     def _make_request(self, method: str, params: Any = None) -> Any:
         """Make a JSON-RPC request to the server."""
+        debug_log(f"Making request to {self.url}")
+        debug_log(f"Method: {method}")
+        debug_log(f"Parameters: {params}")
+        
         request = JSONRPCRequest(method, params, self.request_id)
         self.request_id += 1
+        
+        debug_log(f"Request ID: {request.id}")
+        debug_log(f"JSON-RPC request: {request.to_dict()}")
         
         try:
             response = self.session.post(
@@ -245,6 +252,7 @@ class OpenADPClient:
             )
             response.raise_for_status()
         except requests.RequestException as e:
+            debug_log(f"HTTP request failed: {e}")
             raise OpenADPError(
                 ErrorCode.NETWORK_FAILURE,
                 f"HTTP request failed: {str(e)}"
@@ -252,7 +260,9 @@ class OpenADPClient:
         
         try:
             response_data = response.json()
+            debug_log(f"Response received: {response_data}")
         except json.JSONDecodeError as e:
+            debug_log(f"Invalid JSON response: {e}")
             raise OpenADPError(
                 ErrorCode.INVALID_RESPONSE,
                 f"Invalid JSON response: {str(e)}"
@@ -261,11 +271,13 @@ class OpenADPClient:
         rpc_response = JSONRPCResponse.from_dict(response_data)
         
         if rpc_response.error:
+            debug_log(f"JSON-RPC error: {rpc_response.error.code} - {rpc_response.error.message}")
             raise OpenADPError(
                 ErrorCode.SERVER_ERROR,
                 f"JSON-RPC error {rpc_response.error.code}: {rpc_response.error.message}"
             )
         
+        debug_log(f"Request successful, result: {rpc_response.result}")
         return rpc_response.result
     
     def list_backups(self, uid: str) -> List[Dict[str, Any]]:
@@ -452,29 +464,54 @@ class NoiseNK:
             
         return payload
         
-    def encrypt(self, plaintext):
-        """Encrypt data after handshake is complete."""
+    def encrypt(self, plaintext: bytes) -> bytes:
+        """Encrypt a message using transport mode."""
         if not self.handshake_complete:
-            raise ValueError("Handshake not complete")
+            raise OpenADPError(
+                ErrorCode.ENCRYPTION_FAILED,
+                "Handshake not complete"
+            )
         
-        
-        result = self.noise.encrypt(plaintext)
-        
-        
-        return result
-        
-    def decrypt(self, ciphertext):
-        """Decrypt data after handshake is complete."""
-        if not self.handshake_complete:
-            raise ValueError("Handshake not complete")
+        debug_log("🔐 TRANSPORT ENCRYPT")
+        debug_log(f"  - plaintext length: {len(plaintext)}")
+        debug_log(f"  - plaintext hex: {plaintext.hex()}")
         
         try:
-            result = self.noise.decrypt(ciphertext)
-            
-            return result
+            encrypted = self.noise.encrypt(plaintext)
+            debug_log(f"  - encrypted length: {len(encrypted)}")
+            debug_log(f"  - encrypted hex: {encrypted.hex()}")
+            return encrypted
         except Exception as e:
-            raise
+            debug_log(f"Failed to encrypt: {e}")
+            raise OpenADPError(
+                ErrorCode.ENCRYPTION_FAILED,
+                f"failed to encrypt: {str(e)}"
+            )
+    
+    def decrypt(self, ciphertext: bytes) -> bytes:
+        """Decrypt a message using transport mode."""
+        if not self.handshake_complete:
+            raise OpenADPError(
+                ErrorCode.ENCRYPTION_FAILED,
+                "Handshake not complete"
+            )
         
+        debug_log("🔓 TRANSPORT DECRYPT")
+        debug_log(f"  - ciphertext length: {len(ciphertext)}")
+        debug_log(f"  - ciphertext hex: {ciphertext.hex()}")
+        
+        try:
+            decrypted = self.noise.decrypt(ciphertext)
+            debug_log(f"  - decrypted length: {len(decrypted)}")
+            debug_log(f"  - decrypted hex: {decrypted.hex()}")
+            return decrypted
+        except Exception as e:
+            debug_log(f"Failed to decrypt: {e}")
+            raise OpenADPError(
+                ErrorCode.ENCRYPTION_FAILED,
+                f"failed to decrypt: {str(e)}"
+            )
+
     def get_handshake_hash(self):
         """Get the handshake hash after handshake is complete."""
         if not self.noise:
@@ -1046,8 +1083,14 @@ def get_servers(registry_url: str = "") -> List[ServerInfo]:
                 f"failed to read file {file_path}: {str(e)}"
             )
     else:
-        # For HTTP URLs, append /api/servers.json
-        api_url = registry_url + "/api/servers.json"
+        # For HTTP URLs, use the URL as-is (like Go and C++ SDKs)
+        # Only append /api/servers.json if the URL ends with a domain/base path
+        if registry_url.endswith('.json') or '/servers' in registry_url:
+            # URL already specifies a file or specific endpoint, use as-is
+            api_url = registry_url
+        else:
+            # URL appears to be a base domain, append the standard API endpoint
+            api_url = registry_url.rstrip('/') + "/api/servers.json"
         
         try:
             response = requests.get(

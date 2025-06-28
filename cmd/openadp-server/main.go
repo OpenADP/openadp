@@ -375,11 +375,26 @@ func (s *Server) handleRegisterSecret(params []interface{}) (interface{}, error)
 			return nil, fmt.Errorf("invalid y coordinate: not valid decimal integer or base64")
 		}
 
-		// Also validate base64 decoded values
-		yInt := new(big.Int).SetBytes(y)
+		// Validate that we got exactly 32 bytes (per API spec)
+		if len(y) != 32 {
+			return nil, fmt.Errorf("invalid y coordinate: base64 must decode to exactly 32 bytes, got %d", len(y))
+		}
+
+		// Validate base64 decoded values
+		// Note: y is already in little-endian format (per API spec), so we need to reverse it
+		// to convert to big-endian for SetBytes validation
+		yBytes := make([]byte, len(y))
+		copy(yBytes, y)
+		// Reverse bytes to convert from little-endian to big-endian for SetBytes
+		for i, j := 0, len(yBytes)-1; i < j; i, j = i+1, j-1 {
+			yBytes[i], yBytes[j] = yBytes[j], yBytes[i]
+		}
+		yInt := new(big.Int).SetBytes(yBytes)
 		if yInt.Cmp(common.P) >= 0 {
 			return nil, fmt.Errorf("invalid y coordinate: value must be less than prime modulus P")
 		}
+
+		// Note: y is kept in little-endian format for storage (as received from client)
 	}
 
 	maxGuessesFloat, ok := params[7].(float64)

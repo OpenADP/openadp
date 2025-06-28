@@ -254,11 +254,10 @@ def generate_encryption_key(
             server_url = live_server_urls[i]
             auth_code = auth_codes.server_auth_codes[server_url]
             
-            # Convert share Y to string (Shamir secret sharing polynomial Y coordinate)
-            # Y is the Y coordinate of a point on the polynomial, not an elliptic curve point
-            # The Go implementation sends this as a decimal string: share.Y.String()
-            # We'll match that for compatibility, even though base64 would be better
-            y_str = str(y)
+            # Convert share Y to base64-encoded 32-byte little-endian format (per API spec)
+            # Y is the Y coordinate from Shamir secret sharing polynomial
+            y_bytes = y.to_bytes(32, byteorder='little')
+            y_str = base64.b64encode(y_bytes).decode('ascii')
             
             # Use encrypted registration if server has public key, otherwise unencrypted for compatibility
             encrypted = client.has_public_key()

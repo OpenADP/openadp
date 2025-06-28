@@ -7,6 +7,7 @@
 #include <iostream>
 #include <unistd.h>
 #include <cstring>
+#include <fstream>
 
 namespace openadp {
 namespace client {
@@ -74,9 +75,9 @@ BasicOpenADPClient::BasicOpenADPClient(const std::string& url, int timeout_secon
         throw OpenADPError("URL cannot be empty");
     }
     
-    // Basic URL validation - must start with http:// or https://
-    if (url.find("http://") != 0 && url.find("https://") != 0) {
-        throw OpenADPError("Invalid URL format: must start with http:// or https://");
+    // Basic URL validation - must start with http://, https://, or file://
+    if (url.find("http://") != 0 && url.find("https://") != 0 && url.find("file://") != 0) {
+        throw OpenADPError("Invalid URL format: must start with http://, https://, or file://");
     }
     
     // Check for basic URL structure
@@ -197,42 +198,70 @@ EncryptedOpenADPClient::EncryptedOpenADPClient(const std::string& url, const std
 }
 
 void EncryptedOpenADPClient::perform_handshake() {
-    if (!has_public_key()) {
-        throw OpenADPError("No public key available for handshake");
-    }
-    
     if (handshake_complete_) {
-        return; // Already done
+        return;
     }
     
-    // Initialize handshake with server's public key
+    debug_log("🤝 Starting Noise-NK handshake with server");
+    
+    // Generate session ID
+    session_id_ = generate_session_id();
+    debug_log("📋 Generated session ID: " + session_id_);
+    
+    // Initialize Noise-NK
+    noise_state_ = std::make_unique<noise::NoiseState>();
     noise_state_->initialize_handshake(public_key_.value());
     
-    // Create handshake payload
-    session_id_ = utils::random_hex(16); // 16 bytes = 32 hex chars
-    Bytes payload = utils::string_to_bytes("test");  // Match Python's b"test" payload
+    // Create handshake message
+    Bytes handshake_msg = noise_state_->write_message();
+    debug_log("📤 Created handshake message: " + std::to_string(handshake_msg.size()) + " bytes");
+    debug_log("🔍 Handshake message hex: " + crypto::bytes_to_hex(handshake_msg));
     
-    // Write handshake message
-    Bytes handshake_message = noise_state_->write_message(payload);
-    
-    // Send handshake to server - match Python format with array parameters
-    nlohmann::json params = nlohmann::json::array();
-    params.push_back({
+    // Send handshake request
+    nlohmann::json handshake_params = nlohmann::json::array();
+    handshake_params.push_back({
         {"session", session_id_},
-        {"message", utils::base64_encode(handshake_message)}
+        {"message", utils::base64_encode(handshake_msg)}
     });
     
-    nlohmann::json response = basic_client_->make_request("noise_handshake", params);
+    debug_log("📡 Sending handshake JSON-RPC request:");
+    debug_log("  - method: noise_handshake");
+    debug_log("  - session: " + session_id_);
+    debug_log("  - message (base64): " + utils::base64_encode(handshake_msg));
+    debug_log("  - message size: " + std::to_string(handshake_msg.size()) + " bytes");
     
-    if (!response.contains("message")) {
+    nlohmann::json handshake_response = basic_client_->make_request("noise_handshake", handshake_params);
+    
+    debug_log("📨 Received handshake response:");
+    debug_log("  - response: " + handshake_response.dump());
+    
+    if (!handshake_response.contains("message")) {
         throw OpenADPError("Invalid handshake response");
     }
     
-    // Read server's handshake response
-    Bytes server_message = utils::base64_decode(response["message"].get<std::string>());
-    noise_state_->read_message(server_message);
+    // Process server response
+    std::string server_msg_b64 = handshake_response["message"].get<std::string>();
+    Bytes server_msg = utils::base64_decode(server_msg_b64);
+    
+    debug_log("📥 Processing server handshake message:");
+    debug_log("  - message (base64): " + server_msg_b64);
+    debug_log("  - message size: " + std::to_string(server_msg.size()) + " bytes");
+    debug_log("  - message hex: " + crypto::bytes_to_hex(server_msg));
+    
+    Bytes payload = noise_state_->read_message(server_msg);
+    
+    if (!noise_state_->handshake_finished()) {
+        throw OpenADPError("Handshake not completed");
+    }
+    
+    debug_log("✅ Noise-NK handshake completed successfully");
+    debug_log("📝 Server payload: " + utils::bytes_to_string(payload));
     
     handshake_complete_ = true;
+}
+
+std::string EncryptedOpenADPClient::generate_session_id() {
+    return utils::random_hex(16); // 16 bytes = 32 hex chars
 }
 
 nlohmann::json EncryptedOpenADPClient::make_encrypted_request(const std::string& method, const nlohmann::json& params) {
@@ -244,13 +273,26 @@ nlohmann::json EncryptedOpenADPClient::make_encrypted_request(const std::string&
     // Ensure handshake is complete
     perform_handshake();
     
+    debug_log("🔐 Making encrypted JSON-RPC request:");
+    debug_log("  - method: " + method);
+    debug_log("  - params: " + params.dump());
+    
     // Create JSON-RPC request
     JsonRpcRequest request(method, params);
     std::string json_data = request.to_dict().dump();
     
+    debug_log("📝 JSON-RPC request to encrypt:");
+    debug_log("  - full request: " + json_data);
+    debug_log("  - request size: " + std::to_string(json_data.size()) + " bytes");
+    
     // Encrypt the request
     Bytes plaintext = utils::string_to_bytes(json_data);
     Bytes encrypted = noise_state_->encrypt(plaintext);
+    
+    debug_log("🔒 Encrypted request data:");
+    debug_log("  - encrypted size: " + std::to_string(encrypted.size()) + " bytes");
+    debug_log("  - encrypted hex: " + crypto::bytes_to_hex(encrypted));
+    debug_log("  - encrypted base64: " + utils::base64_encode(encrypted));
     
     // Send encrypted request
     nlohmann::json encrypted_params = nlohmann::json::array();
@@ -259,18 +301,37 @@ nlohmann::json EncryptedOpenADPClient::make_encrypted_request(const std::string&
         {"data", utils::base64_encode(encrypted)}
     });
     
+    debug_log("📡 Sending encrypted_call JSON-RPC request:");
+    debug_log("  - method: encrypted_call");
+    debug_log("  - session: " + session_id_);
+    debug_log("  - data (base64): " + utils::base64_encode(encrypted));
+    debug_log("  - data size: " + std::to_string(encrypted.size()) + " bytes");
+    
     nlohmann::json response = basic_client_->make_request("encrypted_call", encrypted_params);
+    
+    debug_log("📨 Received encrypted response:");
+    debug_log("  - response: " + response.dump());
     
     if (!response.contains("data")) {
         throw OpenADPError("Invalid encrypted response");
     }
     
     // Decrypt the response
-    Bytes encrypted_response = utils::base64_decode(response["data"].get<std::string>());
+    std::string encrypted_response_b64 = response["data"].get<std::string>();
+    Bytes encrypted_response = utils::base64_decode(encrypted_response_b64);
+    
+    debug_log("🔓 Decrypting response:");
+    debug_log("  - encrypted response (base64): " + encrypted_response_b64);
+    debug_log("  - encrypted response size: " + std::to_string(encrypted_response.size()) + " bytes");
+    debug_log("  - encrypted response hex: " + crypto::bytes_to_hex(encrypted_response));
+    
     Bytes decrypted = noise_state_->decrypt(encrypted_response);
     
     // Parse JSON response
     std::string json_str = utils::bytes_to_string(decrypted);
+    debug_log("📋 Decrypted response:");
+    debug_log("  - decrypted JSON: " + json_str);
+    
     nlohmann::json json_response = nlohmann::json::parse(json_str);
     
     JsonRpcResponse rpc_response = JsonRpcResponse::from_json(json_response);
@@ -279,6 +340,7 @@ nlohmann::json EncryptedOpenADPClient::make_encrypted_request(const std::string&
         throw OpenADPError("JSON-RPC error: " + rpc_response.error.dump());
     }
     
+    debug_log("✅ Successfully decrypted and parsed response");
     return rpc_response.result;
 }
 
@@ -299,7 +361,11 @@ nlohmann::json EncryptedOpenADPClient::register_secret(const RegisterSecretReque
     params.push_back(request.identity.bid);        // bid
     params.push_back(1);                           // version (always 1)
     params.push_back(1);                           // x (always 1 for registration)
-    params.push_back(request.b);                   // y (the secret value as string)
+    
+    // Y coordinate should already be base64-encoded from keygen
+    std::string y_base64 = request.b;
+    
+    params.push_back(y_base64);                    // y (base64-encoded 32-byte little-endian)
     params.push_back(request.max_guesses);         // max_guesses
     params.push_back(request.expiration);          // expiration
     
@@ -399,6 +465,40 @@ std::vector<ServerInfo> get_servers(const std::string& servers_url) {
     }
     
     try {
+        // Handle file:// URLs
+        if (url.find("file://") == 0) {
+            std::string file_path = url.substr(7); // Remove "file://" prefix
+            
+            if (debug::is_debug_mode_enabled()) {
+                debug::debug_log("Reading server registry from file: " + file_path);
+            }
+            
+            std::ifstream file(file_path);
+            if (!file.is_open()) {
+                throw OpenADPError("Cannot open file: " + file_path);
+            }
+            
+            std::string file_content((std::istreambuf_iterator<char>(file)), 
+                                    std::istreambuf_iterator<char>());
+            file.close();
+            
+            if (debug::is_debug_mode_enabled()) {
+                debug::debug_log("Successfully read file registry, parsing JSON...");
+            }
+            
+            nlohmann::json json_response = nlohmann::json::parse(file_content);
+            std::vector<ServerInfo> servers = parse_servers_response(json_response);
+            
+            if (debug::is_debug_mode_enabled()) {
+                debug::debug_log("Parsed " + std::to_string(servers.size()) + " servers from file registry");
+                for (const auto& server : servers) {
+                    debug::debug_log("  Server: " + server.url + (server.public_key.has_value() ? " (with public key)" : " (no public key)"));
+                }
+            }
+            
+            return servers;
+        }
+        
         // For REST endpoints, we need to use HTTP GET instead of JSON-RPC
         CURL* curl = curl_easy_init();
         if (!curl) {
@@ -446,7 +546,7 @@ std::vector<ServerInfo> get_servers(const std::string& servers_url) {
         if (debug::is_debug_mode_enabled()) {
             debug::debug_log("Parsed " + std::to_string(servers.size()) + " servers from registry");
             for (const auto& server : servers) {
-                debug::debug_log("  Server: " + server.url);
+                debug::debug_log("  Server: " + server.url + (server.public_key.has_value() ? " (with public key)" : " (no public key)"));
             }
         }
         

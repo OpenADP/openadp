@@ -91,6 +91,9 @@ private:
     bool handshake_complete_;
     std::string session_id_;  // Store session ID for encrypted requests
     
+    // Helper methods
+    std::string generate_session_id();
+    
 public:
     EncryptedOpenADPClient(const std::string& url, const std::optional<Bytes>& public_key, 
                           int timeout_seconds = 30);
