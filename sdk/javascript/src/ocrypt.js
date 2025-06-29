@@ -58,15 +58,15 @@ export class OcryptError extends Error {
  * @returns {Promise<Uint8Array>} metadata - Opaque blob to store alongside user record
  * @throws {OcryptError} Any error that occurred during registration
  */
-export async function register(userID, appID, longTermSecret, pin, maxGuesses = 10) {
-    return await registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, 'even');
+export async function register(userID, appID, longTermSecret, pin, maxGuesses = 10, serversUrl = "") {
+    return await registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, 'even', serversUrl);
 }
 
 /**
  * Internal implementation that allows specifying backup ID
  * @private
  */
-async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, backupID) {
+async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, backupID, serversUrl = "") {
     // Input validation
     if (!userID || typeof userID !== 'string') {
         throw new OcryptError('user_id must be a non-empty string', 'INVALID_INPUT');
@@ -91,17 +91,27 @@ async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, b
     // Step 1: Discover OpenADP servers using REAL server discovery
     console.log('🌐 Discovering OpenADP servers...');
     let serverInfos;
-            try {
-            serverInfos = await getServers("https://servers.openadp.org/api/servers.json");
-            if (!serverInfos || serverInfos.length === 0) {
-                throw new Error("No servers returned from registry");
-            }
-            console.log(`   ✅ Successfully fetched ${serverInfos.length} servers from registry`);
+    
+    // Use provided serversUrl or default to production registry
+    const registryUrl = serversUrl || "https://servers.openadp.org/api/servers.json";
+    
+    try {
+        serverInfos = await getServers(registryUrl);
+        if (!serverInfos || serverInfos.length === 0) {
+            throw new Error("No servers returned from registry");
+        }
+        console.log(`   ✅ Successfully fetched ${serverInfos.length} servers from registry`);
     } catch (error) {
         console.log(`   ⚠️  Failed to fetch from registry: ${error.message}`);
-        console.log('   🔄 Falling back to hardcoded servers...');
-        serverInfos = getFallbackServerInfo();
-        console.log(`   Fallback servers: ${serverInfos.length}`);
+        // Only fall back to production servers if we weren't given a specific registry
+        if (serversUrl) {
+            // If user specified a specific registry and it failed, don't fall back
+            throw new OcryptError(`Failed to fetch servers from specified registry ${serversUrl}: ${error.message}`, 'REGISTRY_FAILED');
+        } else {
+            console.log('   🔄 Falling back to hardcoded servers...');
+            serverInfos = getFallbackServerInfo();
+            console.log(`   Fallback servers: ${serverInfos.length}`);
+        }
     }
     
     if (!serverInfos || serverInfos.length === 0) {
@@ -187,7 +197,7 @@ async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, b
  * @returns {Promise<{secret: Uint8Array, remaining: number, updatedMetadata: Uint8Array}>}
  * @throws {OcryptError} Any error that occurred during recovery
  */
-export async function recover(metadataBytes, pin) {
+export async function recover(metadataBytes, pin, serversUrl = "") {
     // Input validation
     if (!metadataBytes || metadataBytes.length === 0) {
         throw new OcryptError('metadata cannot be empty', 'INVALID_INPUT');
@@ -198,7 +208,7 @@ export async function recover(metadataBytes, pin) {
 
     // Step 1: Recover with existing backup
     console.log('📋 Step 1: Recovering with existing backup...');
-    const { secret, remaining } = await recoverWithoutRefresh(metadataBytes, pin);
+    const { secret, remaining } = await recoverWithoutRefresh(metadataBytes, pin, serversUrl);
 
     // Step 2: Attempt backup refresh using two-phase commit
     let updatedMetadata;
@@ -219,7 +229,8 @@ export async function recover(metadataBytes, pin) {
             secret, 
             pin, 
             metadata.max_guesses, 
-            newBackupID
+            newBackupID,
+            serversUrl
         );
         
         console.log(`✅ Backup refresh successful: ${metadata.backup_id} → ${newBackupID}`);
@@ -237,7 +248,7 @@ export async function recover(metadataBytes, pin) {
  * Recovers a secret without attempting backup refresh
  * @private
  */
-async function recoverWithoutRefresh(metadataBytes, pin) {
+async function recoverWithoutRefresh(metadataBytes, pin, serversUrl = "") {
     // Parse metadata
     let metadata;
     try {
@@ -252,11 +263,21 @@ async function recoverWithoutRefresh(metadataBytes, pin) {
     // Get server information using REAL server discovery
     console.log('🌐 Getting server information from registry...');
     let allServers;
+    
+    // Use provided serversUrl or default to production registry
+    const registryUrl = serversUrl || "https://servers.openadp.org/api/servers.json";
+    
     try {
-        allServers = await getServers("https://servers.openadp.org/api/servers.json");
+        allServers = await getServers(registryUrl);
     } catch (error) {
         console.log(`   ⚠️  Failed to fetch from registry: ${error.message}`);
-        allServers = getFallbackServerInfo();
+        // Only fall back to production servers if we weren't given a specific registry
+        if (serversUrl) {
+            // If user specified a specific registry and it failed, don't fall back
+            throw new OcryptError(`Failed to fetch servers from specified registry ${serversUrl}: ${error.message}`, 'REGISTRY_FAILED');
+        } else {
+            allServers = getFallbackServerInfo();
+        }
     }
 
     // Match servers from metadata with registry
@@ -328,15 +349,15 @@ async function recoverWithoutRefresh(metadataBytes, pin) {
  * Implements two-phase commit for backup refresh
  * @private
  */
-async function registerWithCommitInternal(userID, appID, longTermSecret, pin, maxGuesses, newBackupID) {
+async function registerWithCommitInternal(userID, appID, longTermSecret, pin, maxGuesses, newBackupID, serversUrl = "") {
     // Phase 1: PREPARE - Register new backup
     console.log('📋 Phase 1: PREPARE - Registering new backup...');
-    const newMetadata = await registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, newBackupID);
+    const newMetadata = await registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, newBackupID, serversUrl);
     console.log('✅ Phase 1 complete: New backup registered');
 
     // Phase 2: COMMIT - Verify new backup works
     console.log('📋 Phase 2: COMMIT - Verifying new backup...');
-    await recoverWithoutRefresh(newMetadata, pin);
+    await recoverWithoutRefresh(newMetadata, pin, serversUrl);
     console.log('✅ Phase 2 complete: New backup verified and committed');
 
     return newMetadata;
