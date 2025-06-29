@@ -1,6 +1,6 @@
 {
   "name": "@openadp/ocrypt",
-  "version": "1.0.0",
+  "version": "0.1.2",
   "description": "Ocrypt - Nation-state resistant password hashing using OpenADP distributed cryptography",
   "main": "src/index.js",
   "type": "module",

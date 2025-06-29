@@ -1,6 +1,6 @@
 {
   "name": "@openadp/browser-sdk",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "OpenADP Browser-Compatible JavaScript SDK for distributed cryptography",
   "type": "module",
   "main": "ocrypt.js",
@@ -27,4 +27,4 @@
     "*.js",
     "README.md"
   ]
-} 
+}

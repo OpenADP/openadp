@@ -10,7 +10,7 @@ import (
 	"github.com/openadp/ocrypt/client"
 )
 
-const version = "1.0.0"
+const version = "0.1.2"
 
 func main() {
 	var (

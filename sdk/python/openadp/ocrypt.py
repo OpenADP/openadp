@@ -494,7 +494,7 @@ def _register_with_commit_internal(user_id: str, app_id: str, long_term_secret: 
 
 
 # Module metadata
-__version__ = "1.0.0"
+__version__ = "0.1.2"
 __author__ = "OpenADP Team"
 __description__ = "Drop-in replacement for password hashing functions using distributed cryptography"
 
