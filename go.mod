@@ -7,7 +7,7 @@ toolchain go1.23.10
 require (
 	github.com/flynn/noise v1.1.0
 	github.com/gorilla/mux v1.8.1
-	github.com/openadp/ocrypt v0.1.0
+	github.com/openadp/ocrypt v0.1.2
 	github.com/openadp/server v0.1.0
 	golang.org/x/term v0.32.0
 )
@@ -31,5 +31,3 @@ require (
 )
 
 replace github.com/openadp/server => ./server
-
-replace github.com/openadp/ocrypt => ../ocrypt
