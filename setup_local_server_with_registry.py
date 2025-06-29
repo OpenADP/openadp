@@ -159,7 +159,7 @@ def main():
         print("="*60)
         print("\nNow you can test with:")
         print(f"export OPENADP_SERVERS_URL=http://127.0.0.1:{http_port}/{servers_file}")
-        print("python3 sdk/python/tools/ocrypt-register.py --user-id debug_test_user --app-id debug_test_app --long-term-secret 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --password test123")
+        print("python3 sdk/python/ocrypt-register.py --user-id debug_test_user --app-id debug_test_app --long-term-secret 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef --password test123")
         print("\nPress Ctrl+C to stop all servers...")
         
         # Keep running until interrupted

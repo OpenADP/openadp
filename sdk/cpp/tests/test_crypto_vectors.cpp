@@ -218,10 +218,16 @@ TEST_F(CryptoVectorTest, ShamirSecretSharingProperties) {
     
     // Test 1: 2-of-3 scheme
     std::string secret = "12345";
+    
+    // Convert decimal secret to hex for the split_secret function
+    std::stringstream hex_ss;
+    hex_ss << std::hex << std::stoull(secret);
+    std::string secret_hex = hex_ss.str();
+    
     int threshold = 2;
     int num_shares = 3;
     
-    auto shares = crypto::ShamirSecretSharing::split_secret(secret, threshold, num_shares);
+    auto shares = crypto::ShamirSecretSharing::split_secret(secret_hex, threshold, num_shares);
     EXPECT_EQ(shares.size(), num_shares) << "Should generate correct number of shares";
     
     // All shares should have different x values
@@ -235,7 +241,11 @@ TEST_F(CryptoVectorTest, ShamirSecretSharingProperties) {
     for (int i = 0; i < num_shares; i++) {
         for (int j = i + 1; j < num_shares; j++) {
             std::vector<Share> recovery_shares = {shares[i], shares[j]};
-            std::string recovered = crypto::ShamirSecretSharing::recover_secret(recovery_shares);
+            std::string recovered_hex = crypto::ShamirSecretSharing::recover_secret(recovery_shares);
+            
+            // Convert hex result back to decimal for comparison
+            std::string recovered = std::to_string(std::stoull(recovered_hex, nullptr, 16));
+            
             EXPECT_EQ(recovered, secret) << "Recovery should work with any threshold combination";
         }
     }

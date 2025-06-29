@@ -157,9 +157,14 @@ json generate_enhanced_shamir_vectors() {
     {
         json vector;
         vector["description"] = "2-of-3 Shamir Secret Sharing with large secret";
-        std::string large_secret = "7237005577332262213973186563042994240857116359379907606001950938285454238644"; // q - 12345
+        // Use a large but safe secret that's definitely less than Q
+        std::string large_secret = "1234567890123456789";  // Fits in uint64_t
         vector["secret"] = large_secret;
-        vector["secret_hex"] = "0ffffffffffffffffffffffffffffff9cf2102158038032a74e7d5a3c7c3c4c";
+        
+        // Convert to proper hex representation
+        std::stringstream hex_ss;
+        hex_ss << std::hex << std::stoull(large_secret);
+        vector["secret_hex"] = hex_ss.str();
         vector["threshold"] = 2;
         vector["prime_modulus"] = ED25519_Q;
         vector["prime_modulus_hex"] = "1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed";

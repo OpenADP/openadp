@@ -192,9 +192,6 @@ openadp/                        # Root project directory
 │   ├── client.py              # High-level client interface
 │   ├── jsonrpc_client.py      # JSON-RPC over HTTP
 │   └── encrypted_jsonrpc_client.py # Noise-NK encrypted client
-├── tools/                      # End-user tools
-│   ├── encrypt.py             # File encryption utility
-│   └── decrypt.py             # File decryption utility
 ├── tests/                      # Organized test suite
 │   ├── unit/                  # Unit tests
 │   ├── integration/           # Integration tests

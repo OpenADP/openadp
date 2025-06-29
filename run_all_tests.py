@@ -248,7 +248,7 @@ class OpenADPTestRunner:
         start_time = time.time()
         self.log("🧪 Running Python unit tests...", Colors.INFO)
         
-        python_test_dir = self.root_dir / "tests" / "python"
+        python_test_dir = self.root_dir / "sdk" / "python" / "tests"
         success, stdout, stderr = self.run_command([
             "python", "-m", "pytest", ".", "-v", "--tb=short"
         ], cwd=python_test_dir)
@@ -273,8 +273,8 @@ class OpenADPTestRunner:
             test_file.write_text(test_content)
             
             # Test version flags
-            success1, _, _ = self.run_command(["python", "tools/openadp-encrypt.py", "--version"])
-            success2, _, _ = self.run_command(["python", "tools/openadp-decrypt.py", "--version"])
+            success1, _, _ = self.run_command(["python", "sdk/python/openadp-encrypt.py", "--version"])
+            success2, _, _ = self.run_command(["python", "sdk/python/openadp-decrypt.py", "--version"])
             
             duration = time.time() - start_time
             
