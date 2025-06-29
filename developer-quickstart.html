@@ -160,9 +160,11 @@
                     <h4>🌐 Multi-Language Support</h4>
                     <p><strong>Consistent API across all languages!</strong> All OpenADP SDKs provide the same simple 2-function interface:</p>
                     <ul style="margin: 10px 0; padding-left: 20px;">
-                        <li><strong>Python:</strong> <code>pip install openadp</code></li>
-                        <li><strong>Go:</strong> <code>go get github.com/OpenADP/ocrypt</code></li>
-                        <li><strong>JavaScript:</strong> <code>npm install @openadp/browser-sdk</code></li>
+                        <li><strong>Python:</strong> <code>pip install openadp==0.1.2</code></li>
+                        <li><strong>JavaScript Node.js:</strong> <code>npm install @openadp/ocrypt@0.1.2</code></li>
+                        <li><strong>JavaScript Browser:</strong> <code>npm install @openadp/browser-sdk@0.1.2</code></li>
+                        <li><strong>Rust:</strong> <code>cargo add openadp-ocrypt@0.1.2</code></li>
+                        <li><strong>C++:</strong> Install from source (OpenSSL, libcurl, CMake required)</li>
                     </ul>
                     <p>All SDKs use the same <code>register()</code> and <code>recover()</code> functions with identical parameters!</p>
                 </div>
@@ -171,6 +173,8 @@
                     <button class="tab-button active" onclick="showTab('javascript')">JavaScript</button>
                     <button class="tab-button" onclick="showTab('python')">Python</button>
                     <button class="tab-button" onclick="showTab('go')">Go</button>
+                    <button class="tab-button" onclick="showTab('rust')">Rust</button>
+                    <button class="tab-button" onclick="showTab('cpp')">C++</button>
                 </div>
 
                 <!-- JavaScript Tab -->
@@ -179,10 +183,10 @@
                         <span class="step-number">1</span>
                         <h3>Install OpenADP Browser JavaScript SDK</h3>
                         <p>Install the OpenADP JavaScript package directly from NPM:</p>
-                        <div class="code-block">npm install @openadp/browser-sdk</div>
+                        <div class="code-block">npm install @openadp/browser-sdk@0.1.2</div>
                         <div class="success-box">
                             <h4>🚀 Professional NPM Package!</h4>
-                            <p>The OpenADP JavaScript SDK is now available as a professional NPM package. Works in browsers with modern ES6 module support!</p>
+                            <p>The OpenADP JavaScript SDK is now available as a professional NPM package (v0.1.2). Works in browsers with modern ES6 module support!</p>
                         </div>
                         <div class="warning-box">
                             <h4>⚠️ HTTP Server Required</h4>
@@ -203,7 +207,7 @@
 import { register, recover } from '@openadp/browser-sdk';
 
 // Or via CDN
-import { register, recover } from 'https://unpkg.com/@openadp/browser-sdk@0.1.0/ocrypt.js';</div>
+import { register, recover } from 'https://unpkg.com/@openadp/browser-sdk@0.1.2/ocrypt.js';</div>
                     </div>
 
                     <div class="integration-step">
@@ -333,10 +337,10 @@ console.log('Recovered note:', noteContent);</div>
                         <span class="step-number">1</span>
                         <h3>Install OpenADP Python Package</h3>
                         <p>Install the OpenADP Python package directly from PyPI:</p>
-                        <div class="code-block">pip install openadp</div>
+                        <div class="code-block">pip install openadp==0.1.2</div>
                         <div class="success-box">
                             <h4>🎉 Easy Installation!</h4>
-                            <p>The OpenADP Python package is now available on PyPI. No need to clone repositories or build from source!</p>
+                            <p>The OpenADP Python package (v0.1.2) is now available on PyPI. No need to clone repositories or build from source!</p>
                         </div>
                     </div>
 
@@ -480,10 +484,10 @@ print('Restored wallet:', restored_data)</div>
                         <span class="step-number">1</span>
                         <h3>Install OpenADP Go Package</h3>
                         <p>Add the OpenADP Go module to your project:</p>
-                        <div class="code-block">go get github.com/OpenADP/ocrypt@latest</div>
+                        <div class="code-block">go get github.com/openadp/ocrypt@v0.1.2</div>
                         <div class="success-box">
                             <h4>🚀 Published Go Module!</h4>
-                            <p>The OpenADP Go package is now available as a standalone module. Simple 2-function API for easy integration!</p>
+                            <p>The OpenADP Go package (v0.1.2) is now available as a standalone module. Simple 2-function API for easy integration!</p>
                         </div>
                     </div>
 
@@ -495,10 +499,9 @@ print('Restored wallet:', restored_data)</div>
 import (
     "encoding/json"
     "fmt"
-    "io/ioutil"
     "log"
     
-    "github.com/OpenADP/ocrypt"
+    "github.com/openadp/ocrypt"
 )</div>
                     </div>
 
@@ -665,7 +668,336 @@ func main() {
         log.Fatal("Load failed:", err)
     }
     
-    fmt.Printf("Recovered file: %s\n", fileData.Content)
+                        fmt.Printf("Recovered file: %s\n", fileData.Content)
+}</div>
+                    </div>
+                </div>
+
+                <!-- Rust Tab -->
+                <div id="rust" class="tab-content">
+                    <div class="integration-step">
+                        <span class="step-number">1</span>
+                        <h3>Install OpenADP Rust Crate</h3>
+                        <p>Add the OpenADP Rust crate to your project:</p>
+                        <div class="code-block"># Add to Cargo.toml
+[dependencies]
+openadp-ocrypt = "0.1.2"
+tokio = { version = "1.0", features = ["full"] }</div>
+                        <div class="success-box">
+                            <h4>🦀 Published Rust Crate!</h4>
+                            <p>The OpenADP Rust crate (v0.1.2) is available on crates.io with full async/await support and cross-language compatibility!</p>
+                        </div>
+                    </div>
+
+                    <div class="integration-step">
+                        <span class="step-number">2</span>
+                        <h3>Import Ocrypt</h3>
+                        <div class="code-block">use openadp_ocrypt::{register, recover};
+use tokio;</div>
+                    </div>
+
+                    <div class="integration-step">
+                        <span class="step-number">3</span>
+                        <h3>Register User Data</h3>
+                        <div class="code-block">#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Convert data to bytes
+    let sensitive_data = b"My secret API key: sk_live_example123";
+    
+    // Register with OpenADP
+    let metadata = register(
+        "user@example.com",     // user_id
+        "api_service",          // app_id  
+        sensitive_data,         // long_term_secret
+        "secure_pin",           // pin
+        5,                      // max_guesses
+        "",                     // servers_url (empty = default)
+    ).await?;
+    
+    // Store metadata (safe to store anywhere)
+    std::fs::write("backup_metadata.bin", &metadata)?;
+    
+    println!("✅ User data backed up successfully!");
+    Ok(())
+}</div>
+                    </div>
+
+                    <div class="integration-step">
+                        <span class="step-number">4</span>
+                        <h3>Recover User Data</h3>
+                        <div class="code-block">#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Load metadata
+    let metadata = std::fs::read("backup_metadata.bin")?;
+    
+    // Recover data from OpenADP network
+    let (recovered_data, remaining_guesses, updated_metadata) = recover(
+        &metadata,
+        "secure_pin",
+        "",  // servers_url (empty = default)
+    ).await?;
+    
+    // Update metadata if backup was refreshed
+    if updated_metadata != metadata {
+        std::fs::write("backup_metadata.bin", &updated_metadata)?;
+    }
+    
+    let recovered_string = String::from_utf8(recovered_data)?;
+    println!("✅ Recovered: {}", recovered_string);
+    println!("Remaining guesses: {}", remaining_guesses);
+    
+    Ok(())
+}</div>
+                    </div>
+
+                    <div class="integration-step">
+                        <span class="step-number">5</span>
+                        <h3>Complete Example</h3>
+                        <div class="code-block">// Example: Secure Configuration Manager
+use openadp_ocrypt::{register, recover};
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize)]
+struct DatabaseConfig {
+    host: String,
+    password: String,
+    encryption_key: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create sensitive configuration
+    let config = DatabaseConfig {
+        host: "db.production.com".to_string(),
+        password: "super_secret_db_password".to_string(),
+        encryption_key: "aes256_encryption_key_here".to_string(),
+    };
+    
+    // Serialize and protect with OpenADP
+    let config_bytes = serde_json::to_vec(&config)?;
+    let metadata = register(
+        "production_server",
+        "database_config",
+        &config_bytes,
+        "admin_pin_2024",
+        3,  // Only 3 attempts
+        "",
+    ).await?;
+    
+    // Store metadata in version control (safe to commit)
+    std::fs::write("config_metadata.bin", &metadata)?;
+    println!("✅ Database config secured!");
+    
+    // Later: recover configuration for deployment
+    let metadata = std::fs::read("config_metadata.bin")?;
+    let (recovered_bytes, remaining, updated_metadata) = recover(
+        &metadata,
+        "admin_pin_2024",
+        "",
+    ).await?;
+    
+    let recovered_config: DatabaseConfig = serde_json::from_slice(&recovered_bytes)?;
+    println!("✅ Database config recovered:");
+    println!("Host: {}", recovered_config.host);
+    println!("Remaining attempts: {}", remaining);
+    
+    Ok(())
+}</div>
+                    </div>
+                </div>
+
+                <!-- C++ Tab -->
+                <div id="cpp" class="tab-content">
+                    <div class="integration-step">
+                        <span class="step-number">1</span>
+                        <h3>Install OpenADP C++ SDK</h3>
+                        <p>Build and install the OpenADP C++ SDK from source:</p>
+                        <div class="code-block"># Install dependencies (Ubuntu/Debian)
+sudo apt install build-essential cmake libssl-dev libcurl4-openssl-dev nlohmann-json3-dev
+
+# Build and install
+cd sdk/cpp
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+sudo make install</div>
+                        <div class="success-box">
+                            <h4>⚡ Native C++ Performance!</h4>
+                            <p>The OpenADP C++ SDK provides maximum performance with full cross-language compatibility. Headers and library installed to /usr/local/.</p>
+                        </div>
+                    </div>
+
+                    <div class="integration-step">
+                        <span class="step-number">2</span>
+                        <h3>Include Headers</h3>
+                        <div class="code-block">#include <openadp.hpp>
+#include <iostream>
+#include <fstream>
+
+using namespace openadp;</div>
+                    </div>
+
+                    <div class="integration-step">
+                        <span class="step-number">3</span>
+                        <h3>Register User Data</h3>
+                        <div class="code-block">int main() {
+    try {
+        // Convert data to bytes
+        std::string secret_data = "My API token: sk_live_example456";
+        Bytes data_bytes = utils::string_to_bytes(secret_data);
+        
+        // Register with OpenADP
+        Bytes metadata = ocrypt::register_secret(
+            "user@example.com",     // user_id
+            "payment_service",      // app_id
+            data_bytes,             // long_term_secret
+            "secure_pin",           // pin
+            5                       // max_guesses
+        );
+        
+        // Store metadata (safe to store anywhere)
+        std::ofstream file("backup_metadata.bin", std::ios::binary);
+        file.write(reinterpret_cast<const char*>(metadata.data()), metadata.size());
+        file.close();
+        
+        std::cout << "✅ User data backed up successfully!" << std::endl;
+        
+    } catch (const OpenADPError& e) {
+        std::cerr << "❌ Error: " << e.what() << std::endl;
+        return 1;
+    }
+    
+    return 0;
+}</div>
+                    </div>
+
+                    <div class="integration-step">
+                        <span class="step-number">4</span>
+                        <h3>Recover User Data</h3>
+                        <div class="code-block">int main() {
+    try {
+        // Load metadata
+        std::ifstream file("backup_metadata.bin", std::ios::binary);
+        Bytes metadata((std::istreambuf_iterator<char>(file)),
+                       std::istreambuf_iterator<char>());
+        file.close();
+        
+        // Recover data from OpenADP network
+        auto result = ocrypt::recover(metadata, "secure_pin");
+        
+        // Convert back to string
+        std::string recovered_data = utils::bytes_to_string(result.secret);
+        
+        std::cout << "✅ Recovered: " << recovered_data << std::endl;
+        std::cout << "Remaining guesses: " << result.remaining_guesses << std::endl;
+        
+        // Update metadata if backup was refreshed
+        if (result.updated_metadata != metadata) {
+            std::ofstream update_file("backup_metadata.bin", std::ios::binary);
+            update_file.write(reinterpret_cast<const char*>(result.updated_metadata.data()), 
+                             result.updated_metadata.size());
+            update_file.close();
+            std::cout << "📝 Backup refreshed automatically" << std::endl;
+        }
+        
+    } catch (const OpenADPError& e) {
+        std::cerr << "❌ Recovery failed: " << e.what() << std::endl;
+        return 1;
+    }
+    
+    return 0;
+}</div>
+                    </div>
+
+                    <div class="integration-step">
+                        <span class="step-number">5</span>
+                        <h3>Complete Example</h3>
+                        <div class="code-block">// Example: Secure File Encryption
+#include <openadp.hpp>
+#include <fstream>
+#include <iostream>
+
+using namespace openadp;
+
+class SecureFileManager {
+private:
+    std::string user_id;
+    
+public:
+    SecureFileManager(const std::string& uid) : user_id(uid) {}
+    
+    void encrypt_file(const std::string& filename, const std::string& pin) {
+        try {
+            // Read file content
+            std::ifstream file(filename, std::ios::binary);
+            Bytes file_content((std::istreambuf_iterator<char>(file)),
+                              std::istreambuf_iterator<char>());
+            file.close();
+            
+            // Encrypt with OpenADP
+            Identity identity(user_id, "laptop", "file://" + filename);
+            auto result = encrypt_data(file_content, identity, pin);
+            
+            // Save encrypted file and metadata
+            std::ofstream enc_file(filename + ".enc", std::ios::binary);
+            enc_file.write(reinterpret_cast<const char*>(result.ciphertext.data()),
+                          result.ciphertext.size());
+            enc_file.close();
+            
+            std::ofstream meta_file(filename + ".meta", std::ios::binary);
+            meta_file.write(reinterpret_cast<const char*>(result.metadata.data()),
+                           result.metadata.size());
+            meta_file.close();
+            
+            std::cout << "✅ File '" << filename << "' encrypted successfully!" << std::endl;
+            
+        } catch (const OpenADPError& e) {
+            std::cerr << "❌ Encryption failed: " << e.what() << std::endl;
+        }
+    }
+    
+    void decrypt_file(const std::string& filename, const std::string& pin) {
+        try {
+            // Read encrypted file and metadata
+            std::ifstream enc_file(filename + ".enc", std::ios::binary);
+            Bytes ciphertext((std::istreambuf_iterator<char>(enc_file)),
+                            std::istreambuf_iterator<char>());
+            enc_file.close();
+            
+            std::ifstream meta_file(filename + ".meta", std::ios::binary);
+            Bytes metadata((std::istreambuf_iterator<char>(meta_file)),
+                          std::istreambuf_iterator<char>());
+            meta_file.close();
+            
+            // Decrypt with OpenADP
+            Identity identity(user_id, "laptop", "file://" + filename);
+            Bytes decrypted = decrypt_data(ciphertext, metadata, identity, pin);
+            
+            // Save decrypted file
+            std::ofstream dec_file(filename + ".dec", std::ios::binary);
+            dec_file.write(reinterpret_cast<const char*>(decrypted.data()),
+                          decrypted.size());
+            dec_file.close();
+            
+            std::cout << "✅ File '" << filename << "' decrypted successfully!" << std::endl;
+            
+        } catch (const OpenADPError& e) {
+            std::cerr << "❌ Decryption failed: " << e.what() << std::endl;
+        }
+    }
+};
+
+// Usage
+int main() {
+    SecureFileManager manager("alice@example.com");
+    
+    // Encrypt a file
+    manager.encrypt_file("document.pdf", "secure_pin");
+    
+    // Later: decrypt the file
+    manager.decrypt_file("document.pdf", "secure_pin");
+    
+    return 0;
 }</div>
                     </div>
                 </div>
@@ -690,6 +1022,8 @@ func main() {
                         <button class="tab-button active" onclick="showTab('test-python')">Python Test</button>
                         <button class="tab-button" onclick="showTab('test-go')">Go Test</button>
                         <button class="tab-button" onclick="showTab('test-js')">JavaScript Test</button>
+                        <button class="tab-button" onclick="showTab('test-rust')">Rust Test</button>
+                        <button class="tab-button" onclick="showTab('test-cpp')">C++ Test</button>
                     </div>
 
                     <div id="test-python" class="tab-content active">
@@ -722,7 +1056,7 @@ package main
 import (
     "fmt"
     "log"
-    "github.com/OpenADP/ocrypt"
+    "github.com/openadp/ocrypt"
 )
 
 func main() {
@@ -789,6 +1123,78 @@ async function testOcrypt() {
 }
 
 testOcrypt();</div>
+                    </div>
+
+                    <div id="test-rust" class="tab-content">
+                        <div class="code-block">// test_ocrypt.rs
+use openadp_ocrypt::{register, recover};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("🧪 Testing OpenADP Rust integration...");
+    
+    // Test data
+    let test_secret = b"Hello, OpenADP!";
+    let test_pin = "1234";
+    
+    // Register
+    let metadata = register("test-user", "test-app", test_secret, test_pin, 10, "").await?;
+    println!("✅ Registration successful!");
+    
+    // Recover
+    let (recovered_secret, remaining, _) = recover(&metadata, test_pin, "").await?;
+    println!("✅ Recovery successful! Remaining guesses: {}", remaining);
+    
+    // Verify
+    if recovered_secret == test_secret {
+        println!("🎉 Test passed! OpenADP is working correctly.");
+    } else {
+        println!("❌ Secret mismatch!");
+    }
+    
+    Ok(())
+}</div>
+                    </div>
+
+                    <div id="test-cpp" class="tab-content">
+                        <div class="code-block">// test_ocrypt.cpp
+#include <openadp.hpp>
+#include <iostream>
+
+using namespace openadp;
+
+int main() {
+    try {
+        std::cout << "🧪 Testing OpenADP C++ integration..." << std::endl;
+        
+        // Test data
+        std::string test_secret = "Hello, OpenADP!";
+        Bytes secret_bytes = utils::string_to_bytes(test_secret);
+        std::string test_pin = "1234";
+        
+        // Register
+        Bytes metadata = ocrypt::register_secret("test-user", "test-app", secret_bytes, test_pin, 10);
+        std::cout << "✅ Registration successful!" << std::endl;
+        
+        // Recover
+        auto result = ocrypt::recover(metadata, test_pin);
+        std::cout << "✅ Recovery successful! Remaining guesses: " << result.remaining_guesses << std::endl;
+        
+        // Verify
+        std::string recovered_text = utils::bytes_to_string(result.secret);
+        if (recovered_text == test_secret) {
+            std::cout << "🎉 Test passed! OpenADP is working correctly." << std::endl;
+        } else {
+            std::cout << "❌ Secret mismatch!" << std::endl;
+        }
+        
+    } catch (const OpenADPError& e) {
+        std::cerr << "❌ Test failed: " << e.what() << std::endl;
+        return 1;
+    }
+    
+    return 0;
+}</div>
                     </div>
                 </div>
 
