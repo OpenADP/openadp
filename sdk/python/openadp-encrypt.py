@@ -29,12 +29,14 @@ NONCE_SIZE = 12  # AES-GCM nonce size
 
 class Metadata:
     """Metadata stored with encrypted files"""
-    def __init__(self, servers, threshold, version, auth_code, user_id):
+    def __init__(self, servers, threshold, version, auth_code, user_id, device_id, backup_id):
         self.servers = servers
         self.threshold = threshold
         self.version = version
         self.auth_code = auth_code
         self.user_id = user_id
+        self.device_id = device_id
+        self.backup_id = backup_id
     
     def to_dict(self):
         return {
@@ -42,7 +44,9 @@ class Metadata:
             "threshold": self.threshold,
             "version": self.version,
             "auth_code": self.auth_code,
-            "user_id": self.user_id
+            "user_id": self.user_id,
+            "device_id": self.device_id,
+            "backup_id": self.backup_id
         }
 
 
@@ -169,12 +173,15 @@ def encrypt_file(input_filename, password, user_id, server_infos, servers_url):
     debug_log(f"Generated nonce: {nonce.hex()}")
     
     # Create metadata using the actual results from keygen
+    # Add identity fields to metadata for portable decryption  
     metadata = Metadata(
         servers=actual_server_urls,
         threshold=threshold,
         version="1.0",
         auth_code=auth_codes.base_auth_code,
-        user_id=user_id
+        user_id=user_id,
+        device_id=identity.did,
+        backup_id=identity.bid
     )
     
     metadata_json = json.dumps(metadata.to_dict()).encode('utf-8')

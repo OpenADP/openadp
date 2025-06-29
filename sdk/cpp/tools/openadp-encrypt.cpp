@@ -267,7 +267,7 @@ int main(int argc, char* argv[]) {
         // Write encrypted data with embedded metadata (matching Python SDK format)
         // Format: [metadata_length][metadata][nonce][encrypted_data]
         
-        // Parse the existing metadata to extract components and rebuild in proper format
+        // Parse the existing metadata to extract components
         std::string result_metadata_str = utils::bytes_to_string(result.metadata);
         nlohmann::json existing_metadata = nlohmann::json::parse(result_metadata_str);
         
@@ -275,26 +275,17 @@ int main(int argc, char* argv[]) {
         Bytes nonce = utils::base64_decode(existing_metadata["nonce"].get<std::string>());
         Bytes tag = utils::base64_decode(existing_metadata["tag"].get<std::string>());
         
-        // Create clean metadata JSON matching Python SDK format (without embedded crypto data)
-        // This must match exactly what was used as AAD during encryption
+        // Create portable metadata with all necessary fields
         nlohmann::json metadata;
         metadata["auth_code"] = existing_metadata["auth_code"];
         metadata["servers"] = existing_metadata["servers"];
         metadata["threshold"] = existing_metadata["threshold"];
         metadata["user_id"] = existing_metadata["user_id"];
         metadata["version"] = "1.0";
+        metadata["device_id"] = identity.did;
+        metadata["backup_id"] = identity.bid;
         
-        std::string metadata_str = metadata.dump();
-        std::vector<uint8_t> metadata_bytes(metadata_str.begin(), metadata_str.end());
-        
-        // Add identity fields to metadata for portable decryption
-        // This ensures the AAD can be reconstructed identically during decryption
-        nlohmann::json metadata_with_identity = metadata;
-        metadata_with_identity["device_id"] = identity.did;
-        metadata_with_identity["backup_id"] = identity.bid;
-        
-        // Use the metadata with identity fields as the actual stored metadata
-        std::string stored_metadata_str = metadata_with_identity.dump();
+        std::string stored_metadata_str = metadata.dump();
         std::vector<uint8_t> stored_metadata_bytes(stored_metadata_str.begin(), stored_metadata_str.end());
         
         // Prepare final output: [metadata_length][metadata][nonce][encrypted_data]

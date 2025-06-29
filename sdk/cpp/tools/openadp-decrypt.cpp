@@ -106,23 +106,7 @@ std::string get_output_filename(const std::string& input_file) {
     return input_file + ".dec"; // fallback if no .enc extension
 }
 
-// Get hostname for device identification (matching Python implementation)
-std::string get_hostname() {
-    char hostname[256];
-    if (gethostname(hostname, sizeof(hostname)) == 0) {
-        return std::string(hostname);
-    }
-    return "unknown";  // fallback if gethostname fails
-}
 
-// Extract basename from file path (matching Python's os.path.basename)
-std::string get_basename(const std::string& path) {
-    size_t last_slash = path.find_last_of("/\\");
-    if (last_slash == std::string::npos) {
-        return path;  // no path separator found, return the whole string
-    }
-    return path.substr(last_slash + 1);
-}
 
 int real_main(int argc, char* argv[]) {
     std::string input_file;
@@ -288,21 +272,15 @@ int real_main(int argc, char* argv[]) {
             std::cerr << "⚠️  Warning: User ID provided via command line (visible in process list)\n";
         }
         
-        // Create identity using values from metadata (for portability)
+        // Create identity using values from metadata (portable format)
         // The device_id and backup_id must match what was used during encryption
-        std::string device_id, backup_id;
-        
-        if (clean_metadata_json.contains("device_id") && clean_metadata_json.contains("backup_id")) {
-            // Read from metadata (new portable format)
-            device_id = clean_metadata_json["device_id"].get<std::string>();
-            backup_id = clean_metadata_json["backup_id"].get<std::string>();
-            std::cout << "✅ Using device_id and backup_id from metadata (portable format)\n";
-        } else {
-            // Fallback to current environment (legacy compatibility)
-            device_id = get_hostname();
-            backup_id = "file://" + get_basename(get_output_filename(input_file));
-            std::cout << "⚠️  Using current environment for device_id and backup_id (legacy mode)\n";
+        if (!clean_metadata_json.contains("device_id") || !clean_metadata_json.contains("backup_id")) {
+            std::cerr << "Error: File metadata missing device_id or backup_id (not a portable format file).\n";
+            return 1;
         }
+        
+        std::string device_id = clean_metadata_json["device_id"].get<std::string>();
+        std::string backup_id = clean_metadata_json["backup_id"].get<std::string>();
         
         Identity identity(user_id, device_id, backup_id);
         std::cout << "🔑 Identity: user_id=" << identity.uid << ", device_id=" << identity.did << ", backup_id=" << identity.bid << "\n";

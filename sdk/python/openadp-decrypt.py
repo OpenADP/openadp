@@ -35,6 +35,8 @@ class Metadata:
         self.version = data_dict.get("version", "")
         self.auth_code = data_dict.get("auth_code", "")
         self.user_id = data_dict.get("user_id", "")
+        self.device_id = data_dict.get("device_id", "")
+        self.backup_id = data_dict.get("backup_id", "")
 
 
 def show_help():
@@ -93,13 +95,67 @@ def read_uint32_le(data):
     return struct.unpack('<I', data[:4])[0]
 
 
+def recover_encryption_key_with_metadata(metadata, password, user_id, server_infos, threshold):
+    """Recover encryption key using OpenADP servers with portable metadata"""
+    debug_log(f"Starting key recovery with portable metadata")
+    debug_log(f"User ID: {user_id}, Threshold: {threshold}")
+    debug_log(f"Server count: {len(server_infos)}")
+    
+    # Create Identity using portable values from metadata (for portable decryption)
+    # The device_id and backup_id must match what was used during encryption
+    device_id, backup_id = "", ""
+    
+    if metadata.device_id and metadata.backup_id:
+        # Read from metadata (portable format)
+        device_id = metadata.device_id
+        backup_id = metadata.backup_id
+        print("✅ Using device_id and backup_id from metadata (portable format)")
+    else:
+        # Fallback to current environment (legacy compatibility)
+        device_id = socket.gethostname()
+        backup_id = f"file://{os.path.basename('unknown')}"
+        print("⚠️  Using device_id and backup_id from current environment (legacy format)")
+    
+    identity = Identity(uid=user_id, did=device_id, bid=backup_id)
+    debug_log(f"Identity created - UID: {identity.uid}, DID: {identity.did}, BID: {identity.bid}")
+    print(f"🔑 Identity: user_id={identity.uid}, device_id={identity.did}, backup_id={identity.bid}")
+    
+    # Regenerate server auth codes from base auth code
+    base_auth_code = metadata.auth_code
+    server_auth_codes = {}
+    for server_info in server_infos:
+        # Derive server-specific code using SHA256 (same as GenerateAuthCodes)
+        combined = f"{base_auth_code}:{server_info.url}"
+        hash_obj = hashlib.sha256(combined.encode('utf-8'))
+        server_auth_codes[server_info.url] = hash_obj.hexdigest()
+        debug_log(f"Generated auth code for {server_info.url}")
+    
+    # Create AuthCodes structure from metadata
+    auth_codes = AuthCodes(
+        base_auth_code=base_auth_code,
+        server_auth_codes=server_auth_codes,
+        user_id=user_id
+    )
+    debug_log(f"AuthCodes structure created with {len(server_auth_codes)} server codes")
+    
+    # Recover encryption key using the full distributed protocol
+    result = recover_encryption_key(identity, password, server_infos, threshold, auth_codes)
+    if result.error:
+        debug_log(f"Key recovery failed: {result.error}")
+        raise Exception(f"key recovery failed: {result.error}")
+    
+    debug_log(f"Key recovered successfully ({len(result.encryption_key)} bytes)")
+    print("✅ Key recovered successfully")
+    return result.encryption_key
+
+
 def recover_encryption_key_with_server_info(filename, password, user_id, base_auth_code, server_infos, threshold):
-    """Recover encryption key using OpenADP servers"""
+    """Legacy function - recover encryption key using OpenADP servers"""
     debug_log(f"Starting key recovery for file: {filename}")
     debug_log(f"User ID: {user_id}, Threshold: {threshold}")
     debug_log(f"Server count: {len(server_infos)}")
     
-    # Create Identity from filename, user_id (same as during encryption)
+    # Create Identity from filename, user_id (legacy behavior)
     hostname = socket.gethostname()
     identity = Identity(
         uid=user_id,
@@ -311,19 +367,13 @@ def decrypt_file(input_filename, password, user_id, override_servers):
     else:
         print("🔒 File was encrypted with authentication (standard)")
     
-    # Extract authentication codes and user ID from metadata
-    try:
-        base_auth_code, user_id_from_metadata = get_auth_codes_from_metadata(metadata)
-    except Exception as e:
-        raise Exception(f"failed to extract auth codes: {e}")
-    
     # Determine final user ID (priority: flag > metadata > environment > prompt)
     final_user_id = ""
     if user_id:
         final_user_id = user_id
         print(f"🔐 Using user ID from command line: {final_user_id}")
-    elif user_id_from_metadata:
-        final_user_id = user_id_from_metadata
+    elif metadata.user_id:
+        final_user_id = metadata.user_id
         print(f"🔐 Using user ID from file metadata: {final_user_id}")
     elif os.environ.get("OPENADP_USER_ID"):
         final_user_id = os.environ.get("OPENADP_USER_ID")
@@ -333,9 +383,13 @@ def decrypt_file(input_filename, password, user_id, override_servers):
         if not final_user_id:
             raise Exception("user ID cannot be empty")
     
-    # Recover encryption key using OpenADP
+    # Check authentication requirements
+    if not metadata.auth_code:
+        raise Exception("No authentication code found in metadata - file may be corrupted or from unsupported version")
+    
+    # Recover encryption key using OpenADP with portable metadata
     print("🔄 Recovering encryption key from OpenADP servers...")
-    enc_key = recover_encryption_key_with_server_info(output_filename, password, final_user_id, base_auth_code, server_infos, metadata.threshold)
+    enc_key = recover_encryption_key_with_metadata(metadata, password, final_user_id, server_infos, metadata.threshold)
     
     # Decrypt the file using metadata as additional authenticated data
     try:
