@@ -4,6 +4,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -134,19 +135,49 @@ func (d *Database) createTablesIfNeeded() error {
 	return nil
 }
 
-// Insert inserts or updates a secret share in the database
+// retryDatabaseOperation retries a database operation with exponential backoff
+// This handles SQLite busy errors that can occur under concurrent load
+func retryDatabaseOperation(operation func() error) error {
+	maxRetries := 5
+	baseDelay := 10 * time.Millisecond
+
+	for i := 0; i < maxRetries; i++ {
+		err := operation()
+		if err == nil {
+			return nil
+		}
+
+		// Check if it's a database busy error
+		if strings.Contains(err.Error(), "database is locked") || strings.Contains(err.Error(), "SQLITE_BUSY") {
+			if i < maxRetries-1 {
+				// Wait with exponential backoff
+				delay := baseDelay * time.Duration(1<<uint(i))
+				time.Sleep(delay)
+				continue
+			}
+		}
+
+		// Return the error if it's not a busy error or we've exhausted retries
+		return err
+	}
+
+	return fmt.Errorf("database operation failed after %d retries", maxRetries)
+}
+
+// Insert inserts or updates a secret share in the database with retry logic
 func (d *Database) Insert(uid, did, bid, authCode string, version, x int, y []byte, numGuesses, maxGuesses int, expiration int64) error {
 	insertSQL := `
 		REPLACE INTO shares(UID, DID, BID, auth_code, version, x, y, num_guesses, max_guesses, expiration)
 		VALUES(?,?,?,?,?,?,?,?,?,?)
 	`
 
-	_, err := d.db.Exec(insertSQL, uid, did, bid, authCode, version, x, y, numGuesses, maxGuesses, expiration)
-	if err != nil {
-		return fmt.Errorf("failed to insert share: %v", err)
-	}
-
-	return nil
+	return retryDatabaseOperation(func() error {
+		_, err := d.db.Exec(insertSQL, uid, did, bid, authCode, version, x, y, numGuesses, maxGuesses, expiration)
+		if err != nil {
+			return fmt.Errorf("failed to insert share: %v", err)
+		}
+		return nil
+	})
 }
 
 // Lookup retrieves a specific share by UID, DID, and BID

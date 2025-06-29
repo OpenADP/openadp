@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -380,34 +379,6 @@ func TestConcurrentAccess(t *testing.T) {
 			t.Errorf("Concurrent access error: %v", err)
 		}
 	}
-}
-
-// retryDatabaseOperation retries a database operation with exponential backoff
-func retryDatabaseOperation(operation func() error) error {
-	maxRetries := 5
-	baseDelay := 10 * time.Millisecond
-
-	for i := 0; i < maxRetries; i++ {
-		err := operation()
-		if err == nil {
-			return nil
-		}
-
-		// Check if it's a database busy error
-		if strings.Contains(err.Error(), "database is locked") || strings.Contains(err.Error(), "SQLITE_BUSY") {
-			if i < maxRetries-1 {
-				// Wait with exponential backoff
-				delay := baseDelay * time.Duration(1<<uint(i))
-				time.Sleep(delay)
-				continue
-			}
-		}
-
-		// Return the error if it's not a busy error or we've exhausted retries
-		return err
-	}
-
-	return fmt.Errorf("database operation failed after %d retries", maxRetries)
 }
 
 // TestDataPersistence tests that data persists across database reopens

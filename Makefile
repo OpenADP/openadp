@@ -176,14 +176,12 @@ lint:
 	fi
 
 # Install binaries to GOPATH/bin
-install: build build-server build-encrypt build-decrypt build-serverinfo build-rust
+install: build-server build-encrypt build-decrypt build-serverinfo build-rust
 	@echo "📥 Installing binaries..."
-	cp $(BUILD_DIR)/$(BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(SERVER_BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(ENCRYPT_BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(DECRYPT_BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(SERVERINFO_BINARY_NAME) $(GOPATH)/bin/
-	cp $(BUILD_DIR)/$(TEST_RUNNER_BINARY_NAME) $(GOPATH)/bin/
 	@if [ -f "$(BUILD_DIR)/$(RUST_ENCRYPT_BINARY_NAME)" ]; then \
 		cp $(BUILD_DIR)/$(RUST_ENCRYPT_BINARY_NAME) $(GOPATH)/bin/; \
 		cp $(BUILD_DIR)/$(RUST_DECRYPT_BINARY_NAME) $(GOPATH)/bin/; \

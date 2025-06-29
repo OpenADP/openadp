@@ -54,7 +54,7 @@ cd openadp
 make all
 
 # Or build individual components
-make build        # Demo application
+make all          # Build all tools
 make build-cli    # CLI application  
 make build-server # JSON-RPC server
 ```
@@ -68,13 +68,15 @@ The implementation uses these Go modules:
 
 ## 🎯 **Usage Examples**
 
-### **1. Running the Demo**
+### **1. Building the Tools**
 ```bash
-# Run the comprehensive demo
-make demo
+# Build all tools
+make all
 
-# Or directly
-./build/openadp-demo
+# Or build individual tools
+make build-server
+make build-encrypt
+make build-decrypt
 ```
 
 ### **2. Starting the Server**
@@ -301,7 +303,7 @@ make test-server
 ```bash
 make help                 # Show all available targets
 make all                  # Clean, test, and build everything
-make build                # Build demo application
+make all                  # Build all applications
 make build-cli            # Build CLI application  
 make build-server         # Build server application
 make clean                # Clean build artifacts

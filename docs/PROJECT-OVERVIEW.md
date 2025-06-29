@@ -82,7 +82,7 @@ openadp/
 The project includes a comprehensive **Makefile** with 20+ targets:
 
 ### Building
-- `make build` - Build demo application
+- `make all` - Build all applications
 - `make build-cli` - Build CLI application
 - `make all` - Complete build pipeline
 - `make release` - Multi-platform releases

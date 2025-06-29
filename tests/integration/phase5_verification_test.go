@@ -132,7 +132,6 @@ func TestPhase5AuthCodeSystem(t *testing.T) {
 	components := []string{
 		"../../server/auth/auth_code_manager.go",
 		"../../server/middleware/auth_middleware.go",
-		"../../cmd/openadp-demo/main.go",
 	}
 
 	for _, component := range components {
