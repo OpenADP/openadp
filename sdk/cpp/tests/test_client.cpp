@@ -73,29 +73,33 @@ TEST_F(ClientTest, JsonRpcResponseError) {
 
 // Test RegisterSecretRequest
 TEST_F(ClientTest, RegisterSecretRequest) {
-    Identity identity("user123", "device456", "backup789");
-    client::RegisterSecretRequest request(identity, "password123", 5, 3600, "secret_data");
+    Identity identity("test_user", "test_device", "test_backup");
+    client::RegisterSecretRequest request("auth123", identity, 1, 5, 3600, 1, "secret_data");
     
-    EXPECT_EQ(request.identity.uid, "user123");
-    EXPECT_EQ(request.identity.did, "device456");
-    EXPECT_EQ(request.identity.bid, "backup789");
-    EXPECT_EQ(request.password, "password123");
+    EXPECT_EQ(request.auth_code, "auth123");
+    EXPECT_EQ(request.identity.uid, "test_user");
+    EXPECT_EQ(request.identity.did, "test_device");
+    EXPECT_EQ(request.identity.bid, "test_backup");
+    EXPECT_EQ(request.version, 1);
     EXPECT_EQ(request.max_guesses, 5);
     EXPECT_EQ(request.expiration, 3600);
-    EXPECT_EQ(request.b, "secret_data");
+    EXPECT_EQ(request.x, 1);
+    EXPECT_EQ(request.y, "secret_data");
+    EXPECT_EQ(request.encrypted, true);
 }
 
 // Test RecoverSecretRequest
 TEST_F(ClientTest, RecoverSecretRequest) {
-    Identity identity("user123", "device456", "backup789");
-    client::RecoverSecretRequest request(identity, "password123", 2);
+    Identity identity("test_user", "test_device", "test_backup");
+    client::RecoverSecretRequest request("auth123", identity, "blinded_point_b64", 2);
     
-    EXPECT_EQ(request.identity.uid, "user123");
-    EXPECT_EQ(request.identity.did, "device456");
-    EXPECT_EQ(request.identity.bid, "backup789");
-    EXPECT_EQ(request.password, "password123");
+    EXPECT_EQ(request.auth_code, "auth123");
+    EXPECT_EQ(request.identity.uid, "test_user");
+    EXPECT_EQ(request.identity.did, "test_device");
+    EXPECT_EQ(request.identity.bid, "test_backup");
+    EXPECT_EQ(request.b, "blinded_point_b64");
     EXPECT_EQ(request.guess_num, 2);
-    EXPECT_FALSE(request.encrypted);
+    EXPECT_EQ(request.encrypted, false);
 }
 
 // Test ServerInfo parsing
@@ -234,7 +238,7 @@ TEST_F(ClientTest, EncryptedClientErrorHandling) {
     try {
         client::EncryptedOpenADPClient encrypted_client("https://example.com", invalid_key);
         auto result = encrypted_client.register_secret(
-            client::RegisterSecretRequest(Identity("user", "device", "backup"), "password", 5, 0, "test_b")
+            client::RegisterSecretRequest("auth123", Identity("user", "device", "backup"), 1, 5, 0, 1, "test_y")
         );
     } catch (const OpenADPError& e) {
         // Expected to fail due to invalid key or connection error
@@ -249,7 +253,7 @@ TEST_F(ClientTest, EncryptedClientUnreachable) {
     try {
         client::EncryptedOpenADPClient encrypted_client("https://unreachable.example.com", valid_key);
         auto result = encrypted_client.recover_secret(
-            client::RecoverSecretRequest(Identity("user", "device", "backup"), "password", 1)
+            client::RecoverSecretRequest("auth123", Identity("user", "device", "backup"), "blinded_point_b64", 1)
         );
     } catch (const OpenADPError& e) {
         // Expected to fail due to connection error
@@ -261,7 +265,7 @@ TEST_F(ClientTest, EncryptedClientUnreachable) {
 TEST_F(ClientTest, RegisterSecretStandardizedError) {
     client::BasicOpenADPClient test_client("https://httpbin.org/status/500");
     
-    client::RegisterSecretRequest request(Identity("user", "device", "backup"), "password", 5, 0, "test_b");
+    client::RegisterSecretRequest request("auth123", Identity("user", "device", "backup"), 1, 5, 0, 1, "test_y");
     
     try {
         auto result = test_client.register_secret_standardized(request);
@@ -275,7 +279,7 @@ TEST_F(ClientTest, RegisterSecretStandardizedError) {
 TEST_F(ClientTest, RecoverSecretStandardizedError) {
     client::BasicOpenADPClient test_client("https://httpbin.org/status/500");
     
-    client::RecoverSecretRequest request(Identity("user", "device", "backup"), "password", 1);
+    client::RecoverSecretRequest request("auth123", Identity("user", "device", "backup"), "blinded_point_b64", 1);
     
     try {
         auto result = test_client.recover_secret_standardized(request);

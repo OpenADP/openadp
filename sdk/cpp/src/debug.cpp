@@ -60,20 +60,6 @@ std::string get_deterministic_random_scalar() {
     return "0000000000000000000000000000000000000000000000000000000000000001";
 }
 
-// Get deterministic polynomial coefficient (1, 2, 3, ...)
-std::string get_deterministic_polynomial_coefficient() {
-    if (!g_debug_mode) {
-        throw std::runtime_error("get_deterministic_polynomial_coefficient called outside debug mode");
-    }
-    
-    deterministic_counter++;
-    std::stringstream ss;
-    ss << std::hex << std::setfill('0') << std::setw(64) << deterministic_counter;
-    
-    debug_log("Using deterministic polynomial coefficient: " + std::to_string(deterministic_counter));
-    return ss.str();
-}
-
 std::string get_deterministic_random_hex(size_t length) {
     if (!g_debug_mode) {
         throw std::runtime_error("get_deterministic_random_hex called outside debug mode");

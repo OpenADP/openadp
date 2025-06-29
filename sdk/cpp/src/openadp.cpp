@@ -3,6 +3,7 @@
 #include "openadp/client.hpp"
 #include "openadp/crypto.hpp"
 #include "openadp/utils.hpp"
+#include "openadp/debug.hpp"
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <filesystem>
@@ -119,19 +120,14 @@ EncryptResult encrypt_data(
         throw OpenADPError("Failed to generate encryption key: " + result.error_message.value());
     }
     
-    // Encrypt the data
-    auto aes_result = crypto::aes_gcm_encrypt(plaintext, result.encryption_key.value());
-    
-    // Create metadata
+    // Create metadata for AAD (without crypto data)
     nlohmann::json metadata;
     metadata["user_id"] = identity.uid;
     metadata["device_id"] = identity.did;
     metadata["backup_id"] = identity.bid;
     metadata["auth_code"] = result.auth_codes.value().base_auth_code;
-    metadata["ciphertext"] = utils::base64_encode(aes_result.ciphertext);
-    metadata["tag"] = utils::base64_encode(aes_result.tag);
-    metadata["nonce"] = utils::base64_encode(aes_result.nonce);
     metadata["threshold"] = result.threshold;
+    metadata["version"] = "1.0";
     
     // Add server URLs
     nlohmann::json servers_array = nlohmann::json::array();
@@ -141,7 +137,28 @@ EncryptResult encrypt_data(
     metadata["servers"] = servers_array;
     
     std::string metadata_str = metadata.dump();
-    Bytes metadata_bytes = utils::string_to_bytes(metadata_str);
+    Bytes metadata_aad = utils::string_to_bytes(metadata_str);
+    
+    // Encrypt the data using metadata as AAD
+    if (debug::is_debug_mode_enabled()) {
+        debug::debug_log("🔐 AES-GCM ENCRYPTION INPUTS:");
+        debug::debug_log("  - Plaintext size: " + std::to_string(plaintext.size()) + " bytes");
+        debug::debug_log("  - Plaintext hex: " + crypto::bytes_to_hex(plaintext));
+        debug::debug_log("  - Key size: " + std::to_string(result.encryption_key.value().size()) + " bytes");
+        debug::debug_log("  - Key hex: " + crypto::bytes_to_hex(result.encryption_key.value()));
+        debug::debug_log("  - AAD size: " + std::to_string(metadata_aad.size()) + " bytes");
+        debug::debug_log("  - AAD: " + metadata_str);
+    }
+    auto aes_result = crypto::aes_gcm_encrypt(plaintext, result.encryption_key.value(), metadata_aad);
+    
+    // Create full metadata with crypto data for return
+    nlohmann::json full_metadata = metadata;
+    full_metadata["ciphertext"] = utils::base64_encode(aes_result.ciphertext);
+    full_metadata["tag"] = utils::base64_encode(aes_result.tag);
+    full_metadata["nonce"] = utils::base64_encode(aes_result.nonce);
+    
+    std::string full_metadata_str = full_metadata.dump();
+    Bytes metadata_bytes = utils::string_to_bytes(full_metadata_str);
     
     return EncryptResult(aes_result.ciphertext, metadata_bytes);
 }
@@ -210,19 +227,14 @@ EncryptResult encrypt_data(
         throw OpenADPError("Failed to generate encryption key: " + result.error_message.value());
     }
     
-    // Encrypt the data
-    auto aes_result = crypto::aes_gcm_encrypt(plaintext, result.encryption_key.value());
-    
-    // Create metadata
+    // Create metadata for AAD (without crypto data)
     nlohmann::json metadata;
     metadata["user_id"] = identity.uid;
     metadata["device_id"] = identity.did;
     metadata["backup_id"] = identity.bid;
     metadata["auth_code"] = result.auth_codes.value().base_auth_code;
-    metadata["ciphertext"] = utils::base64_encode(aes_result.ciphertext);
-    metadata["tag"] = utils::base64_encode(aes_result.tag);
-    metadata["nonce"] = utils::base64_encode(aes_result.nonce);
     metadata["threshold"] = result.threshold;
+    metadata["version"] = "1.0";
     
     // Add server URLs
     nlohmann::json servers_array = nlohmann::json::array();
@@ -232,7 +244,28 @@ EncryptResult encrypt_data(
     metadata["servers"] = servers_array;
     
     std::string metadata_str = metadata.dump();
-    Bytes metadata_bytes = utils::string_to_bytes(metadata_str);
+    Bytes metadata_aad = utils::string_to_bytes(metadata_str);
+    
+    // Encrypt the data using metadata as AAD
+    if (debug::is_debug_mode_enabled()) {
+        debug::debug_log("🔐 AES-GCM ENCRYPTION INPUTS:");
+        debug::debug_log("  - Plaintext size: " + std::to_string(plaintext.size()) + " bytes");
+        debug::debug_log("  - Plaintext hex: " + crypto::bytes_to_hex(plaintext));
+        debug::debug_log("  - Key size: " + std::to_string(result.encryption_key.value().size()) + " bytes");
+        debug::debug_log("  - Key hex: " + crypto::bytes_to_hex(result.encryption_key.value()));
+        debug::debug_log("  - AAD size: " + std::to_string(metadata_aad.size()) + " bytes");
+        debug::debug_log("  - AAD: " + metadata_str);
+    }
+    auto aes_result = crypto::aes_gcm_encrypt(plaintext, result.encryption_key.value(), metadata_aad);
+    
+    // Create full metadata with crypto data for return
+    nlohmann::json full_metadata = metadata;
+    full_metadata["ciphertext"] = utils::base64_encode(aes_result.ciphertext);
+    full_metadata["tag"] = utils::base64_encode(aes_result.tag);
+    full_metadata["nonce"] = utils::base64_encode(aes_result.nonce);
+    
+    std::string full_metadata_str = full_metadata.dump();
+    Bytes metadata_bytes = utils::string_to_bytes(full_metadata_str);
     
     return EncryptResult(aes_result.ciphertext, metadata_bytes);
 }
@@ -311,8 +344,38 @@ Bytes decrypt_data(
         throw OpenADPError("Failed to recover encryption key: " + result.error_message.value());
     }
     
-    // Decrypt the data
-    Bytes plaintext = crypto::aes_gcm_decrypt(ciphertext, tag, nonce, result.encryption_key.value());
+    // Use the exact original metadata string that was written to the .enc file as AAD
+    std::string aad_metadata_str;
+    if (metadata_json.contains("_original_metadata_aad")) {
+        // Use the exact metadata string that was read from the .enc file
+        aad_metadata_str = metadata_json["_original_metadata_aad"].get<std::string>();
+    } else {
+        // Fallback: reconstruct from metadata (for backward compatibility)
+        nlohmann::json original_metadata = metadata_json;
+        original_metadata.erase("ciphertext");
+        original_metadata.erase("tag");
+        original_metadata.erase("nonce");
+        aad_metadata_str = original_metadata.dump();
+    }
+    Bytes metadata_aad = utils::string_to_bytes(aad_metadata_str);
+    
+    // 🔍 DEBUG: AES-GCM decryption inputs
+    if (debug::is_debug_mode_enabled()) {
+        debug::debug_log("🔍 AES-GCM DECRYPTION INPUTS:");
+        debug::debug_log("  - Ciphertext size: " + std::to_string(ciphertext.size()) + " bytes");
+        debug::debug_log("  - Ciphertext hex: " + crypto::bytes_to_hex(ciphertext));
+        debug::debug_log("  - Tag size: " + std::to_string(tag.size()) + " bytes");
+        debug::debug_log("  - Tag hex: " + crypto::bytes_to_hex(tag));
+        debug::debug_log("  - Nonce size: " + std::to_string(nonce.size()) + " bytes");
+        debug::debug_log("  - Nonce hex: " + crypto::bytes_to_hex(nonce));
+        debug::debug_log("  - Key size: " + std::to_string(result.encryption_key.value().size()) + " bytes");
+        debug::debug_log("  - Key hex: " + crypto::bytes_to_hex(result.encryption_key.value()));
+        debug::debug_log("  - AAD size: " + std::to_string(metadata_aad.size()) + " bytes");
+        debug::debug_log("  - AAD: " + aad_metadata_str);
+    }
+    
+    // Decrypt the data using metadata as AAD (matching what was used during encryption)
+    Bytes plaintext = crypto::aes_gcm_decrypt(ciphertext, tag, nonce, result.encryption_key.value(), metadata_aad);
     
     return plaintext;
 }
@@ -350,6 +413,14 @@ void encrypt_data(const std::string& input_file, const std::string& output_file,
     }
     
     // Encrypt data
+    if (debug::is_debug_mode_enabled()) {
+        debug::debug_log("🔐 AES-GCM ENCRYPTION INPUTS (file-based):");
+        debug::debug_log("  - Plaintext size: " + std::to_string(plaintext.size()) + " bytes");
+        debug::debug_log("  - Plaintext hex: " + crypto::bytes_to_hex(plaintext));
+        debug::debug_log("  - Key size: " + std::to_string(result.encryption_key.value().size()) + " bytes");
+        debug::debug_log("  - Key hex: " + crypto::bytes_to_hex(result.encryption_key.value()));
+        debug::debug_log("  - AAD: None");
+    }
     auto encrypted = crypto::aes_gcm_encrypt(plaintext, result.encryption_key.value());
     
     // Write encrypted file
@@ -408,6 +479,18 @@ void decrypt_data(const std::string& input_file, const std::string& output_file,
     Bytes ciphertext = read_file_bytes(input_file);
     
     // Decrypt data
+    if (debug::is_debug_mode_enabled()) {
+        debug::debug_log("🔍 AES-GCM DECRYPTION INPUTS (file-based):");
+        debug::debug_log("  - Ciphertext size: " + std::to_string(ciphertext.size()) + " bytes");
+        debug::debug_log("  - Ciphertext hex: " + crypto::bytes_to_hex(ciphertext));
+        debug::debug_log("  - Tag size: " + std::to_string(tag.size()) + " bytes");
+        debug::debug_log("  - Tag hex: " + crypto::bytes_to_hex(tag));
+        debug::debug_log("  - Nonce size: " + std::to_string(nonce.size()) + " bytes");
+        debug::debug_log("  - Nonce hex: " + crypto::bytes_to_hex(nonce));
+        debug::debug_log("  - Key size: " + std::to_string(encryption_key.size()) + " bytes");
+        debug::debug_log("  - Key hex: " + crypto::bytes_to_hex(encryption_key));
+        debug::debug_log("  - AAD: None");
+    }
     Bytes plaintext = crypto::aes_gcm_decrypt(ciphertext, tag, nonce, encryption_key);
     
     // Write decrypted file

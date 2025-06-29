@@ -33,18 +33,22 @@ struct JsonRpcResponse {
 
 // Register secret request
 struct RegisterSecretRequest {
+    std::string auth_code;
     Identity identity;
-    std::string password;
+    int version;
     int max_guesses;
     int64_t expiration;
-    std::string b;
-    std::string auth_code;  // Auth code for this specific server
+    int x;  // Shamir X coordinate 
+    std::string y;  // Shamir Y coordinate, Base64 encoded, little-endian.
+    bool encrypted;
+    nlohmann::json auth_data;  // Auth data
     
-    RegisterSecretRequest(const Identity& identity, const std::string& password, 
-                         int max_guesses, int64_t expiration, const std::string& b,
-                         const std::string& auth_code = "")
-        : identity(identity), password(password), max_guesses(max_guesses), 
-          expiration(expiration), b(b), auth_code(auth_code) {}
+    RegisterSecretRequest(const std::string& auth_code, const Identity& identity, 
+                         int version, int max_guesses, int64_t expiration, 
+                         int x, const std::string& y, bool encrypted = true)
+        : auth_code(auth_code), identity(identity), version(version), 
+          max_guesses(max_guesses), expiration(expiration), x(x), y(y), 
+          encrypted(encrypted), auth_data(nlohmann::json::object()) {}
 };
 
 // Recover secret request  
@@ -54,10 +58,7 @@ struct RecoverSecretRequest {
     int guess_num;
     bool encrypted;
     std::string auth_code;
-    std::string b;  // Y coordinate (base64 encoded)
-    
-    RecoverSecretRequest(const Identity& identity, const std::string& password, int guess_num)
-        : identity(identity), password(password), guess_num(guess_num), encrypted(false) {}
+    std::string b;  // Blinded B point = r*U, compressed, base64 encoded.
     
     RecoverSecretRequest(const std::string& auth_code, const Identity& identity, 
                         const std::string& b, int guess_num)

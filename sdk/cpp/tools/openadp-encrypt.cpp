@@ -257,12 +257,15 @@ int main(int argc, char* argv[]) {
         Bytes tag = utils::base64_decode(existing_metadata["tag"].get<std::string>());
         
         // Create new metadata JSON matching other SDKs format (without embedded crypto data)
+        // This must match exactly what was used as AAD during encryption
         nlohmann::json metadata;
+        metadata["auth_code"] = existing_metadata["auth_code"];
+        metadata["backup_id"] = existing_metadata["backup_id"];
+        metadata["device_id"] = existing_metadata["device_id"];
         metadata["servers"] = existing_metadata["servers"];
         metadata["threshold"] = existing_metadata["threshold"];
-        metadata["version"] = "1.0";
-        metadata["auth_code"] = existing_metadata["auth_code"];
         metadata["user_id"] = existing_metadata["user_id"];
+        metadata["version"] = "1.0";
         
         std::string metadata_str = metadata.dump();
         std::vector<uint8_t> metadata_bytes(metadata_str.begin(), metadata_str.end());

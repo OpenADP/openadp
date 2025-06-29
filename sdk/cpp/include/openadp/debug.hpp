@@ -25,7 +25,6 @@ void debug_log(const std::string& message);
 // Deterministic random functions for debug mode
 std::string get_deterministic_main_secret();  // Large deterministic scalar for main secret r
 std::string get_deterministic_random_scalar();
-std::string get_deterministic_polynomial_coefficient();
 std::string get_deterministic_random_hex(size_t length);
 std::vector<uint8_t> get_deterministic_random_bytes(size_t length);
 std::string get_deterministic_ephemeral_secret();

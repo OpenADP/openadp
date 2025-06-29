@@ -7,6 +7,7 @@
 #include <chrono>
 #include <algorithm>
 #include <openssl/bn.h>
+#include <sstream>
 
 namespace openadp {
 namespace keygen {
@@ -132,83 +133,35 @@ GenerateEncryptionKeyResult generate_encryption_key(
             }
         }
         
-        // Implement proper Shamir Secret Sharing (replacing scalar approach)
         // Use simpler approach matching Python/Go debug values for now
         if (debug::is_debug_mode_enabled()) {
-            // 🔧 CRITICAL FIX: Use the standard deterministic secret consistently
-            // Convert hex secret to decimal for logging (to match other SDKs)
-            BIGNUM* secret_bn = BN_new();
-            BN_hex2bn(&secret_bn, secret_hex.c_str());
-            char* secret_decimal = BN_bn2dec(secret_bn);
             debug::debug_log("Using deterministic secret: 0x" + secret_hex);
-            debug::debug_log("Secret (decimal): " + std::string(secret_decimal));
-            
             debug::debug_log("Computed U point for identity: UID=" + identity.uid + 
                             ", DID=" + identity.did + ", BID=" + identity.bid);
             debug::debug_log("Computed S = secret * U");
             debug::debug_log("Splitting secret with threshold " + std::to_string(threshold) + 
                             ", num_shares " + std::to_string(num_shares));
-            
-            // Use the standard deterministic secret value for polynomial coefficient a0
-            debug::debug_log("Polynomial coefficient a0 (secret): " + std::string(secret_decimal));
-            
-            // For proper Shamir secret sharing, implement polynomial evaluation
-            if (threshold == 1) {
-                // For 1-of-1 threshold, polynomial is degree 0: P(x) = secret
-                // So P(1) = secret (no additional coefficients needed)
-                debug::debug_log("Polynomial coefficients: [" + std::string(secret_decimal) + "]");
-                debug::debug_log("Share 1: (x=1, y=" + std::string(secret_decimal) + ")");
-            } else {
-                // For higher thresholds, use deterministic coefficients in debug mode
-                debug::debug_log("Using deterministic polynomial coefficient a1: 1");
-                debug::debug_log("Polynomial coefficients: [" + std::string(secret_decimal) + ", 1]");
-                
-                // Evaluate polynomial P(x) = a0 + a1*x for each share
-                BIGNUM* a0 = BN_dup(secret_bn);  // a0 = secret
-                BIGNUM* a1 = BN_new();
-                BN_set_word(a1, 1);  // a1 = 1 (deterministic)
-                
-                BN_CTX* ctx = BN_CTX_new();
-                for (int x = 1; x <= num_shares; x++) {
-                    // P(x) = a0 + a1*x
-                    BIGNUM* x_bn = BN_new();
-                    BIGNUM* y_bn = BN_new();
-                    BN_set_word(x_bn, x);
-                    
-                    // y = a0 + a1*x
-                    BN_mul(y_bn, a1, x_bn, ctx);
-                    BN_add(y_bn, y_bn, a0);
-                    
-                    char* y_decimal = BN_bn2dec(y_bn);
-                    debug::debug_log("Share " + std::to_string(x) + ": (x=" + std::to_string(x) + ", y=" + std::string(y_decimal) + ")");
-                    
-                    OPENSSL_free(y_decimal);
-                    BN_free(x_bn);
-                    BN_free(y_bn);
-                }
-                
-                BN_free(a0);
-                BN_free(a1);
-                BN_CTX_free(ctx);
-            }
-            debug::debug_log("Generated " + std::to_string(num_shares) + " shares");
-            
-            OPENSSL_free(secret_decimal);
-            BN_free(secret_bn);
         }
+
+        // Generate Shamir secret shares using the existing crypto function
+        std::vector<Share> shares = crypto::ShamirSecretSharing::split_secret(secret_hex, threshold, num_shares);
         
         // Set expiration if not provided
+        // NOTE: Disabled automatic expiration calculation to match Python behavior (uses 0)
+        /*
         if (expiration == 0) {
             auto now = std::chrono::system_clock::now();
             auto future = now + std::chrono::hours(24 * 365); // 1 year
             expiration = std::chrono::duration_cast<std::chrono::seconds>(future.time_since_epoch()).count();
         }
+        */
         
         // Register shares with servers
         std::vector<ServerInfo> successful_servers;
         
-        for (size_t i = 0; i < server_infos.size(); i++) {
+        for (size_t i = 0; i < server_infos.size() && i < shares.size(); i++) {
             const auto& server_info = server_infos[i];
+            const auto& share = shares[i];  // Get the corresponding share
             
             try {
                 client::EncryptedOpenADPClient client(server_info.url, server_info.public_key);
@@ -222,89 +175,41 @@ GenerateEncryptionKeyResult generate_encryption_key(
                     debug::debug_log("Using auth code for server " + server_info.url + ": " + server_auth_code);
                 }
                 
-                // Generate Y coordinate for this share
+                // Use the X and Y coordinates from the share
+                int x = share.x;
+                std::string share_y_hex = share.y;
+                
+                // Convert Y coordinate from hex to base64-encoded little-endian bytes
                 std::string y_base64;
-                if (debug::is_debug_mode_enabled()) {
-                    // 🔧 CRITICAL FIX: Use standard deterministic secret for Shamir shares (matching other SDKs)
-                    // Compute actual Shamir secret share for this server
-                    BIGNUM* secret_bn = BN_new();
-                    BN_hex2bn(&secret_bn, secret_hex.c_str());
+                BIGNUM* y_bn = BN_new();
+                BN_hex2bn(&y_bn, share_y_hex.c_str());
+                
+                // ✅ CRITICAL FIX: Reduce Y coordinate modulo Q (Ed25519 group order)
+                BIGNUM* q_bn = BN_new();
+                BN_hex2bn(&q_bn, "1000000000000000000000000000000014DEF9DEA2F79CD65812631A5CF5D3ED");
+                BN_CTX* mod_ctx = BN_CTX_new();
+                BN_mod(y_bn, y_bn, q_bn, mod_ctx);
+                BN_free(q_bn);
+                BN_CTX_free(mod_ctx);
+                
+                // Convert y to little-endian 32-byte array for base64 encoding
+                Bytes y_bytes(32, 0);
+                int y_size = BN_num_bytes(y_bn);
+                if (y_size <= 32) {
+                    // Convert to big-endian first
+                    Bytes temp_bytes(y_size);
+                    BN_bn2bin(y_bn, temp_bytes.data());
                     
-                    // Compute the actual share for this server using polynomial evaluation
-                    int x = static_cast<int>(i + 1);  // Server index (1-based)
-                    BIGNUM* y_bn = BN_new();
-                    
-                    if (threshold == 1) {
-                        // For 1-of-1 threshold: P(x) = secret, so y = secret
-                        BN_copy(y_bn, secret_bn);
-                    } else {
-                        // For higher thresholds: P(x) = a0 + a1*x where a0=secret, a1=1
-                        BIGNUM* x_bn = BN_new();
-                        BN_set_word(x_bn, x);
-                        
-                        // y = secret + 1*x = secret + x
-                        BN_add(y_bn, secret_bn, x_bn);
-                        BN_free(x_bn);
-                    }
-                    
-                    // ✅ CRITICAL FIX: Reduce Y coordinate modulo Q (Ed25519 group order)
-                    BIGNUM* q_bn = BN_new();
-                    BN_hex2bn(&q_bn, "1000000000000000000000000000000014DEF9DEA2F79CD65812631A5CF5D3ED");
-                    BN_CTX* mod_ctx = BN_CTX_new();
-                    BN_mod(y_bn, y_bn, q_bn, mod_ctx);
-                    BN_free(q_bn);
-                    BN_CTX_free(mod_ctx);
-                    
-                    // Convert y to little-endian 32-byte array for base64 encoding
-                    Bytes y_bytes(32, 0);
-                    int y_size = BN_num_bytes(y_bn);
-                    if (y_size <= 32) {
-                        // Convert to big-endian first
-                        Bytes temp_bytes(y_size);
-                        BN_bn2bin(y_bn, temp_bytes.data());
-                        
-                        // Copy to 32-byte array (right-aligned) and reverse to little-endian
-                        std::copy(temp_bytes.begin(), temp_bytes.end(), 
-                                y_bytes.end() - temp_bytes.size());
-                        std::reverse(y_bytes.begin(), y_bytes.end());
-                    }
-                    
-                    y_base64 = utils::base64_encode(y_bytes);
-                    
-                    BN_free(secret_bn);
-                    BN_free(y_bn);
-                } else {
-                    // For non-debug mode, use the secret_hex directly but reduce modulo Q
-                    BIGNUM* secret_bn = BN_new();
-                    BN_hex2bn(&secret_bn, secret_hex.c_str());
-                    
-                    // ✅ CRITICAL FIX: Reduce random secret modulo Q (Ed25519 group order) 
-                    BIGNUM* q_bn = BN_new();
-                    BN_hex2bn(&q_bn, "1000000000000000000000000000000014DEF9DEA2F79CD65812631A5CF5D3ED");
-                    BN_CTX* mod_ctx = BN_CTX_new();
-                    BN_mod(secret_bn, secret_bn, q_bn, mod_ctx);
-                    BN_free(q_bn);
-                    BN_CTX_free(mod_ctx);
-                    
-                    // Convert reduced secret to little-endian 32-byte array for base64 encoding
-                    Bytes y_bytes(32, 0);
-                    int y_size = BN_num_bytes(secret_bn);
-                    if (y_size <= 32) {
-                        // Convert to big-endian first
-                        Bytes temp_bytes(y_size);
-                        BN_bn2bin(secret_bn, temp_bytes.data());
-                        
-                        // Copy to 32-byte array (right-aligned) and reverse to little-endian
-                        std::copy(temp_bytes.begin(), temp_bytes.end(), 
-                                y_bytes.end() - temp_bytes.size());
-                        std::reverse(y_bytes.begin(), y_bytes.end());
-                    }
-                    
-                    y_base64 = utils::base64_encode(y_bytes);
-                    BN_free(secret_bn);
+                    // Copy to 32-byte array (right-aligned) and reverse to little-endian
+                    std::copy(temp_bytes.begin(), temp_bytes.end(), 
+                            y_bytes.end() - temp_bytes.size());
+                    std::reverse(y_bytes.begin(), y_bytes.end());
                 }
                 
-                client::RegisterSecretRequest request(identity, password, max_guesses, expiration, y_base64, server_auth_code);
+                y_base64 = utils::base64_encode(y_bytes);
+                BN_free(y_bn);
+                
+                client::RegisterSecretRequest request(server_auth_code, identity, 1, max_guesses, expiration, x, y_base64, true);
                 nlohmann::json response = client.register_secret(request);
                 
                 if (response.contains("success") && response["success"].get<bool>()) {

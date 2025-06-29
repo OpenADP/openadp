@@ -171,13 +171,15 @@ nlohmann::json BasicOpenADPClient::get_server_info() {
 
 nlohmann::json BasicOpenADPClient::register_secret_standardized(const RegisterSecretRequest& request) {
     nlohmann::json params;
+    params["auth_code"] = request.auth_code;
     params["uid"] = request.identity.uid;
     params["did"] = request.identity.did;
     params["bid"] = request.identity.bid;
-    params["password"] = request.password;
+    params["version"] = request.version;
+    params["x"] = request.x;
+    params["y"] = request.y;
     params["max_guesses"] = request.max_guesses;
     params["expiration"] = request.expiration;
-    params["b"] = request.b;
     
     return make_request("RegisterSecret", params);
 }
@@ -390,11 +392,11 @@ nlohmann::json EncryptedOpenADPClient::register_secret(const RegisterSecretReque
     params.push_back(request.identity.uid);        // uid  
     params.push_back(device_id);                   // did (hostname, not hardcoded)
     params.push_back(request.identity.bid);        // bid
-    params.push_back(1);                           // version (always 1)
-    params.push_back(1);                           // x (always 1 for registration)
+    params.push_back(request.version);             // version
+    params.push_back(request.x);                   // x (Shamir X coordinate)
     
     // Y coordinate should already be base64-encoded from keygen
-    std::string y_base64 = request.b;
+    std::string y_base64 = request.y;
     
     params.push_back(y_base64);                    // y (base64-encoded 32-byte little-endian)
     params.push_back(request.max_guesses);         // max_guesses
@@ -405,9 +407,11 @@ nlohmann::json EncryptedOpenADPClient::register_secret(const RegisterSecretReque
         debug::debug_log("RegisterSecret request: method=RegisterSecret, auth_code=" + request.auth_code + 
                         ", uid=" + request.identity.uid + 
                         ", did=" + device_id + ", bid=" + request.identity.bid + 
+                        ", version=" + std::to_string(request.version) +
+                        ", x=" + std::to_string(request.x) +
                         ", max_guesses=" + std::to_string(request.max_guesses) + 
                         ", expiration=" + std::to_string(request.expiration) + 
-                        ", b=" + request.b + ", encrypted=" + (has_public_key() ? "true" : "false"));
+                        ", y=" + request.y + ", encrypted=" + (has_public_key() ? "true" : "false"));
     }
     
     try {

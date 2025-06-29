@@ -247,11 +247,13 @@ int main(int argc, char* argv[]) {
         // Parse metadata
         nlohmann::json metadata_json = nlohmann::json::parse(metadata_str);
         
-        // Rebuild metadata for decrypt_data function (it expects the old format)
+        // Use the exact metadata string that was read from the file as AAD
+        // Add crypto fields for the legacy decrypt_data function interface
         nlohmann::json full_metadata = metadata_json;
         full_metadata["ciphertext"] = utils::base64_encode(ciphertext);
         full_metadata["tag"] = utils::base64_encode(tag);
         full_metadata["nonce"] = utils::base64_encode(nonce);
+        full_metadata["_original_metadata_aad"] = metadata_str;  // Pass exact string for AAD
         
         std::string full_metadata_str = full_metadata.dump();
         Bytes metadata = utils::string_to_bytes(full_metadata_str);

@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <numeric>
 #include <set>
+#include <sstream>
 
 namespace openadp {
 namespace crypto {
@@ -669,7 +670,9 @@ std::vector<Share> ShamirSecretSharing::split_secret(const std::string& secret_h
         
         if (debug::is_debug_mode_enabled()) {
             // In debug mode, use deterministic coefficients: 1, 2, 3, ...
-            std::string coeff_hex = debug::get_deterministic_polynomial_coefficient();
+            std::stringstream ss;
+            ss << std::hex << i;
+            std::string coeff_hex = ss.str();
             BN_hex2bn(&coeff, coeff_hex.c_str());
             debug::debug_log("Using deterministic coefficient " + std::to_string(i) + ": " + coeff_hex);
         } else {
