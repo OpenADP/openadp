@@ -20,6 +20,8 @@ struct Metadata {
     version: String,
     auth_code: String, // Single base auth code (32 bytes hex)
     user_id: String,
+    device_id: Option<String>, // Device identifier for portability (optional for backwards compatibility)
+    backup_id: Option<String>, // Backup identifier for portability (optional for backwards compatibility)
 }
 
 // AuthCodesMetadata represents authentication codes in metadata
@@ -360,10 +362,24 @@ async fn decrypt_file(
         user_id
     };
 
+    // Determine device ID and backup ID (from metadata if available, otherwise fallback to current environment)
+    let (device_id, backup_id) = if let (Some(device_id), Some(backup_id)) = (&metadata.device_id, &metadata.backup_id) {
+        // Use portable values from metadata
+        println!("✅ Using device_id and backup_id from metadata (portable format)");
+        (device_id.clone(), backup_id.clone())
+    } else {
+        // Fallback to current environment (legacy compatibility)
+        let device_id = get_hostname();
+        let backup_id = format!("file://{}", Path::new(&output_filename).file_name().unwrap().to_string_lossy());
+        println!("⚠️  Using current environment for device_id and backup_id (legacy format)");
+        (device_id, backup_id)
+    };
+
     // Recover encryption key using OpenADP
     println!("🔄 Recovering encryption key from OpenADP servers...");
     let enc_key = recover_encryption_key_with_server_info(
-        &output_filename,
+        &device_id,
+        &backup_id,
         password,
         &final_user_id,
         &base_auth_code,
@@ -402,7 +418,8 @@ async fn decrypt_file(
 }
 
 async fn recover_encryption_key_with_server_info(
-    filename: &str,
+    device_id: &str,
+    backup_id: &str,
     password: &str,
     user_id: &str,
     base_auth_code: &str,
@@ -412,8 +429,8 @@ async fn recover_encryption_key_with_server_info(
     // Create Identity struct for the new API
     let identity = Identity {
         uid: user_id.to_string(),
-        did: get_hostname(),                                                    // Use hostname as device ID (should match encryption)
-        bid: format!("file://{}", Path::new(filename).file_name().unwrap().to_string_lossy()), // Use file path as backup ID (should match encryption)
+        did: device_id.to_string(),
+        bid: backup_id.to_string(),
     };
     println!("🔑 Recovering with UID={}, DID={}, BID={}", identity.uid, identity.did, identity.bid);
 

@@ -53,6 +53,28 @@ Bytes register_with_bid(
     const std::string& backup_id,
     const std::string& servers_url
 ) {
+    // Parameter validation - wrap in Registration failed message for test compatibility
+    try {
+        if (user_id.empty()) {
+            throw OpenADPError("User ID cannot be empty");
+        }
+        if (app_id.empty()) {
+            throw OpenADPError("App ID cannot be empty");
+        }
+        if (long_term_secret.empty()) {
+            throw OpenADPError("Long-term secret cannot be empty");
+        }
+        // Note: Empty PIN is allowed for testing purposes
+        if (max_guesses <= 0) {
+            throw OpenADPError("Max guesses must be positive");
+        }
+        if (backup_id.empty()) {
+            throw OpenADPError("Backup ID cannot be empty");
+        }
+    } catch (const OpenADPError& e) {
+        throw OpenADPError("Registration failed: " + std::string(e.what()));
+    }
+    
     try {
         // Get server list
         std::vector<ServerInfo> server_infos = client::get_servers(servers_url);
@@ -127,6 +149,25 @@ Bytes register_secret(
     int max_guesses,
     const std::string& servers_url
 ) {
+    // Parameter validation - wrap in Registration failed message for test compatibility
+    try {
+        if (user_id.empty()) {
+            throw OpenADPError("User ID cannot be empty");
+        }
+        if (app_id.empty()) {
+            throw OpenADPError("App ID cannot be empty");
+        }
+        if (long_term_secret.empty()) {
+            throw OpenADPError("Long-term secret cannot be empty");
+        }
+        // Note: Empty PIN is allowed for testing purposes
+        if (max_guesses <= 0) {
+            throw OpenADPError("Max guesses must be positive");
+        }
+    } catch (const OpenADPError& e) {
+        throw OpenADPError("Registration failed: " + std::string(e.what()));
+    }
+    
     // Generate a unique backup ID
     auto now = std::chrono::system_clock::now();
     auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();

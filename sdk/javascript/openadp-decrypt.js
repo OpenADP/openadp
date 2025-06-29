@@ -22,12 +22,14 @@ const NONCE_SIZE = 12; // AES-GCM nonce size
  * Metadata represents the metadata stored with encrypted files
  */
 class Metadata {
-    constructor(servers, threshold, version, authCode, userId) {
+    constructor(servers, threshold, version, authCode, userId, deviceId, backupId) {
         this.servers = servers;
         this.threshold = threshold;
         this.version = version;
         this.auth_code = authCode; // Single base auth code (32 bytes hex)
         this.user_id = userId;
+        this.device_id = deviceId; // Device identifier for portability
+        this.backup_id = backupId; // Backup identifier for portability
     }
     
     static fromDict(data) {
@@ -36,7 +38,9 @@ class Metadata {
             data.threshold,
             data.version,
             data.auth_code,
-            data.user_id
+            data.user_id,
+            data.device_id,
+            data.backup_id
         );
     }
 }
@@ -91,7 +95,7 @@ function sha256Hash(data) {
     return crypto.createHash('sha256').update(data).digest();
 }
 
-async function recoverEncryptionKeyWithServerInfo(filename, password, userId, baseAuthCode, serverInfos, threshold) {
+async function recoverEncryptionKeyWithServerInfo(deviceId, backupId, password, userId, baseAuthCode, serverInfos, threshold) {
     // Create AuthCodes structure from metadata
     
     const serverAuthCodes = {};
@@ -110,16 +114,11 @@ async function recoverEncryptionKeyWithServerInfo(filename, password, userId, ba
     };
 
     // Recover encryption key using the full distributed protocol
-    // Create Identity from filename, userId (matching old derive_identifiers behavior)
-    // Use original filename without .enc extension for BID to match encryption
-    let originalFilename = filename;
-    if (originalFilename.endsWith('.enc')) {
-        originalFilename = originalFilename.slice(0, -4);
-    }
+    // Create Identity using provided device_id and backup_id (from metadata or fallback)
     const identity = new Identity(
         userId,
-        os.hostname(),
-        `file://${path.basename(originalFilename)}`
+        deviceId,  // Use device ID from metadata or fallback
+        backupId   // Use backup ID from metadata or fallback
     );
     const result = await recoverEncryptionKey(identity, password, serverInfos, threshold, authCodes);
     if (result.error) {
@@ -320,9 +319,28 @@ async function decryptFile(inputFilename, password, userId, overrideServers) {
         throw new Error("User ID required. Use -user-id flag, file metadata, or OPENADP_USER_ID environment variable");
     }
 
+    // Determine device ID and backup ID (from metadata if available, otherwise fallback to current environment)
+    let deviceId, backupId;
+    if (metadata.device_id && metadata.backup_id) {
+        // Use portable values from metadata
+        deviceId = metadata.device_id;
+        backupId = metadata.backup_id;
+        console.log("✅ Using device_id and backup_id from metadata (portable format)");
+    } else {
+        // Fallback to current environment (legacy compatibility)
+        // Use original filename without .enc extension for BID to match encryption
+        let originalFilename = inputFilename;
+        if (originalFilename.endsWith('.enc')) {
+            originalFilename = originalFilename.slice(0, -4);
+        }
+        deviceId = os.hostname();
+        backupId = `file://${path.basename(originalFilename)}`;
+        console.log("⚠️  Using current environment for device_id and backup_id (legacy format)");
+    }
+
     // Recover encryption key using OpenADP
     console.log("🔄 Recovering encryption key from OpenADP servers...");
-    const encKey = await recoverEncryptionKeyWithServerInfo(inputFilename, password, finalUserId, baseAuthCode, serverInfos, metadata.threshold);
+    const encKey = await recoverEncryptionKeyWithServerInfo(deviceId, backupId, password, finalUserId, baseAuthCode, serverInfos, metadata.threshold);
 
     // Decrypt the file using metadata as additional authenticated data
     const decipher = crypto.createDecipheriv('aes-256-gcm', encKey, nonce);

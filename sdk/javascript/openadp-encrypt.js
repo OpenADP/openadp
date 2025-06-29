@@ -23,12 +23,14 @@ const NONCE_SIZE = 12; // AES-GCM nonce size
  * Metadata represents the metadata stored with encrypted files
  */
 class Metadata {
-    constructor(servers, threshold, version, authCode, userId) {
+    constructor(servers, threshold, version, authCode, userId, deviceId, backupId) {
         this.servers = servers;
         this.threshold = threshold;
         this.version = version;
         this.auth_code = authCode; // Single base auth code (32 bytes hex)
         this.user_id = userId;
+        this.device_id = deviceId; // Device identifier for portability
+        this.backup_id = backupId; // Backup identifier for portability
     }
     
     toDict() {
@@ -37,7 +39,9 @@ class Metadata {
             threshold: this.threshold,
             version: this.version,
             auth_code: this.auth_code,
-            user_id: this.user_id
+            user_id: this.user_id,
+            device_id: this.device_id,
+            backup_id: this.backup_id
         };
     }
 }
@@ -162,7 +166,9 @@ async function encryptFile(inputFilename, password, userId, serverInfos, servers
         threshold,
         "1.0",
         authCodes.baseAuthCode,
-        userId
+        userId,
+        identity.did,  // Store device_id for portability (correct property name)
+        identity.bid   // Store backup_id for portability (correct property name)
     );
     
     const metadataJSON = Buffer.from(JSON.stringify(metadata.toDict()), 'utf8');

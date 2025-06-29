@@ -20,6 +20,8 @@ struct Metadata {
     version: String,
     auth_code: String, // Single base auth code (32 bytes hex)
     user_id: String,
+    device_id: String, // Device identifier for portability
+    backup_id: String, // Backup identifier for portability
 }
 
 // AuthCodesMetadata represents authentication codes in metadata
@@ -356,6 +358,8 @@ async fn encrypt_file(
         version: "1.0".to_string(),
         auth_code: auth_codes.base_auth_code,
         user_id: user_id.to_string(),
+        device_id: identity.did.clone(),  // Store device_id for portability
+        backup_id: identity.bid.clone(),  // Store backup_id for portability
     };
 
     let metadata_json = serde_json::to_vec(&metadata)

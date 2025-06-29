@@ -13,13 +13,41 @@ namespace openadp {
 namespace keygen {
 
 std::string generate_random_scalar() {
+    std::string scalar_hex;
+    
     if (debug::is_debug_mode_enabled()) {
         // In debug mode, use large deterministic secret
-        return debug::get_deterministic_main_secret();
+        scalar_hex = debug::get_deterministic_main_secret();
     } else {
         // In normal mode, use cryptographically secure random
-        return utils::random_hex(32); // 256-bit scalar
+        scalar_hex = utils::random_hex(32); // 256-bit scalar
     }
+    
+    // Ensure scalar is less than Ed25519 group order Q
+    BIGNUM* scalar_bn = BN_new();
+    BIGNUM* q_bn = BN_new();
+    BN_CTX* ctx = BN_CTX_new();
+    
+    // Parse scalar from hex
+    BN_hex2bn(&scalar_bn, scalar_hex.c_str());
+    
+    // Ed25519 group order Q
+    BN_hex2bn(&q_bn, "1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed");
+    
+    // Reduce modulo Q to ensure it's in valid range
+    BN_mod(scalar_bn, scalar_bn, q_bn, ctx);
+    
+    // Convert back to hex
+    char* reduced_hex = BN_bn2hex(scalar_bn);
+    std::string result(reduced_hex);
+    OPENSSL_free(reduced_hex);
+    
+    // Clean up
+    BN_free(scalar_bn);
+    BN_free(q_bn);
+    BN_CTX_free(ctx);
+    
+    return result;
 }
 
 AuthCodes generate_auth_codes(const std::string& base_auth_code, const std::vector<ServerInfo>& server_infos) {
@@ -101,25 +129,35 @@ GenerateEncryptionKeyResult generate_encryption_key(
             threshold = 1;
         }
         
-        // Generate deterministic main secret in debug mode
-        std::string secret_hex;
-        if (debug::is_debug_mode_enabled()) {
-            // 🔧 CRITICAL FIX: Use same deterministic secret as other SDKs for consistency
-            // Both r (blinding factor) and s (Shamir secret) use the same value in debug mode
-            secret_hex = debug::get_deterministic_main_secret();
-        } else {
-            // Generate random secret
-            secret_hex = utils::random_hex(32); // 32 bytes = 64 hex chars
-        }
+        // Generate main secret, ensuring it's valid for Ed25519
+        std::string secret_hex = generate_random_scalar();
         
-        // Generate base auth code
+        // Generate base auth code (also needs to be valid scalar)
         std::string base_auth_code;
         if (debug::is_debug_mode_enabled()) {
-            // Use the same deterministic value as Python
-            base_auth_code = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+            // Use the same deterministic value as Python, but ensure it's reduced mod Q
+            std::string temp_code = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+            
+            // Reduce modulo Q to ensure it's in valid range
+            BIGNUM* code_bn = BN_new();
+            BIGNUM* q_bn = BN_new();
+            BN_CTX* ctx = BN_CTX_new();
+            
+            BN_hex2bn(&code_bn, temp_code.c_str());
+            BN_hex2bn(&q_bn, "1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed");
+            BN_mod(code_bn, code_bn, q_bn, ctx);
+            
+            char* reduced_hex = BN_bn2hex(code_bn);
+            base_auth_code = std::string(reduced_hex);
+            OPENSSL_free(reduced_hex);
+            
+            BN_free(code_bn);
+            BN_free(q_bn);
+            BN_CTX_free(ctx);
+            
             debug::debug_log("Using deterministic base auth code: " + base_auth_code);
         } else {
-            base_auth_code = utils::random_hex(32); // 32 bytes = 64 hex chars
+            base_auth_code = generate_random_scalar(); // Use the same scalar generation
         }
         
         // Generate server-specific auth codes
@@ -276,9 +314,7 @@ RecoverEncryptionKeyResult recover_encryption_key(
         Point4D U = crypto::Ed25519::hash_to_point(uid_bytes, did_bytes, bid_bytes, password_bytes);
         
         // Generate blinding factor r (random scalar) - CRITICAL for security
-        std::string r_scalar_hex = debug::is_debug_mode_enabled() ? 
-            "023456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23" : // Deterministic in debug
-            generate_random_scalar(); // Random in production
+        std::string r_scalar_hex = generate_random_scalar(); // Always use proper scalar generation
             
         // Compute r^-1 mod Q for later use
         // For now, we'll use a simple approach since we have 1-of-1 threshold

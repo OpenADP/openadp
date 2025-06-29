@@ -29,6 +29,8 @@ type Metadata struct {
 	Version   string   `json:"version"`
 	AuthCode  string   `json:"auth_code"` // Single base auth code (32 bytes hex)
 	UserID    string   `json:"user_id"`
+	DeviceID  string   `json:"device_id"` // Device identifier for portability
+	BackupID  string   `json:"backup_id"` // Backup identifier for portability
 }
 
 // AuthCodesMetadata represents authentication codes in metadata
@@ -372,9 +374,23 @@ func decryptFile(inputFilename, password, userID string, overrideServers []strin
 		finalUserID = strings.TrimSpace(finalUserID)
 	}
 
+	// Determine device ID and backup ID (from metadata if available, otherwise fallback to current environment)
+	var deviceID, backupID string
+	if metadata.DeviceID != "" && metadata.BackupID != "" {
+		// Use portable values from metadata
+		deviceID = metadata.DeviceID
+		backupID = metadata.BackupID
+		fmt.Printf("✅ Using device_id and backup_id from metadata (portable format)\n")
+	} else {
+		// Fallback to current environment (legacy compatibility)
+		deviceID = getHostname()
+		backupID = "file://" + filepath.Base(outputFilename)
+		fmt.Printf("⚠️  Using current environment for device_id and backup_id (legacy format)\n")
+	}
+
 	// Recover encryption key using OpenADP
 	fmt.Println("🔄 Recovering encryption key from OpenADP servers...")
-	encKey, err := recoverEncryptionKeyWithServerInfo(outputFilename, password, finalUserID, baseAuthCode, serverInfos, metadata.Threshold)
+	encKey, err := recoverEncryptionKeyWithServerInfo(deviceID, backupID, password, finalUserID, baseAuthCode, serverInfos, metadata.Threshold)
 	if err != nil {
 		return fmt.Errorf("failed to recover encryption key: %v", err)
 	}
@@ -416,12 +432,12 @@ func decryptFile(inputFilename, password, userID string, overrideServers []strin
 	return nil
 }
 
-func recoverEncryptionKeyWithServerInfo(filename, password, userID string, baseAuthCode string, serverInfos []client.ServerInfo, threshold int) ([]byte, error) {
+func recoverEncryptionKeyWithServerInfo(deviceID, backupID, password, userID string, baseAuthCode string, serverInfos []client.ServerInfo, threshold int) ([]byte, error) {
 	// Create Identity struct for the new API
 	identity := &client.Identity{
 		UID: userID,
-		DID: getHostname(),                       // Use hostname as device ID (should match encryption)
-		BID: "file://" + filepath.Base(filename), // Use file path as backup ID (should match encryption)
+		DID: deviceID, // Use device ID from metadata or fallback
+		BID: backupID, // Use backup ID from metadata or fallback
 	}
 	fmt.Printf("🔑 Recovering with UID=%s, DID=%s, BID=%s\n", identity.UID, identity.DID, identity.BID)
 

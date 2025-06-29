@@ -30,6 +30,8 @@ type Metadata struct {
 	Version   string   `json:"version"`
 	AuthCode  string   `json:"auth_code"` // Single base auth code (32 bytes hex)
 	UserID    string   `json:"user_id"`
+	DeviceID  string   `json:"device_id"` // Device identifier for portability
+	BackupID  string   `json:"backup_id"` // Backup identifier for portability
 }
 
 // AuthCodesMetadata represents authentication codes in metadata
@@ -347,6 +349,8 @@ func encryptFile(inputFilename, password, userID string, serverInfos []client.Se
 		Version:   "1.0",
 		AuthCode:  authCodes.BaseAuthCode,
 		UserID:    userID,
+		DeviceID:  identity.DID, // Store device_id for portability
+		BackupID:  identity.BID, // Store backup_id for portability
 	}
 
 	metadataJSON, err := json.Marshal(metadata)
