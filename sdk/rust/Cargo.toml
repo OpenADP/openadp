@@ -11,6 +11,13 @@ keywords = ["cryptography", "secret-sharing", "distributed", "security", "openad
 categories = ["cryptography", "authentication"]
 authors = ["OpenADP Team"]
 readme = "README.md"
+exclude = [
+    "target/",
+    "*.log",
+    "*.tmp",
+    ".git/",
+    ".gitignore"
+]
 
 [dependencies]
 # Core cryptography
