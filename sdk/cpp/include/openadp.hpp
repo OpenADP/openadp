@@ -39,6 +39,16 @@ EncryptResult encrypt_data(
     const std::string& servers_url = ""
 );
 
+// Encrypt data using OpenADP with specific servers
+EncryptResult encrypt_data(
+    const Bytes& plaintext,
+    const Identity& identity,
+    const std::string& password,
+    int max_guesses,
+    int64_t expiration,
+    const std::vector<ServerInfo>& servers
+);
+
 // Decrypt data using OpenADP
 Bytes decrypt_data(
     const Bytes& ciphertext,

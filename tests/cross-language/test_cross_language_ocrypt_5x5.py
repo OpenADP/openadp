@@ -538,8 +538,8 @@ def verify_tools_exist():
         "JavaScript recover": SDK_JAVASCRIPT_PATH + "/ocrypt-recover.js",
         "Rust register": SDK_RUST_PATH + "/target/release/ocrypt-register",
         "Rust recover": SDK_RUST_PATH + "/target/release/ocrypt-recover",
-        "C++ register": BUILD_PATH + "/ocrypt-register-cpp",  # Placeholder
-        "C++ recover": BUILD_PATH + "/ocrypt-recover-cpp",  # Placeholder
+        "C++ register": SDK_CPP_PATH + "/build/ocrypt-register",  # Corrected path
+        "C++ recover": SDK_CPP_PATH + "/build/ocrypt-recover",  # Corrected path
     }
     
     available = set()
@@ -562,7 +562,7 @@ def run_cpp_register(secret=None):
         return False, None, "No servers.json file available"
     
     cmd = [
-        BUILD_PATH + "/ocrypt-register-cpp",  # Placeholder
+        SDK_CPP_PATH + "/build/ocrypt-register",  # Corrected path
         "--user-id", TEST_USER_ID,
         "--app-id", TEST_APP_ID,
         "--long-term-secret", secret,
@@ -594,7 +594,7 @@ def run_cpp_recover(metadata):
         return False, None, "No servers.json file available"
     
     cmd = [
-        BUILD_PATH + "/ocrypt-recover-cpp",  # Placeholder
+        SDK_CPP_PATH + "/build/ocrypt-recover",  # Corrected path
         "--metadata", json.dumps(metadata),
         "--password", TEST_PASSWORD,
         "--servers-url", f"file://{os.path.abspath(SERVERS_JSON_FILE)}"

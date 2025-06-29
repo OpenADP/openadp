@@ -53,9 +53,16 @@ struct RecoverSecretRequest {
     std::string password;
     int guess_num;
     bool encrypted;
+    std::string auth_code;
+    std::string b;  // Y coordinate (base64 encoded)
     
     RecoverSecretRequest(const Identity& identity, const std::string& password, int guess_num)
         : identity(identity), password(password), guess_num(guess_num), encrypted(false) {}
+    
+    RecoverSecretRequest(const std::string& auth_code, const Identity& identity, 
+                        const std::string& b, int guess_num)
+        : identity(identity), password(""), guess_num(guess_num), encrypted(false), 
+          auth_code(auth_code), b(b) {}
 };
 
 // Basic HTTP client

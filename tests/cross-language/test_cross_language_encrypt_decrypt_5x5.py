@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Enhanced Cross-Language Encrypt/Decrypt Test Script (5x5 Matrix)
+Enhanced Cross-Language Encrypt/Decrypt Test Script (5×5 Matrix)
 
 This script tests all 25 combinations of encryption and decryption between C++, Go, Python, Rust, and JavaScript:
 
 ENCRYPT -> DECRYPT:
-1.  C++ -> C++            6.  Go -> C++            11. Python -> C++        16. Rust -> C++          21. JavaScript -> C++
-2.  C++ -> Go             7.  Go -> Go             12. Python -> Go         17. Rust -> Go           22. JavaScript -> Go
-3.  C++ -> Python         8.  Go -> Python         13. Python -> Python     18. Rust -> Python       23. JavaScript -> Python
-4.  C++ -> Rust           9.  Go -> Rust           14. Python -> Rust       19. Rust -> Rust         24. JavaScript -> Rust
-5.  C++ -> JavaScript     10. Go -> JavaScript     15. Python -> JavaScript 20. Rust -> JavaScript   25. JavaScript -> JavaScript
+1.  C++ -> C++            6.  C++ -> Go            11. C++ -> Python         16. C++ -> Rust          21. C++ -> JavaScript
+2.  Go -> C++             7.  Go -> Go             12. Go -> Python          17. Go -> Rust           22. Go -> JavaScript  
+3.  Python -> C++         8.  Python -> Go         13. Python -> Python      18. Python -> Rust       23. Python -> JavaScript
+4.  Rust -> C++           9.  Rust -> Go           14. Rust -> Python        19. Rust -> Rust         24. Rust -> JavaScript
+5.  JavaScript -> C++     10. JavaScript -> Go     15. JavaScript -> Python  20. JavaScript -> Rust   25. JavaScript -> JavaScript
 
 It runs local Go OpenADP servers once for all tests to ensure optimal performance.
 Tools that are not available will be gracefully skipped with clear reporting.
@@ -27,9 +27,9 @@ import hashlib
 from pathlib import Path
 
 # Test configuration
-TEST_PASSWORD = "test_password_16x16"
-TEST_USER_ID = "test_user_16x16_cross_lang"
-TEST_CONTENT = b"Hello, OpenADP 16x16 Cross-Language Test! This tests all combinations of Go/Python/JavaScript/Rust encrypt/decrypt compatibility for comprehensive interoperability validation across all four language implementations."
+TEST_PASSWORD = "test_password_25x25"
+TEST_USER_ID = "test_user_25x25_cross_lang"
+TEST_CONTENT = b"Hello, OpenADP 25x25 Cross-Language Test! This tests all combinations of C++/Go/Python/JavaScript/Rust encrypt/decrypt compatibility for comprehensive interoperability validation across all five language implementations."
 
 # Server configuration for testing
 SERVER_PORTS = [8080, 8081, 8082]  # Use multiple servers for comprehensive testing
@@ -476,9 +476,8 @@ def run_test_case(test_name, encrypt_func, decrypt_func):
 def verify_tools_exist():
     """Verify all required tools exist"""
     tools = {
-        # Skip C++ tools for now as they use different server architecture (registry URL vs direct server list)
-        # "C++ encrypt": SDK_CPP_PATH + "/build/openadp-encrypt",
-        # "C++ decrypt": SDK_CPP_PATH + "/build/openadp-decrypt", 
+        "C++ encrypt": SDK_CPP_PATH + "/build/openadp-encrypt",
+        "C++ decrypt": SDK_CPP_PATH + "/build/openadp-decrypt", 
         "Go encrypt": BUILD_PATH + "/openadp-encrypt",
         "Go decrypt": BUILD_PATH + "/openadp-decrypt",
         "Python encrypt": SDK_PYTHON_PATH + "/openadp-encrypt.py",
@@ -500,9 +499,6 @@ def verify_tools_exist():
             log(f"❌ {name}: {path} (not found)")
             missing_tools.append(name)
     
-    # Note about C++ tools
-    log("ℹ️  C++ tools skipped (use different server architecture)")
-    
     if missing_tools:
         log(f"⚠️  Missing tools: {', '.join(missing_tools)}")
         log("Some test combinations will be skipped.")
@@ -510,21 +506,16 @@ def verify_tools_exist():
     return len(missing_tools) == 0, available_tools, missing_tools
 
 def run_cpp_encrypt(input_file, output_file=None):
-    """Run C++ encryption"""
+    """Run C++ encryption using the standardized interface"""
     if output_file is None:
         output_file = input_file + ".enc"
     
-    # C++ tools require separate metadata file
-    metadata_file = output_file + ".meta"
-    
     cmd = [
         SDK_CPP_PATH + "/build/openadp-encrypt",
-        "--input", input_file,
-        "--output", output_file,
-        "--metadata", metadata_file,
+        "--file", input_file,
         "--password", TEST_PASSWORD,
         "--user-id", TEST_USER_ID,
-        "--servers-url", ",".join(SERVER_URLS)
+        "--servers", ",".join(SERVER_URLS)
     ]
     
     log(f"Running C++ encrypt: {' '.join(cmd)}")
@@ -540,34 +531,21 @@ def run_cpp_encrypt(input_file, output_file=None):
         log(f"C++ encrypt didn't create output file: {output_file}")
         return False, "Output file not created"
     
-    if not os.path.exists(metadata_file):
-        log(f"C++ encrypt didn't create metadata file: {metadata_file}")
-        return False, "Metadata file not created"
-    
     log("C++ encrypt succeeded")
     return True, None
 
 def run_cpp_decrypt(input_file, output_file=None):
-    """Run C++ decryption"""
+    """Run C++ decryption using the standardized interface"""
     if output_file is None:
-        # C++ decrypt needs explicit output file
-        output_file = input_file.replace(".enc", "_decrypted.txt")
-    
-    # C++ tools require separate metadata file
-    metadata_file = input_file + ".meta"
-    
-    if not os.path.exists(metadata_file):
-        log(f"C++ decrypt requires metadata file: {metadata_file}")
-        return False, "Metadata file not found"
+        # C++ decrypt tool strips .enc extension by default
+        output_file = input_file.replace(".enc", "")
     
     cmd = [
         SDK_CPP_PATH + "/build/openadp-decrypt",
-        "--input", input_file,
-        "--output", output_file,
-        "--metadata", metadata_file,
+        "--file", input_file,
         "--password", TEST_PASSWORD,
         "--user-id", TEST_USER_ID,
-        "--servers-url", ",".join(SERVER_URLS)
+        "--servers", ",".join(SERVER_URLS)
     ]
     
     log(f"Running C++ decrypt: {' '.join(cmd)}")
@@ -615,8 +593,7 @@ def can_run_test_case(test_name, encrypt_func, decrypt_func, available_tools):
 
 def main():
     """Main test function"""
-    log("🚀 Starting Enhanced Cross-Language Test (4x4 Matrix)")
-    log("Note: C++ tools skipped due to different server architecture")
+    log("🚀 Starting Enhanced Cross-Language Test (5×5 Matrix)")
     log(f"Test content length: {len(TEST_CONTENT)} bytes")
     log(f"Test password: {TEST_PASSWORD}")
     log(f"Test user ID: {TEST_USER_ID}")
@@ -633,31 +610,42 @@ def main():
         return False
     
     try:
-        # Define 16 test combinations (4x4 matrix: Go, Python, JavaScript, Rust)
+        # Define 25 test combinations (5×5 matrix: C++, Go, Python, JavaScript, Rust)
         test_cases = [
+            # C++ encrypt -> *
+            ("1.  C++ -> C++", run_cpp_encrypt, run_cpp_decrypt),
+            ("2.  C++ -> Go", run_cpp_encrypt, run_go_decrypt),
+            ("3.  C++ -> Python", run_cpp_encrypt, run_python_decrypt),
+            ("4.  C++ -> JavaScript", run_cpp_encrypt, run_javascript_decrypt),
+            ("5.  C++ -> Rust", run_cpp_encrypt, run_rust_decrypt),
+            
             # Go encrypt -> *
-            ("1.  Go -> Go", run_go_encrypt, run_go_decrypt),
-            ("2.  Go -> Python", run_go_encrypt, run_python_decrypt),
-            ("3.  Go -> JavaScript", run_go_encrypt, run_javascript_decrypt),
-            ("4.  Go -> Rust", run_go_encrypt, run_rust_decrypt),
+            ("6.  Go -> C++", run_go_encrypt, run_cpp_decrypt),
+            ("7.  Go -> Go", run_go_encrypt, run_go_decrypt),
+            ("8.  Go -> Python", run_go_encrypt, run_python_decrypt),
+            ("9.  Go -> JavaScript", run_go_encrypt, run_javascript_decrypt),
+            ("10. Go -> Rust", run_go_encrypt, run_rust_decrypt),
             
             # Python encrypt -> *
-            ("5.  Python -> Go", run_python_encrypt, run_go_decrypt),
-            ("6.  Python -> Python", run_python_encrypt, run_python_decrypt),
-            ("7.  Python -> JavaScript", run_python_encrypt, run_javascript_decrypt),
-            ("8.  Python -> Rust", run_python_encrypt, run_rust_decrypt),
+            ("11. Python -> C++", run_python_encrypt, run_cpp_decrypt),
+            ("12. Python -> Go", run_python_encrypt, run_go_decrypt),
+            ("13. Python -> Python", run_python_encrypt, run_python_decrypt),
+            ("14. Python -> JavaScript", run_python_encrypt, run_javascript_decrypt),
+            ("15. Python -> Rust", run_python_encrypt, run_rust_decrypt),
             
             # JavaScript encrypt -> *
-            ("9.  JavaScript -> Go", run_javascript_encrypt, run_go_decrypt),
-            ("10. JavaScript -> Python", run_javascript_encrypt, run_python_decrypt),
-            ("11. JavaScript -> JavaScript", run_javascript_encrypt, run_javascript_decrypt),
-            ("12. JavaScript -> Rust", run_javascript_encrypt, run_rust_decrypt),
+            ("16. JavaScript -> C++", run_javascript_encrypt, run_cpp_decrypt),
+            ("17. JavaScript -> Go", run_javascript_encrypt, run_go_decrypt),
+            ("18. JavaScript -> Python", run_javascript_encrypt, run_python_decrypt),
+            ("19. JavaScript -> JavaScript", run_javascript_encrypt, run_javascript_decrypt),
+            ("20. JavaScript -> Rust", run_javascript_encrypt, run_rust_decrypt),
             
             # Rust encrypt -> *
-            ("13. Rust -> Go", run_rust_encrypt, run_go_decrypt),
-            ("14. Rust -> Python", run_rust_encrypt, run_python_decrypt),
-            ("15. Rust -> JavaScript", run_rust_encrypt, run_javascript_decrypt),
-            ("16. Rust -> Rust", run_rust_encrypt, run_rust_decrypt),
+            ("21. Rust -> C++", run_rust_encrypt, run_cpp_decrypt),
+            ("22. Rust -> Go", run_rust_encrypt, run_go_decrypt),
+            ("23. Rust -> Python", run_rust_encrypt, run_python_decrypt),
+            ("24. Rust -> JavaScript", run_rust_encrypt, run_javascript_decrypt),
+            ("25. Rust -> Rust", run_rust_encrypt, run_rust_decrypt),
         ]
         
         # Run all test cases
@@ -701,7 +689,7 @@ def main():
                 log(f"   - {test_name}")
         
         if len(failed_tests) == 0 and len(skipped_tests) == 0:
-            log("🎉 ALL TESTS PASSED! Complete cross-language compatibility confirmed across all 4 languages!")
+            log("🎉 ALL TESTS PASSED! Complete cross-language compatibility confirmed across all 5 languages!")
             return True
         elif len(failed_tests) == 0:
             log("🎉 ALL AVAILABLE TESTS PASSED! Build missing tools to test remaining combinations.")

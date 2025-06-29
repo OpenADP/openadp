@@ -431,17 +431,20 @@ nlohmann::json EncryptedOpenADPClient::register_secret(const RegisterSecretReque
 }
 
 nlohmann::json EncryptedOpenADPClient::recover_secret(const RecoverSecretRequest& request) {
-    nlohmann::json params;
-    params["uid"] = request.identity.uid;
-    params["did"] = request.identity.did;
-    params["bid"] = request.identity.bid;
-    params["password"] = request.password;
-    params["guess_num"] = request.guess_num;
+    // RecoverSecret expects 6 parameters in array format: [auth_code, uid, did, bid, b, guess_num]
+    nlohmann::json params = nlohmann::json::array();
+    params.push_back(request.auth_code);
+    params.push_back(request.identity.uid);
+    params.push_back(request.identity.did);
+    params.push_back(request.identity.bid);
+    params.push_back(request.b);
+    params.push_back(request.guess_num);
     
     // Debug logging for request
     if (debug::is_debug_mode_enabled()) {
-        debug::debug_log("RecoverSecret request: method=RecoverSecret, uid=" + request.identity.uid + 
-                        ", did=" + request.identity.did + ", bid=" + request.identity.bid + 
+        debug::debug_log("RecoverSecret request: method=RecoverSecret, auth_code=" + request.auth_code +
+                        ", uid=" + request.identity.uid + ", did=" + request.identity.did + 
+                        ", bid=" + request.identity.bid + ", b=" + request.b +
                         ", guess_num=" + std::to_string(request.guess_num) + 
                         ", encrypted=" + (has_public_key() ? "true" : "false"));
     }
@@ -478,17 +481,16 @@ nlohmann::json EncryptedOpenADPClient::recover_secret(const RecoverSecretRequest
 }
 
 nlohmann::json EncryptedOpenADPClient::list_backups(const Identity& identity) {
-    nlohmann::json params;
-    params["uid"] = identity.uid;
-    params["did"] = identity.did;
-    params["bid"] = identity.bid;
+    // ListBackups expects single parameter: uid (in array format)
+    nlohmann::json params = nlohmann::json::array();
+    params.push_back(identity.uid);
     
     return make_encrypted_request("ListBackups", params);
 }
 
 // Server discovery functions
 std::vector<ServerInfo> get_servers(const std::string& servers_url) {
-    std::string url = servers_url.empty() ? "https://servers.openadp.org/servers.json" : servers_url;
+    std::string url = servers_url.empty() ? "https://servers.openadp.org/api/servers.json" : servers_url;
     
     // Debug: Show what URL we're trying to fetch servers from
     if (debug::is_debug_mode_enabled()) {
@@ -624,10 +626,10 @@ std::vector<ServerInfo> get_servers(const std::string& servers_url) {
 
 std::vector<ServerInfo> get_fallback_server_info() {
     return {
-        ServerInfo("https://alpha.openadp.org"),
-        ServerInfo("https://beta.openadp.org"),
-        ServerInfo("https://gamma.openadp.org"),
-        ServerInfo("https://delta.openadp.org")
+        ServerInfo("https://xyzzy.openadp.org"),
+        ServerInfo("https://sky.openadp.org"),
+        ServerInfo("https://minime.openadp.org"),
+        ServerInfo("https://louis.evilduckie.ca")
     };
 }
 

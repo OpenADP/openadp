@@ -71,12 +71,12 @@ EncryptResult encrypt_data(
         throw OpenADPError("No servers available");
     }
     
-    // Get server public keys (only if not already provided by registry)
+    // Get server noise_nk_public_keys (only if not already provided by registry)
     for (auto& server_info : server_infos) {
         if (server_info.public_key.has_value()) {
             // Public key already available from registry
             if (debug::is_debug_mode_enabled()) {
-                debug::debug_log("Using public key from registry for server: " + server_info.url);
+                debug::debug_log("Using noise_nk_public_key from registry for server: " + server_info.url);
             }
             continue;
         }
@@ -90,12 +90,12 @@ EncryptResult encrypt_data(
             client::BasicOpenADPClient client(server_info.url);
             nlohmann::json info = client.get_server_info();
             
-            if (info.contains("public_key")) {
-                std::string public_key_str = info["public_key"].get<std::string>();
+            if (info.contains("noise_nk_public_key")) {
+                std::string public_key_str = info["noise_nk_public_key"].get<std::string>();
                 server_info.public_key = utils::base64_decode(public_key_str);
                 
                 if (debug::is_debug_mode_enabled()) {
-                    debug::debug_log("Successfully fetched public key via GetServerInfo for: " + server_info.url);
+                    debug::debug_log("Successfully fetched noise_nk_public_key via GetServerInfo for: " + server_info.url);
                 }
             } else {
                 if (debug::is_debug_mode_enabled()) {
@@ -104,9 +104,100 @@ EncryptResult encrypt_data(
             }
         } catch (const std::exception& e) {
             if (debug::is_debug_mode_enabled()) {
-                debug::debug_log("Failed to get public key via GetServerInfo for " + server_info.url + ": " + e.what());
+                debug::debug_log("Failed to get noise_nk_public_key via GetServerInfo for " + server_info.url + ": " + e.what());
             }
-            // Continue without public key (will use unencrypted)
+            // Continue without noise_nk_public_key (will use unencrypted)
+        }
+    }
+    
+    // Generate encryption key using OpenADP
+    auto result = keygen::generate_encryption_key(
+        identity, password, max_guesses, expiration, server_infos
+    );
+    
+    if (result.error_message.has_value()) {
+        throw OpenADPError("Failed to generate encryption key: " + result.error_message.value());
+    }
+    
+    // Encrypt the data
+    auto aes_result = crypto::aes_gcm_encrypt(plaintext, result.encryption_key.value());
+    
+    // Create metadata
+    nlohmann::json metadata;
+    metadata["user_id"] = identity.uid;
+    metadata["device_id"] = identity.did;
+    metadata["backup_id"] = identity.bid;
+    metadata["auth_code"] = result.auth_codes.value().base_auth_code;
+    metadata["ciphertext"] = utils::base64_encode(aes_result.ciphertext);
+    metadata["tag"] = utils::base64_encode(aes_result.tag);
+    metadata["nonce"] = utils::base64_encode(aes_result.nonce);
+    metadata["threshold"] = result.threshold;
+    
+    // Add server URLs
+    nlohmann::json servers_array = nlohmann::json::array();
+    for (const auto& server : result.server_infos) {
+        servers_array.push_back(server.url);
+    }
+    metadata["servers"] = servers_array;
+    
+    std::string metadata_str = metadata.dump();
+    Bytes metadata_bytes = utils::string_to_bytes(metadata_str);
+    
+    return EncryptResult(aes_result.ciphertext, metadata_bytes);
+}
+
+// Overload for encrypt_data that accepts a vector of servers
+EncryptResult encrypt_data(
+    const Bytes& plaintext,
+    const Identity& identity,
+    const std::string& password,
+    int max_guesses,
+    int64_t expiration,
+    const std::vector<ServerInfo>& servers
+) {
+    if (servers.empty()) {
+        throw OpenADPError("No servers available");
+    }
+    
+    // Use the provided servers directly
+    std::vector<ServerInfo> server_infos = servers;
+    
+    // Get server noise_nk_public_keys (only if not already provided by registry)
+    for (auto& server_info : server_infos) {
+        if (server_info.public_key.has_value()) {
+            // Public key already available from registry
+            if (debug::is_debug_mode_enabled()) {
+                debug::debug_log("Using noise_nk_public_key from registry for server: " + server_info.url);
+            }
+            continue;
+        }
+        
+        // Public key not available, need to fetch from server
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("Public key not in registry, calling GetServerInfo for: " + server_info.url);
+        }
+        
+        try {
+            client::BasicOpenADPClient client(server_info.url);
+            nlohmann::json info = client.get_server_info();
+            
+            if (info.contains("noise_nk_public_key")) {
+                std::string public_key_str = info["noise_nk_public_key"].get<std::string>();
+                server_info.public_key = utils::base64_decode(public_key_str);
+                
+                if (debug::is_debug_mode_enabled()) {
+                    debug::debug_log("Successfully fetched noise_nk_public_key via GetServerInfo for: " + server_info.url);
+                }
+            } else {
+                if (debug::is_debug_mode_enabled()) {
+                    debug::debug_log("GetServerInfo response missing public_key for: " + server_info.url);
+                }
+            }
+        } catch (const std::exception& e) {
+            if (debug::is_debug_mode_enabled()) {
+                debug::debug_log("Failed to get noise_nk_public_key via GetServerInfo for " + server_info.url + ": " + e.what());
+            }
+            // Continue without noise_nk_public_key (will use unencrypted)
         }
     }
     
@@ -171,12 +262,12 @@ Bytes decrypt_data(
         server_infos = client::get_servers(servers_url);
     }
     
-    // Get server public keys (only if not already provided by registry)
+    // Get server noise_nk_public_keys (only if not already provided by registry)
     for (auto& server_info : server_infos) {
         if (server_info.public_key.has_value()) {
             // Public key already available from registry
             if (debug::is_debug_mode_enabled()) {
-                debug::debug_log("Using public key from registry for server: " + server_info.url);
+                debug::debug_log("Using noise_nk_public_key from registry for server: " + server_info.url);
             }
             continue;
         }
@@ -190,12 +281,12 @@ Bytes decrypt_data(
             client::BasicOpenADPClient client(server_info.url);
             nlohmann::json info = client.get_server_info();
             
-            if (info.contains("public_key")) {
-                std::string public_key_str = info["public_key"].get<std::string>();
+            if (info.contains("noise_nk_public_key")) {
+                std::string public_key_str = info["noise_nk_public_key"].get<std::string>();
                 server_info.public_key = utils::base64_decode(public_key_str);
                 
                 if (debug::is_debug_mode_enabled()) {
-                    debug::debug_log("Successfully fetched public key via GetServerInfo for: " + server_info.url);
+                    debug::debug_log("Successfully fetched noise_nk_public_key via GetServerInfo for: " + server_info.url);
                 }
             } else {
                 if (debug::is_debug_mode_enabled()) {
@@ -204,9 +295,9 @@ Bytes decrypt_data(
             }
         } catch (const std::exception& e) {
             if (debug::is_debug_mode_enabled()) {
-                debug::debug_log("Failed to get public key via GetServerInfo for " + server_info.url + ": " + e.what());
+                debug::debug_log("Failed to get noise_nk_public_key via GetServerInfo for " + server_info.url + ": " + e.what());
             }
-            // Continue without public key
+            // Continue without noise_nk_public_key
         }
     }
     

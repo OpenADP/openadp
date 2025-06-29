@@ -226,7 +226,7 @@ class OpenADPClient:
     def __init__(self, url: str, timeout: int = 30):
         self.url = url
         self.timeout = timeout
-        self.request_id = 1
+        self.request_id = secrets.randbelow(1000000) + 1  # Random starting ID to avoid collisions
         self.session = requests.Session()
         self.session.headers.update({
             'Content-Type': 'application/json',
@@ -585,7 +585,7 @@ class EncryptedOpenADPClient:
         self.url = url
         self.server_public_key = server_public_key
         self.timeout = timeout
-        self.request_id = 1
+        self.request_id = secrets.randbelow(1000000) + 1  # Random starting ID to avoid collisions
         self.session = requests.Session()
         self.session.headers.update({
             'Content-Type': 'application/json',
@@ -1137,7 +1137,7 @@ class ServersResponse:
 def get_servers(registry_url: str = "") -> List[ServerInfo]:
     """Fetch server information from the OpenADP registry."""
     if not registry_url:
-        registry_url = "https://servers.openadp.org"
+        registry_url = "https://servers.openadp.org/api/servers.json"
     
     if registry_url.startswith("file://"):
         # For file URLs, read the file directly

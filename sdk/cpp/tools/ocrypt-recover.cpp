@@ -5,6 +5,7 @@
 #include <getopt.h>
 #include <termios.h>
 #include <unistd.h>
+#include <cstdlib>
 
 using namespace openadp;
 
@@ -14,17 +15,33 @@ void print_usage(const char* program_name) {
               << "Recover a long-term secret using Ocrypt distributed cryptography.\n"
               << "\n"
               << "Options:\n"
-              << "  --metadata <string>       Metadata blob from registration (required)\n"
-              << "  --password <string>       Password/PIN to unlock the secret (will prompt if not provided)\n"
-              << "  --servers-url <url>       Custom URL for server registry (empty uses default)\n"
-              << "  --output <file>           File to write recovery result JSON (writes to stdout if not specified)\n"
-              << "  --debug                 Enable debug mode (deterministic operations)\n"
-              << "  --help                    Show this help message\n"
+              << "  --metadata <string>     Metadata blob from registration (required)\n"
+              << "  --password <string>     Password/PIN to unlock the secret (will prompt if not provided)\n"
+              << "  --servers-url <string>  Custom URL for server registry (empty uses default)\n"
+              << "  --servers <string>      Comma-separated list of servers (overrides registry)\n"
+              << "  --output <string>       File to write recovery result JSON (writes to stdout if not specified)\n"
+              << "  --debug                 Enable debug mode for deterministic operations\n"
+              << "  --version               Show version information\n"
+              << "  --help                  Show this help message\n"
+              << "\n"
+              << "Environment Variables:\n"
+              << "  OPENADP_PASSWORD        Default password (not recommended for security)\n"
+              << "  OPENADP_SERVERS_URL     Default servers URL\n"
+              << "\n"
+              << "Security Warning:\n"
+              << "  Using --password on the command line is insecure as it may be visible\n"
+              << "  in process lists. Consider using environment variables or interactive\n"
+              << "  password prompts for better security.\n"
               << "\n"
               << "Examples:\n"
               << "  " << program_name << " --metadata '{\"servers\":[...]}'\n"
               << "  " << program_name << " --metadata \"$(cat metadata.json)\" --output result.json\n"
-              << "  " << program_name << " --metadata \"$(cat metadata.json)\" --password mypin\n";
+              << "  " << program_name << " --metadata \"$(cat metadata.json)\" --password mypin\n"
+              << "  " << program_name << " --metadata \"$(cat metadata.json)\" --debug\n";
+}
+
+void print_version() {
+    std::cout << "OpenADP ocrypt-recover v0.1.2\n";
 }
 
 std::string read_password() {
@@ -52,15 +69,25 @@ int main(int argc, char* argv[]) {
     std::string metadata_str;
     std::string password;
     std::string servers_url;
+    std::string servers;
     std::string output_file;
     bool debug_mode = false;
+    
+    // Check environment variables
+    const char* env_password = std::getenv("OPENADP_PASSWORD");
+    const char* env_servers_url = std::getenv("OPENADP_SERVERS_URL");
+    
+    if (env_password) password = env_password;
+    if (env_servers_url) servers_url = env_servers_url;
     
     static struct option long_options[] = {
         {"metadata", required_argument, 0, 'm'},
         {"password", required_argument, 0, 'p'},
         {"servers-url", required_argument, 0, 's'},
+        {"servers", required_argument, 0, 'S'},
         {"output", required_argument, 0, 'o'},
         {"debug", no_argument, 0, 'D'},
+        {"version", no_argument, 0, 'V'},
         {"help", no_argument, 0, 'h'},
         {0, 0, 0, 0}
     };
@@ -68,16 +95,20 @@ int main(int argc, char* argv[]) {
     int option_index = 0;
     int c;
     
-    while ((c = getopt_long(argc, argv, "m:p:s:o:Dh", long_options, &option_index)) != -1) {
+    while ((c = getopt_long(argc, argv, "m:p:s:S:o:DVh", long_options, &option_index)) != -1) {
         switch (c) {
             case 'm':
                 metadata_str = optarg;
                 break;
             case 'p':
                 password = optarg;
+                std::cerr << "Warning: Using --password on command line is insecure. Consider using environment variables or interactive prompts.\n";
                 break;
             case 's':
                 servers_url = optarg;
+                break;
+            case 'S':
+                servers = optarg;
                 break;
             case 'o':
                 output_file = optarg;
@@ -85,6 +116,9 @@ int main(int argc, char* argv[]) {
             case 'D':
                 debug_mode = true;
                 break;
+            case 'V':
+                print_version();
+                return 0;
             case 'h':
                 print_usage(argv[0]);
                 return 0;

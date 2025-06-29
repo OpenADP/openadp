@@ -15,6 +15,8 @@ import os
 import hashlib
 import secrets
 import base64
+import time
+import concurrent.futures
 from typing import List, Dict, Optional, Tuple, Any
 from dataclasses import dataclass
 
@@ -178,10 +180,6 @@ def generate_encryption_key(
                 client.ping()
                 clients.append(client)
                 live_server_urls.append(server_info.url)
-                if public_key:
-                    print(f"OpenADP: Server {server_info.url} - Using Noise-NK encryption (key from servers.json)")
-                else:
-                    print(f"OpenADP: Server {server_info.url} - No encryption (no public key)")
             except Exception as e:
                 print(f"Warning: Server {server_info.url} is not accessible: {e}")
         
@@ -226,18 +224,20 @@ def generate_encryption_key(
         print(f"OpenADP: Created {len(shares)} shares with threshold {threshold}")
         
         # Step 7: Register shares with servers using authentication codes and encryption
-        # Only use encrypted registration for sensitive operations
+        # Use concurrent registration for better reliability and speed
         version = 1
         registration_errors = []
         successful_registrations = 0
         successful_server_infos = []
+        import threading
+        registration_lock = threading.Lock()  # Thread-safe access to shared variables
         
-        for i, (x, y) in enumerate(shares):
-            if i >= len(clients):
-                break  # More shares than servers
+        def register_share_with_server(share_index, x, y, client, server_url):
+            """Register a single share with a server (thread-safe)"""
+            nonlocal registration_errors, successful_registrations, successful_server_infos
             
-            client = clients[i]
-            server_url = live_server_urls[i]
+
+            
             auth_code = auth_codes.server_auth_codes[server_url]
             
             # Find the corresponding server_info for this server
@@ -247,35 +247,86 @@ def generate_encryption_key(
                     server_info = si
                     break
             
-            # Convert share Y to base64-encoded 32-byte little-endian format (per API spec)
-            # Y is the Y coordinate from Shamir secret sharing polynomial
-            y_bytes = y.to_bytes(32, byteorder='little')
-            y_str = base64.b64encode(y_bytes).decode('ascii')
-            
-            # Use encrypted registration if server has public key, otherwise unencrypted for compatibility
-            encrypted = client.has_public_key()
-            
             try:
+                # Convert share Y to base64-encoded 32-byte little-endian format (per API spec)
+                # Y is the Y coordinate from Shamir secret sharing polynomial
+                y_bytes = y.to_bytes(32, byteorder='little')
+                y_str = base64.b64encode(y_bytes).decode('ascii')
+                
+                # Use encrypted registration if server has public key, otherwise unencrypted for compatibility
+                encrypted = client.has_public_key()
+                
                 success = client.register_secret(
                     auth_code, identity.uid, identity.did, identity.bid, version, x, y_str, max_guesses, expiration, encrypted, None
                 )
                 
-                if not success:
-                    registration_errors.append(f"Server {i+1} ({server_url}): Registration returned false")
-                else:
-                    enc_status = "encrypted" if encrypted else "unencrypted"
-                    print(f"OpenADP: Registered share {x} with server {i+1} ({server_url}) [{enc_status}]")
-                    successful_registrations += 1
-                    if server_info:
-                        successful_server_infos.append(server_info)
-                    
+                # Thread-safe updates to shared state
+                with registration_lock:
+                    if not success:
+                        registration_errors.append(f"Server {share_index+1} ({server_url}): Registration returned false")
+                    else:
+                        enc_status = "encrypted" if encrypted else "unencrypted"
+                        print(f"OpenADP: Registered share {x} with server {share_index+1} ({server_url}) [{enc_status}]")
+                        successful_registrations += 1
+                        if server_info:
+                            successful_server_infos.append(server_info)
+                        
             except Exception as e:
-                registration_errors.append(f"Server {i+1} ({server_url}): {e}")
+                with registration_lock:
+                    registration_errors.append(f"Server {share_index+1} ({server_url}): {e}")
+        
+        # Execute all registrations concurrently with better error handling
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(clients)) as executor:
+            futures = []
+            for i, (x, y) in enumerate(shares):
+                if i >= len(clients):
+                    break  # More shares than servers
+                
+                client = clients[i]
+                server_url = live_server_urls[i]
+                
+                # Submit registration task
+                future = executor.submit(register_share_with_server, i, x, y, client, server_url)
+                futures.append(future)
+            
+            # Wait for all registrations to complete and check for exceptions
+            try:
+                completed_futures = concurrent.futures.wait(futures, timeout=90)
+                
+                # Check if any futures completed with exceptions
+                for future in completed_futures.done:
+                    try:
+                        future.result()  # This will raise any exception that occurred
+                    except Exception as e:
+                        print(f"Warning: Registration future failed with exception: {e}")
+                
+                # Check for timeouts
+                if completed_futures.not_done:
+                    print(f"Warning: {len(completed_futures.not_done)} registrations timed out")
+                    for future in completed_futures.not_done:
+                        future.cancel()
+                        
+            except Exception as e:
+                print(f"Warning: Error during concurrent registration: {e}")
+        
+        print(f"OpenADP: Registration completed - {successful_registrations} successful, {len(registration_errors)} errors")
+        if registration_errors:
+            for error in registration_errors:
+                print(f"  - {error}")
         
         if successful_registrations == 0:
             return GenerateEncryptionKeyResult(
                 error=f"Failed to register any shares: {registration_errors}"
             )
+        
+        # CRITICAL FIX: Recalculate threshold based on actual successful registrations
+        # Original threshold was based on planned servers, but some may have failed
+        actual_threshold = successful_registrations // 2 + 1  # Majority of successful servers
+        if actual_threshold > successful_registrations:
+            actual_threshold = successful_registrations  # Can't need more shares than we have
+        
+        print(f"✅ Generated encryption key with {successful_registrations} servers")
+        print(f"🎯 Threshold: {actual_threshold}-of-{successful_registrations} recovery")
         
         # Step 8: Derive encryption key
         enc_key = derive_enc_key(S)
@@ -283,7 +334,7 @@ def generate_encryption_key(
         
         return GenerateEncryptionKeyResult(
             encryption_key=enc_key,
-            threshold=threshold,
+            threshold=actual_threshold,  # Use recalculated threshold
             auth_codes=auth_codes,
             server_infos=successful_server_infos
         )
@@ -390,7 +441,7 @@ def recover_encryption_key(
         
         # Debug: Show the U point that we're using for recovery
         u_point_affine = unexpand(U)
-        print(f"🔍 DEBUG: U point: x={u_point_affine.x}, y={u_point_affine.y}")
+        debug_log(f"🔍 DEBUG: U point: x={u_point_affine.x}, y={u_point_affine.y}")
         
         # Generate random r for blinding (0 < r < Q)  
         if is_debug_mode_enabled():
@@ -456,8 +507,8 @@ def recover_encryption_key(
                     )
                     result_map = result if isinstance(result, dict) else result.__dict__
                     
-                    print(f"🔍 DEBUG: Server {i+1} response - x: {result_map.get('x')}, si_b: {result_map.get('si_b')}")
-                    print(f"🔍 DEBUG: si_b length: {len(result_map.get('si_b', ''))}")
+                    debug_log(f"🔍 DEBUG: Server {i+1} response - x: {result_map.get('x')}, si_b: {result_map.get('si_b')}")
+                    debug_log(f"🔍 DEBUG: si_b length: {len(result_map.get('si_b', ''))}")
                     
                     guesses_str = "unknown" if server_info.remaining_guesses == -1 else f"{server_info.remaining_guesses}"
                     print(f"OpenADP: ✓ Recovered share from server {i+1} ({server_url}, {guesses_str} remaining guesses)")
@@ -472,8 +523,8 @@ def recover_encryption_key(
                             continue
                         
                         si_b_bytes = base64.b64decode(si_b_base64)
-                        print(f"🔍 DEBUG: Decoded si_b bytes length: {len(si_b_bytes)}")
-                        print(f"🔍 DEBUG: Decoded si_b bytes: {si_b_bytes.hex()}")
+                        debug_log(f"🔍 DEBUG: Decoded si_b bytes length: {len(si_b_bytes)}")
+                        debug_log(f"🔍 DEBUG: Decoded si_b bytes: {si_b_bytes.hex()}")
                         
                         si_b = point_decompress(si_b_bytes)
                         
@@ -542,7 +593,7 @@ def recover_encryption_key(
         # Use ALL available shares, not just threshold (matches Go implementation)
         recovered_sb = recover_point_secret(valid_shares)
         
-        print(f"🔍 DEBUG: Recovered s*B point: x={recovered_sb.x}, y={recovered_sb.y}")
+        debug_log(f"🔍 DEBUG: Recovered s*B point: x={recovered_sb.x}, y={recovered_sb.y}")
         
         # Apply r^-1 to get the original secret point: s*U = r^-1 * (s*B)
         # This matches Go: rec_s_point = crypto.point_mul(r_inv, crypto.expand(rec_sb))
@@ -550,12 +601,12 @@ def recover_encryption_key(
         original_su = point_mul(r_inv, recovered_sb_4d)
         original_su_2d = unexpand(original_su)
         
-        print(f"🔍 DEBUG: Original s*U point (after r^-1): x={original_su_2d.x}, y={original_su_2d.y}")
+        debug_log(f"🔍 DEBUG: Original s*U point (after r^-1): x={original_su_2d.x}, y={original_su_2d.y}")
         
         # Step 7: Derive same encryption key
         encryption_key = derive_enc_key(original_su)
         
-        print(f"🔍 DEBUG: Final encryption key: {encryption_key.hex()}")
+        debug_log(f"🔍 DEBUG: Final encryption key: {encryption_key.hex()}")
         print("OpenADP: Successfully recovered encryption key")
         
         return RecoverEncryptionKeyResult(encryption_key=encryption_key)

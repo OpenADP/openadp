@@ -945,6 +945,22 @@ pub async fn get_servers(registry_url: &str) -> Result<Vec<ServerInfo>> {
         registry_url.to_string()
     };
     
+    // Handle file:// URLs for local testing
+    if url.starts_with("file://") {
+        // Strip file:// prefix and read local file
+        let file_path = url.strip_prefix("file://").unwrap();
+        let content = std::fs::read_to_string(file_path)
+            .map_err(|e| OpenADPError::Io(e.to_string()))?;
+        
+        let servers_response: ServersResponse = serde_json::from_str(&content)?;
+        
+        if servers_response.servers.is_empty() {
+            return Err(OpenADPError::NoServers);
+        }
+        
+        return Ok(servers_response.servers);
+    }
+    
     // Ensure the URL ends with the correct API endpoint
     if !url.ends_with("/api/servers.json") && !url.ends_with("/servers.json") {
         if url.ends_with('/') {

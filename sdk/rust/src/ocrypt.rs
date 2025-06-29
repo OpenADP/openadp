@@ -137,17 +137,17 @@ pub async fn recover(
     servers_url: &str,
 ) -> Result<(Vec<u8>, u32, Vec<u8>)> {
     // Step 1: Recover secret using existing backup
-    println!("📋 Step 1: Recovering with existing backup...");
+    eprintln!("📋 Step 1: Recovering with existing backup...");
     let (secret, remaining) = recover_without_refresh(metadata_bytes, pin, servers_url).await?;
 
     // Step 2: Attempt automatic backup refresh with two-phase commit
     let updated_metadata = match attempt_backup_refresh(&secret, metadata_bytes, pin, servers_url).await {
         Ok(new_metadata) => {
-            println!("✅ Backup refresh successful");
+            eprintln!("✅ Backup refresh successful");
             new_metadata
         }
         Err(e) => {
-            println!("⚠️  Backup refresh failed (using original): {}", e);
+            eprintln!("⚠️  Backup refresh failed (using original): {}", e);
             metadata_bytes.to_vec()
         }
     };
@@ -168,12 +168,12 @@ async fn register_with_bid(
     // Input validation
     validate_inputs(user_id, app_id, long_term_secret, pin, max_guesses)?;
 
-    println!("🔐 Protecting secret for user: {}", user_id);
-    println!("📱 Application: {}", app_id);
-    println!("🔑 Secret length: {} bytes", long_term_secret.len());
+    eprintln!("🔐 Protecting secret for user: {}", user_id);
+    eprintln!("📱 Application: {}", app_id);
+    eprintln!("🔑 Secret length: {} bytes", long_term_secret.len());
 
     // Step 1: Server discovery
-    println!("🌐 Discovering OpenADP servers...");
+    eprintln!("🌐 Discovering OpenADP servers...");
     let server_infos = discover_servers(servers_url).await?;
     
     if server_infos.is_empty() {
@@ -190,11 +190,11 @@ async fn register_with_bid(
         server_infos
     };
 
-    println!("📋 Using {} servers for registration", selected_servers.len());
+    eprintln!("📋 Using {} servers for registration", selected_servers.len());
 
     // Step 2: Generate encryption key using OpenADP protocol
-    println!("🔄 Using backup ID: {}", backup_id);
-    println!("🔑 Generating encryption key using OpenADP servers...");
+    eprintln!("🔄 Using backup ID: {}", backup_id);
+    eprintln!("🔑 Generating encryption key using OpenADP servers...");
 
     // Create Identity from Ocrypt parameters
     let identity = crate::keygen::Identity::new(
@@ -216,10 +216,10 @@ async fn register_with_bid(
     let server_infos = key_result.server_infos.unwrap();
     let threshold = key_result.threshold.unwrap();
 
-    println!("✅ Generated encryption key with {} servers", server_infos.len());
+    eprintln!("✅ Generated encryption key with {} servers", server_infos.len());
 
     // Step 3: Wrap the long-term secret
-    println!("🔐 Wrapping long-term secret...");
+    eprintln!("🔐 Wrapping long-term secret...");
     let wrapped_secret = wrap_secret(long_term_secret, &encryption_key)?;
 
     // Step 4: Create metadata
@@ -239,8 +239,8 @@ async fn register_with_bid(
     };
 
     let metadata_bytes = serde_json::to_vec(&metadata)?;
-    println!("📦 Created metadata ({} bytes)", metadata_bytes.len());
-    println!("🎯 Threshold: {}-of-{} recovery", metadata.threshold, metadata.servers.len());
+    eprintln!("📦 Created metadata ({} bytes)", metadata_bytes.len());
+    eprintln!("🎯 Threshold: {}-of-{} recovery", metadata.threshold, metadata.servers.len());
 
     Ok(metadata_bytes)
 }
@@ -328,7 +328,7 @@ async fn attempt_backup_refresh(
     // Generate next backup ID
     let new_backup_id = generate_next_backup_id(&metadata.backup_id);
     
-    println!("🔄 Attempting backup refresh: {} → {}", metadata.backup_id, new_backup_id);
+    eprintln!("🔄 Attempting backup refresh: {} → {}", metadata.backup_id, new_backup_id);
     
     // Phase 1: PREPARE - Register new backup (old one still exists)
     let new_metadata = register_with_bid(
@@ -345,7 +345,7 @@ async fn attempt_backup_refresh(
     let (recovered_secret, _) = recover_without_refresh(&new_metadata, pin, servers_url).await?;
     
     if recovered_secret == secret {
-        println!("✅ Two-phase commit verification successful");
+        eprintln!("✅ Two-phase commit verification successful");
         Ok(new_metadata)
     } else {
         Err(OpenADPError::Server("Two-phase commit verification failed".to_string()))
@@ -360,12 +360,12 @@ async fn discover_servers(servers_url: &str) -> Result<Vec<ServerInfo>> {
         servers_url
     };
 
-    println!("🌐 Discovering servers from registry: {}", registry_url);
+    eprintln!("🌐 Discovering servers from registry: {}", registry_url);
 
     let servers = get_servers(registry_url).await?;
     
-    println!("   ✅ Successfully fetched {} servers from registry", servers.len());
-    println!("   📋 {} servers are live and ready", servers.len());
+    eprintln!("   ✅ Successfully fetched {} servers from registry", servers.len());
+    eprintln!("   📋 {} servers are live and ready", servers.len());
     
     Ok(servers)
 }

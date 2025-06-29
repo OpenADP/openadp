@@ -103,7 +103,8 @@ GenerateEncryptionKeyResult generate_encryption_key(
         // Generate deterministic main secret in debug mode
         std::string secret_hex;
         if (debug::is_debug_mode_enabled()) {
-            // Use the same deterministic secret as Python/Go/JavaScript (64 characters)
+            // 🔧 CRITICAL FIX: Use same deterministic secret as other SDKs for consistency
+            // Both r (blinding factor) and s (Shamir secret) use the same value in debug mode
             secret_hex = "023456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23";
             debug::debug_log("Using deterministic main secret r = 0x023456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23");
         } else {
@@ -134,14 +135,12 @@ GenerateEncryptionKeyResult generate_encryption_key(
         // Implement proper Shamir Secret Sharing (replacing scalar approach)
         // Use simpler approach matching Python/Go debug values for now
         if (debug::is_debug_mode_enabled()) {
-            // Get the actual deterministic secret from debug module for consistency
-            std::string debug_secret_hex = debug::get_deterministic_main_secret();
-            debug::debug_log("Using deterministic secret: 0x" + debug_secret_hex);
-            
+            // 🔧 CRITICAL FIX: Use the standard deterministic secret consistently
             // Convert hex secret to decimal for logging (to match other SDKs)
             BIGNUM* secret_bn = BN_new();
-            BN_hex2bn(&secret_bn, debug_secret_hex.c_str());
+            BN_hex2bn(&secret_bn, secret_hex.c_str());
             char* secret_decimal = BN_bn2dec(secret_bn);
+            debug::debug_log("Using deterministic secret: 0x" + secret_hex);
             debug::debug_log("Secret (decimal): " + std::string(secret_decimal));
             
             debug::debug_log("Computed U point for identity: UID=" + identity.uid + 
@@ -150,7 +149,7 @@ GenerateEncryptionKeyResult generate_encryption_key(
             debug::debug_log("Splitting secret with threshold " + std::to_string(threshold) + 
                             ", num_shares " + std::to_string(num_shares));
             
-            // Use the actual secret value for polynomial coefficient a0
+            // Use the standard deterministic secret value for polynomial coefficient a0
             debug::debug_log("Polynomial coefficient a0 (secret): " + std::string(secret_decimal));
             
             // For proper Shamir secret sharing, implement polynomial evaluation
@@ -226,11 +225,10 @@ GenerateEncryptionKeyResult generate_encryption_key(
                 // Generate Y coordinate for this share
                 std::string y_base64;
                 if (debug::is_debug_mode_enabled()) {
+                    // 🔧 CRITICAL FIX: Use standard deterministic secret for Shamir shares (matching other SDKs)
                     // Compute actual Shamir secret share for this server
-                    // Get the actual deterministic secret from debug module
-                    std::string debug_secret_hex = debug::get_deterministic_main_secret();
                     BIGNUM* secret_bn = BN_new();
-                    BN_hex2bn(&secret_bn, debug_secret_hex.c_str());
+                    BN_hex2bn(&secret_bn, secret_hex.c_str());
                     
                     // Compute the actual share for this server using polynomial evaluation
                     int x = static_cast<int>(i + 1);  // Server index (1-based)
@@ -248,6 +246,14 @@ GenerateEncryptionKeyResult generate_encryption_key(
                         BN_add(y_bn, secret_bn, x_bn);
                         BN_free(x_bn);
                     }
+                    
+                    // ✅ CRITICAL FIX: Reduce Y coordinate modulo Q (Ed25519 group order)
+                    BIGNUM* q_bn = BN_new();
+                    BN_hex2bn(&q_bn, "1000000000000000000000000000000014DEF9DEA2F79CD65812631A5CF5D3ED");
+                    BN_CTX* mod_ctx = BN_CTX_new();
+                    BN_mod(y_bn, y_bn, q_bn, mod_ctx);
+                    BN_free(q_bn);
+                    BN_CTX_free(mod_ctx);
                     
                     // Convert y to little-endian 32-byte array for base64 encoding
                     Bytes y_bytes(32, 0);
@@ -268,20 +274,34 @@ GenerateEncryptionKeyResult generate_encryption_key(
                     BN_free(secret_bn);
                     BN_free(y_bn);
                 } else {
-                    // For non-debug mode, use the secret_hex directly (temporary implementation)
-                    Bytes secret_bytes = utils::hex_decode(secret_hex);
+                    // For non-debug mode, use the secret_hex directly but reduce modulo Q
+                    BIGNUM* secret_bn = BN_new();
+                    BN_hex2bn(&secret_bn, secret_hex.c_str());
                     
-                    // Ensure it's exactly 32 bytes
+                    // ✅ CRITICAL FIX: Reduce random secret modulo Q (Ed25519 group order) 
+                    BIGNUM* q_bn = BN_new();
+                    BN_hex2bn(&q_bn, "1000000000000000000000000000000014DEF9DEA2F79CD65812631A5CF5D3ED");
+                    BN_CTX* mod_ctx = BN_CTX_new();
+                    BN_mod(secret_bn, secret_bn, q_bn, mod_ctx);
+                    BN_free(q_bn);
+                    BN_CTX_free(mod_ctx);
+                    
+                    // Convert reduced secret to little-endian 32-byte array for base64 encoding
                     Bytes y_bytes(32, 0);
-                    if (secret_bytes.size() <= 32) {
-                        std::copy(secret_bytes.begin(), secret_bytes.end(), 
-                                y_bytes.end() - secret_bytes.size());
+                    int y_size = BN_num_bytes(secret_bn);
+                    if (y_size <= 32) {
+                        // Convert to big-endian first
+                        Bytes temp_bytes(y_size);
+                        BN_bn2bin(secret_bn, temp_bytes.data());
+                        
+                        // Copy to 32-byte array (right-aligned) and reverse to little-endian
+                        std::copy(temp_bytes.begin(), temp_bytes.end(), 
+                                y_bytes.end() - temp_bytes.size());
+                        std::reverse(y_bytes.begin(), y_bytes.end());
                     }
                     
-                    // Convert to little-endian
-                    std::reverse(y_bytes.begin(), y_bytes.end());
-                    
                     y_base64 = utils::base64_encode(y_bytes);
+                    BN_free(secret_bn);
                 }
                 
                 client::RegisterSecretRequest request(identity, password, max_guesses, expiration, y_base64, server_auth_code);
@@ -347,8 +367,26 @@ RecoverEncryptionKeyResult recover_encryption_key(
         Bytes did_bytes = utils::string_to_bytes(identity.did);
         Bytes bid_bytes = utils::string_to_bytes(identity.bid);
         
-        // Compute H(uid, did, bid, pin)
-        Point4D H = crypto::Ed25519::hash_to_point(uid_bytes, did_bytes, bid_bytes, password_bytes);
+        // Compute U = H(uid, did, bid, pin) - same as in generation
+        Point4D U = crypto::Ed25519::hash_to_point(uid_bytes, did_bytes, bid_bytes, password_bytes);
+        
+        // Generate blinding factor r (random scalar) - CRITICAL for security
+        std::string r_scalar_hex = debug::is_debug_mode_enabled() ? 
+            "023456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23" : // Deterministic in debug
+            generate_random_scalar(); // Random in production
+            
+        // Compute r^-1 mod Q for later use
+        // For now, we'll use a simple approach since we have 1-of-1 threshold
+        std::string r_inv_hex = r_scalar_hex; // In 1-of-1, this will be simplified
+        
+        // Compute B = r * U (blinded point to send to server)
+        Point4D B = crypto::point_mul(r_scalar_hex, U);
+        
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("Recovery: r_scalar=" + r_scalar_hex);
+            debug::debug_log("Recovery: U point computed");
+            debug::debug_log("Recovery: B = r * U computed");
+        }
         
         // Recover shares from servers
         std::vector<Share> shares;
@@ -365,26 +403,51 @@ RecoverEncryptionKeyResult recover_encryption_key(
                 client::EncryptedOpenADPClient client(server_info.url, server_info.public_key);
                 
                 // First, get the guess number by listing backups
-                nlohmann::json backups = client.list_backups(identity);
-                int guess_num = 1;
-                if (backups.contains("guess_num")) {
-                    guess_num = backups["guess_num"].get<int>();
+                nlohmann::json backups_response = client.list_backups(identity);
+                int guess_num = 0;  // Default to 0 for first guess (0-based indexing)
+                
+                // Extract guess number from backup info
+                if (backups_response.is_array() && !backups_response.empty()) {
+                    for (const auto& backup : backups_response) {
+                        if (backup.contains("uid") && backup.contains("did") && backup.contains("bid") &&
+                            backup["uid"].get<std::string>() == identity.uid &&
+                            backup["did"].get<std::string>() == identity.did &&
+                            backup["bid"].get<std::string>() == identity.bid) {
+                            guess_num = backup.contains("num_guesses") ? backup["num_guesses"].get<int>() : 0;
+                            break;
+                        }
+                    }
+                }
+                
+                // Compress the blinded point B to send to server
+                Bytes b_compressed = crypto::point_compress(B);
+                std::string b_base64 = utils::base64_encode(b_compressed);
+                
+                if (debug::is_debug_mode_enabled()) {
+                    debug::debug_log("Recovery: B compressed size=" + std::to_string(b_compressed.size()));
+                    debug::debug_log("Recovery: B base64=" + b_base64);
                 }
                 
                 // Create a fresh client for the recovery request
                 client::EncryptedOpenADPClient fresh_client(server_info.url, server_info.public_key);
                 
-                client::RecoverSecretRequest request(identity, password, guess_num);
+                std::string server_auth_code = auth_it->second;
+                client::RecoverSecretRequest request(server_auth_code, identity, b_base64, guess_num);
                 nlohmann::json response = fresh_client.recover_secret(request);
                 
-                if (response.contains("success") && response["success"].get<bool>()) {
-                    if (response.contains("b") && response.contains("remaining_guesses")) {
-                        std::string b_hex = response["b"].get<std::string>();
-                        remaining_guesses = response["remaining_guesses"].get<int>();
-                        
-                        // Create share (server index as x, b as y)
-                        int server_index = static_cast<int>(shares.size() + 1);
-                        shares.emplace_back(server_index, b_hex);
+                // Check if RecoverSecret succeeded (response contains si_b)
+                if (response.contains("si_b")) {
+                    std::string si_b = response["si_b"].get<std::string>();
+                    remaining_guesses = response.contains("max_guesses") ? 
+                        response["max_guesses"].get<int>() - (response.contains("num_guesses") ? response["num_guesses"].get<int>() : 0) : 10;
+                    
+                    // Create share (server index as x, si_b as y)
+                    int server_index = static_cast<int>(shares.size() + 1);
+                    shares.emplace_back(server_index, si_b);
+                    
+                    if (debug::is_debug_mode_enabled()) {
+                        debug::debug_log("Successfully recovered share from server " + server_info.url + 
+                                       ", si_b=" + si_b + ", remaining_guesses=" + std::to_string(remaining_guesses));
                     }
                 }
             } catch (const std::exception& e) {
@@ -399,13 +462,71 @@ RecoverEncryptionKeyResult recover_encryption_key(
         
         // For now, assume we only need one share (1-of-N threshold)
         // In a full implementation, this would use Shamir secret sharing
-        std::string b_hex = shares[0].y;
+        std::string si_b_base64 = shares[0].y;
         
-        // Compute b * H
-        Point4D bH = crypto::Ed25519::scalar_mult(b_hex, H);
+        // si_b is the server's response: s*B point (where B = r*U)
+        Bytes si_b_point_bytes = utils::base64_decode(si_b_base64);
+        Point4D si_b_point = crypto::point_decompress(si_b_point_bytes);
         
-        // Derive encryption key
-        Bytes encryption_key = crypto::derive_encryption_key(bH);
+        // Recover the original secret point: s*U = r^-1 * (s*B) = r^-1 * si_b
+        // This is the core of the blinding protocol - we must compute r^-1 * si_b
+        
+        // Compute r^-1 mod Q (modular inverse of the blinding factor)
+        // For 1-of-1 threshold in debug mode, this can be simplified but we still need proper crypto
+        Point4D secret_point;
+        
+        // The proper formula: s*U = point_mul(r^-1, si_b)
+        // Where si_b = s * B = s * (r * U), so r^-1 * si_b = r^-1 * s * r * U = s * U
+        
+        // For 1-of-1 threshold, we can use the simplified approach:
+        // Since threshold=1, the secret s is exactly the original secret from encryption
+        // and si_b contains s*B, so we need to "unblind" it with r^-1
+        
+        // Correct unblinding protocol:
+        // si_b = s * B = s * (r * U), so s * U = r^-1 * si_b
+        // where r is the blinding factor and s is the Shamir secret (different values!)
+        
+        // Compute r^-1 mod Q (modular inverse of the blinding factor)
+        // For Ed25519, Q = 2^252 + 27742317777372353535851937790883648493
+        
+        // Convert r from hex to BIGNUM for modular arithmetic
+        BIGNUM* r_bn = BN_new();
+        BIGNUM* q_bn = BN_new();
+        BIGNUM* r_inv_bn = BN_new();
+        BN_CTX* ctx = BN_CTX_new();
+        
+        // Parse r from hex
+        BN_hex2bn(&r_bn, r_scalar_hex.c_str());
+        
+        // Ed25519 curve order (L = 2^252 + 27742317777372353535851937790883648493)
+        BN_hex2bn(&q_bn, "1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed");
+        
+        // Compute r^-1 mod Q
+        BN_mod_inverse(r_inv_bn, r_bn, q_bn, ctx);
+        
+        // Convert back to hex
+        char* r_inv_hex_str = BN_bn2hex(r_inv_bn);
+        std::string r_inv_scalar_hex(r_inv_hex_str);
+        OPENSSL_free(r_inv_hex_str);
+        
+        // Clean up
+        BN_free(r_bn);
+        BN_free(q_bn);
+        BN_free(r_inv_bn);
+        BN_CTX_free(ctx);
+        
+        // Apply r^-1 to recover the original secret point: s*U = r^-1 * si_b
+        secret_point = crypto::point_mul(r_inv_scalar_hex, si_b_point);
+        
+        // Derive encryption key from the recovered secret point s*U
+        Bytes encryption_key = crypto::derive_encryption_key(secret_point);
+        
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("Key recovery: r_scalar=" + r_scalar_hex);
+            debug::debug_log("Key recovery: r_inv_scalar=" + r_inv_scalar_hex);
+            debug::debug_log("Key recovery: computed s*U = r^-1 * si_b");
+            debug::debug_log("Key recovery: derived key size=" + std::to_string(encryption_key.size()));
+        }
         
         return RecoverEncryptionKeyResult::success(encryption_key, remaining_guesses);
         

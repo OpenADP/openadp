@@ -315,7 +315,7 @@ def _recover_without_refresh(metadata: bytes, pin: str, servers_url: str = "") -
         # Get server info from registry (same as decrypt tool)
         try:
             # Use provided servers_url or default
-            registry_url = servers_url if servers_url else "https://servers.openadp.org"
+            registry_url = servers_url if servers_url else "https://servers.openadp.org/api/servers.json"
             registry_server_infos = get_servers(registry_url)
             if not registry_server_infos:
                 raise Exception("No servers returned from registry")
