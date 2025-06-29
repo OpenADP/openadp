@@ -184,7 +184,7 @@ Variables:
   relationships to other points on the curve.
 * U = H(UID, DID, BID, pin),  a point on the elliptic curve.
 * s: A strong random secret value, 256 bits long.
-* s[i[: The ith Shamir secret share of s.
+* s[i]: The ith Shamir secret share of s.
 * r: a random blinding factor in the range of [1..group order - 1].
 * B = r\*U, A "blinded" point on the curve which has information theoretic
   security for `pin`.
