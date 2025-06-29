@@ -692,6 +692,8 @@ func main() {
 
 	// Set debug mode if requested
 	if *debugMode {
+		// Set environment variable so ocrypt debug package can enable deterministic ephemeral keys
+		os.Setenv("OPENADP_DEBUG", "1")
 		log.Printf("🐛 Debug mode enabled - using deterministic ephemeral keys")
 		server.SetDebugMode(true)
 	}

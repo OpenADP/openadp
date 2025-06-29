@@ -28,6 +28,8 @@ var debugMode bool
 // SetDebugMode enables or disables debug mode for deterministic ephemeral keys
 func SetDebugMode(enabled bool) {
 	debugMode = enabled
+	// Note: Debug mode for the underlying Noise-NK implementation is now
+	// automatically enabled via OPENADP_DEBUG environment variable set in main.go
 	if enabled {
 		log.Println("🐛 Session manager debug mode enabled - using deterministic ephemeral keys")
 	} else {

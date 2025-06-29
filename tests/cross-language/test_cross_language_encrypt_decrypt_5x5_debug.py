@@ -278,8 +278,7 @@ def run_python_encrypt(input_file, output_file=None):
         "--file", input_file,
         "--password", TEST_PASSWORD,
         "--user-id", TEST_USER_ID,
-        "--servers-url", f"file://{create_servers_json()}",
-        "--output", output_file,
+        "--servers", ",".join(SERVER_URLS),
         "--debug"  # Enable debug mode
     ]
     
@@ -312,8 +311,7 @@ def run_python_decrypt(input_file, output_file=None):
         "--file", input_file,
         "--password", TEST_PASSWORD,
         "--user-id", TEST_USER_ID,
-        "--servers-url", f"file://{create_servers_json()}",
-        "--output", output_file,
+        "--servers", ",".join(SERVER_URLS),
         "--debug"  # Enable debug mode
     ]
     
@@ -340,14 +338,19 @@ def run_cpp_encrypt(input_file, output_file=None):
     """Run C++ encryption with debug mode"""
     if output_file is None:
         output_file = input_file + ".enc"
+    metadata_file = input_file + ".meta"
+    
+    # C++ tools need a servers JSON file for server URLs
+    servers_json = create_servers_json()
     
     cmd = [
         "./sdk/cpp/build/openadp-encrypt",
-        "--file", input_file,
-        "--password", TEST_PASSWORD,
-        "--user-id", TEST_USER_ID,
-        "--servers", ",".join(SERVER_URLS),
+        "--input", input_file,
         "--output", output_file,
+        "--metadata", metadata_file,
+        "--user-id", TEST_USER_ID,
+        "--password", TEST_PASSWORD,
+        "--servers-url", f"file://{servers_json}",
         "--debug"  # Enable debug mode
     ]
     
@@ -374,14 +377,19 @@ def run_cpp_decrypt(input_file, output_file=None):
     """Run C++ decryption with debug mode"""
     if output_file is None:
         output_file = input_file.replace(".enc", "")
+    metadata_file = input_file.replace(".enc", ".meta")
+    
+    # C++ tools need a servers JSON file for server URLs
+    servers_json = create_servers_json()
     
     cmd = [
         "./sdk/cpp/build/openadp-decrypt",
-        "--file", input_file,
-        "--password", TEST_PASSWORD,
-        "--user-id", TEST_USER_ID,
-        "--servers", ",".join(SERVER_URLS),
+        "--input", input_file,
         "--output", output_file,
+        "--metadata", metadata_file,
+        "--user-id", TEST_USER_ID,
+        "--password", TEST_PASSWORD,
+        "--servers-url", f"file://{servers_json}",
         "--debug"  # Enable debug mode
     ]
     

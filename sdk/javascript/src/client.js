@@ -572,6 +572,10 @@ export class EncryptedOpenADPClient {
                 methodCall.auth = authData;
             }
 
+            if (debug.isDebugModeEnabled()) {
+                debug.debugLog(`Method call (before encryption): ${JSON.stringify(methodCall)}`);
+            }
+
             // Serialize and encrypt the method call
             const methodCallJson = JSON.stringify(methodCall);
             const methodCallBytes = new TextEncoder().encode(methodCallJson);
@@ -629,6 +633,10 @@ export class EncryptedOpenADPClient {
             const decryptedBytes = this.noise.decrypt(encryptedDataBytes);
             const decryptedJson = new TextDecoder().decode(decryptedBytes);
             const responseData = JSON.parse(decryptedJson);
+
+            if (debug.isDebugModeEnabled()) {
+                debug.debugLog(`Decrypted response (after encryption): ${JSON.stringify(responseData)}`);
+            }
 
             const jsonRpcResponse = JSONRPCResponse.fromDict(responseData);
 
