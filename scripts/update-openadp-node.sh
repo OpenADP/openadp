@@ -263,9 +263,26 @@ install_dependencies() {
 
 # Install/update Go
 install_go() {
-    log_step "Installing/updating Go compiler..."
+    log_step "Checking Go compiler installation..."
     
     GO_VERSION="1.23.10"
+    
+    # Check if Go is already installed and get its version
+    if command -v go &> /dev/null; then
+        CURRENT_GO_VERSION=$(go version 2>/dev/null | grep -oE 'go[0-9]+\.[0-9]+(\.[0-9]+)?' | sed 's/go//')
+        if [ "$CURRENT_GO_VERSION" = "$GO_VERSION" ]; then
+            log_success "Go $GO_VERSION is already installed - skipping download"
+            export PATH="/usr/local/go/bin:$PATH"
+            return 0
+        else
+            log_info "Current Go version: $CURRENT_GO_VERSION (target: $GO_VERSION)"
+            log_info "Go version mismatch - will update..."
+        fi
+    else
+        log_info "Go not found - will install..."
+    fi
+    
+    log_step "Installing/updating Go compiler to version $GO_VERSION..."
     
     # Detect architecture
     ARCH=$(uname -m)
