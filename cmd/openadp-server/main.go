@@ -181,6 +181,7 @@ func (s *Server) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
 	// Parse JSON-RPC request
 	var req JSONRPCRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("🚨 [SERVER:%d] JSON PARSE ERROR: %v", s.port, err)
 		response := JSONRPCResponse{
 			JSONRPC: "2.0",
 			Error: &JSONRPCError{
@@ -194,6 +195,10 @@ func (s *Server) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Log incoming request
+	reqJSON, _ := json.Marshal(req)
+	log.Printf("📤 [SERVER:%d] INCOMING REQUEST: %s", s.port, string(reqJSON))
+
 	// Route to appropriate method based on 2-round Noise-NK approach
 	var result interface{}
 	var err error
@@ -201,12 +206,15 @@ func (s *Server) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
 	switch req.Method {
 	case "noise_handshake":
 		// Round 1: Establish Noise-NK session
+		log.Printf("🤝 [SERVER:%d] Handling noise_handshake", s.port)
 		result, err = s.handleNoiseHandshake(req.Params)
 	case "encrypted_call":
 		// Round 2: Process encrypted request and return encrypted response
+		log.Printf("🔐 [SERVER:%d] Handling encrypted_call", s.port)
 		result, err = s.handleEncryptedCall(req.Params)
 	default:
 		// Regular unencrypted methods
+		log.Printf("📝 [SERVER:%d] Handling unencrypted method: %s", s.port, req.Method)
 		result, err = s.routeMethodWithContext(req.Method, req.Params, &RequestContext{
 			IsEncrypted: false,
 			SessionID:   "",
@@ -220,17 +228,23 @@ func (s *Server) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
+		log.Printf("❌ [SERVER:%d] REQUEST FAILED - Method: %s, Error: %v", s.port, req.Method, err)
 		response.Error = &JSONRPCError{
 			Code:    -32603,
 			Message: err.Error(),
 		}
 		s.monitoring.RecordError()
 	} else {
-		response.Result = result
 		// Record successful request with response time
 		responseTime := float64(time.Since(startTime).Nanoseconds()) / 1000000.0 // Convert to milliseconds
+		log.Printf("✅ [SERVER:%d] REQUEST SUCCESS - Method: %s, ResponseTime: %.2fms", s.port, req.Method, responseTime)
+		response.Result = result
 		s.monitoring.RecordRequest(responseTime)
 	}
+
+	// Log outgoing response
+	respJSON, _ := json.Marshal(response)
+	log.Printf("📥 [SERVER:%d] OUTGOING RESPONSE: %s", s.port, string(respJSON))
 
 	json.NewEncoder(w).Encode(response)
 }
@@ -375,15 +389,18 @@ func (s *Server) handleRegisterSecret(params []interface{}) (interface{}, error)
 		yBytes[i], yBytes[j] = yBytes[j], yBytes[i]
 	}
 	yInt.SetBytes(yBytes)
-	fmt.Printf("SERVER %d STORING: uid=%s, did=%s, bid=%s, x=%d, y=%s (hex: %x)\n",
-		s.port, uid, did, bid, x, yInt.String(), y)
+	log.Printf("🔐 [SERVER:%d] REGISTER_SECRET - PARAMS: uid=%s, did=%s, bid=%s, x=%d, y=%s (hex: %x), auth_code=%s, max_guesses=%d, expiration=%d",
+		s.port, uid, did, bid, x, yInt.String(), y, authCode, maxGuesses, expiration)
 
 	// Register the secret
+	log.Printf("🗃️ [SERVER:%d] REGISTER_SECRET - CALLING DATABASE OPERATION", s.port)
 	err = server.RegisterSecret(s.db, uid, did, bid, authCode, version, x, y, maxGuesses, expiration)
 	if err != nil {
+		log.Printf("❌ [SERVER:%d] REGISTER_SECRET - DATABASE OPERATION FAILED: %v", s.port, err)
 		return nil, err
 	}
 
+	log.Printf("✅ [SERVER:%d] REGISTER_SECRET - DATABASE OPERATION SUCCESS", s.port)
 	return true, nil
 }
 
@@ -547,21 +564,27 @@ func (s *Server) handleEncryptedCall(params []interface{}) (interface{}, error) 
 		return nil, fmt.Errorf("encrypted_call requires 'data' field")
 	}
 
+	log.Printf("🔓 [SERVER:%d] ENCRYPTED_CALL - Session: %s, DataSize: %d bytes", s.port, sessionID, len(dataB64))
+
 	// Decode encrypted data
 	encryptedData, err := base64.StdEncoding.DecodeString(dataB64)
 	if err != nil {
+		log.Printf("❌ [SERVER:%d] ENCRYPTED_CALL - Base64 decode failed: %v", s.port, err)
 		return nil, fmt.Errorf("invalid base64 encrypted data: %v", err)
 	}
 
 	// Decrypt the call
+	log.Printf("🔐 [SERVER:%d] ENCRYPTED_CALL - Decrypting call...", s.port)
 	decryptedCall, err := s.sessionManager.DecryptCall(sessionID, encryptedData)
 	if err != nil {
+		log.Printf("❌ [SERVER:%d] ENCRYPTED_CALL - Decryption failed: %v", s.port, err)
 		return nil, fmt.Errorf("decryption failed: %v", err)
 	}
 
 	// Extract method and params from decrypted call
 	method, ok := decryptedCall["method"].(string)
 	if !ok {
+		log.Printf("❌ [SERVER:%d] ENCRYPTED_CALL - Missing method in decrypted call", s.port)
 		return nil, fmt.Errorf("decrypted call missing method")
 	}
 
@@ -570,6 +593,8 @@ func (s *Server) handleEncryptedCall(params []interface{}) (interface{}, error) 
 		// params might be nil or not an array
 		callParams = []interface{}{}
 	}
+
+	log.Printf("🎯 [SERVER:%d] ENCRYPTED_CALL - Decrypted method: %s, ParamCount: %d", s.port, method, len(callParams))
 
 	// Route the decrypted method call (mark as encrypted)
 	result, err := s.routeMethodWithContext(method, callParams, &RequestContext{
@@ -584,20 +609,25 @@ func (s *Server) handleEncryptedCall(params []interface{}) (interface{}, error) 
 	}
 
 	if err != nil {
+		log.Printf("❌ [SERVER:%d] ENCRYPTED_CALL - Method %s failed: %v", s.port, method, err)
 		responseDict["error"] = map[string]interface{}{
 			"code":    -32603,
 			"message": err.Error(),
 		}
 	} else {
+		log.Printf("✅ [SERVER:%d] ENCRYPTED_CALL - Method %s succeeded", s.port, method)
 		responseDict["result"] = result
 	}
 
 	// Encrypt the response
+	log.Printf("🔒 [SERVER:%d] ENCRYPTED_CALL - Encrypting response...", s.port)
 	encryptedResponse, err := s.sessionManager.EncryptResponse(sessionID, responseDict)
 	if err != nil {
+		log.Printf("❌ [SERVER:%d] ENCRYPTED_CALL - Response encryption failed: %v", s.port, err)
 		return nil, fmt.Errorf("response encryption failed: %v", err)
 	}
 
+	log.Printf("📤 [SERVER:%d] ENCRYPTED_CALL - Returning encrypted response, size: %d bytes", s.port, len(encryptedResponse))
 	// Return encrypted response
 	return map[string]interface{}{
 		"data": base64.StdEncoding.EncodeToString(encryptedResponse),
