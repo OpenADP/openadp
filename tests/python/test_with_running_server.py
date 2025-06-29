@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
 from openadp import (
     OpenADPClient, EncryptedOpenADPClient,
-    Identity, password_to_pin, generate_auth_codes,
+    Identity, generate_auth_codes,
     generate_encryption_key
 )
 from openadp.crypto import derive_enc_key, H
@@ -123,7 +123,7 @@ def test_key_generation_workflow(server_info):
         print(f"   📋 BID: {identity.bid}")
         
         # Convert password to PIN
-        pin = password_to_pin(password)
+        pin = password.encode('utf-8')
         print(f"   🔢 PIN: {pin}")
         
         # Create server info object

@@ -30,6 +30,10 @@ std::string bn_to_hex(const BIGNUM* bn) {
     char* hex_str = BN_bn2hex(bn);
     std::string result(hex_str);
     OPENSSL_free(hex_str);
+    
+    // Convert to lowercase to match expected format
+    std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+    
     return result;
 }
 
@@ -377,13 +381,15 @@ Point4D Ed25519::scalar_mult(const std::string& scalar_hex, const Point4D& point
     Point4D result("0", "1", "1", "0");
     Point4D current_point = point;
     
-    // Double-and-add algorithm
+    // Double-and-add algorithm (fixed to match JavaScript/Python order)
     while (!BN_is_zero(scalar)) {
         if (BN_is_odd(scalar)) {
             result = point_add(result, current_point);
         }
-        current_point = point_add(current_point, current_point);  // Double
-        BN_rshift1(scalar, scalar);
+        BN_rshift1(scalar, scalar);  // Process bit first
+        if (!BN_is_zero(scalar)) {   // Only double if more bits remain
+            current_point = point_add(current_point, current_point);  // Double
+        }
     }
     
     BN_free(scalar);
@@ -645,7 +651,14 @@ std::vector<Share> ShamirSecretSharing::split_secret(const std::string& secret_h
     }
     
     BIGNUM* secret = hex_to_bn(secret_hex);
-    BIGNUM* prime = hex_to_bn("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F"); // secp256k1 prime
+    BIGNUM* prime = hex_to_bn("1000000000000000000000000000000014DEF9DEA2F79CD65812631A5CF5D3ED"); // Ed25519 group order Q
+    
+    // Validate that secret is less than the prime modulus
+    if (BN_cmp(secret, prime) >= 0) {
+        BN_free(secret);
+        BN_free(prime);
+        throw OpenADPError("Secret value must be less than the field prime Q (Ed25519 group order)");
+    }
     
     // Generate random coefficients
     std::vector<BIGNUM*> coefficients;
@@ -668,6 +681,8 @@ std::vector<Share> ShamirSecretSharing::split_secret(const std::string& secret_h
     
     // Generate shares
     std::vector<Share> shares;
+    BN_CTX* ctx = BN_CTX_new();
+    
     for (int x = 1; x <= num_shares; x++) {
         BIGNUM* y = BN_new();
         BN_zero(y);
@@ -675,21 +690,27 @@ std::vector<Share> ShamirSecretSharing::split_secret(const std::string& secret_h
         BIGNUM* x_power = BN_new();
         BN_one(x_power);
         
+        // Evaluate polynomial: y = a0 + a1*x + a2*x^2 + ... + a(t-1)*x^(t-1)
         for (int i = 0; i < threshold; i++) {
             BIGNUM* term = BN_new();
-            BN_mul(term, coefficients[i], x_power, BN_CTX_new());
-            BN_add(y, y, term);
+            BN_mod_mul(term, coefficients[i], x_power, prime, ctx);
+            BN_mod_add(y, y, term, prime, ctx);
             
-            BN_mul_word(x_power, x);
+            // Prepare x_power for next iteration: x_power *= x
+            if (i < threshold - 1) {  // Don't multiply on last iteration
+                BN_mul_word(x_power, x);
+                BN_mod(x_power, x_power, prime, ctx);
+            }
             BN_free(term);
         }
         
-        BN_mod(y, y, prime, BN_CTX_new());
         shares.emplace_back(x, bn_to_hex(y));
         
         BN_free(y);
         BN_free(x_power);
     }
+    
+    BN_CTX_free(ctx);
     
     // Cleanup
     for (BIGNUM* coeff : coefficients) {
@@ -715,11 +736,12 @@ std::string ShamirSecretSharing::recover_secret(const std::vector<Share>& shares
         seen_indices.insert(share.x);
     }
     
-    BIGNUM* prime = hex_to_bn("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F");
+    BIGNUM* prime = hex_to_bn("1000000000000000000000000000000014DEF9DEA2F79CD65812631A5CF5D3ED"); // Ed25519 group order Q
     BIGNUM* result = BN_new();
     BN_zero(result);
+    BN_CTX* ctx = BN_CTX_new();
     
-    // Lagrange interpolation
+    // Lagrange interpolation - evaluate polynomial at x=0
     for (size_t i = 0; i < shares.size(); i++) {
         BIGNUM* numerator = BN_new();
         BIGNUM* denominator = BN_new();
@@ -728,38 +750,59 @@ std::string ShamirSecretSharing::recover_secret(const std::vector<Share>& shares
         
         for (size_t j = 0; j < shares.size(); j++) {
             if (i != j) {
-                // Numerator: multiply by shares[j].x
-                BN_mul_word(numerator, shares[j].x);
+                // Numerator: multiply by -shares[j].x (since we evaluate at x=0)
+                // This is equivalent to multiplying by (0 - shares[j].x) = -shares[j].x
+                BIGNUM* neg_xj = BN_new();
+                BN_set_word(neg_xj, shares[j].x);
+                BN_sub(neg_xj, prime, neg_xj); // neg_xj = prime - shares[j].x (mod prime)
+                BN_mod_mul(numerator, numerator, neg_xj, prime, ctx);
+                BN_free(neg_xj);
                 
-                // Denominator: multiply by (shares[j].x - shares[i].x)
+                // Denominator: multiply by (shares[i].x - shares[j].x)
+                BIGNUM* xi = BN_new();
+                BIGNUM* xj = BN_new();
                 BIGNUM* diff = BN_new();
-                if (shares[j].x >= shares[i].x) {
-                    BN_set_word(diff, shares[j].x - shares[i].x);
-                } else {
-                    // Handle negative difference: compute prime - (shares[i].x - shares[j].x)
+                BN_set_word(xi, shares[i].x);
+                BN_set_word(xj, shares[j].x);
+                
+                // Compute xi - xj mod prime
+                if (shares[i].x >= shares[j].x) {
                     BN_set_word(diff, shares[i].x - shares[j].x);
-                    BIGNUM* temp = BN_dup(prime);
-                    BN_sub(temp, temp, diff);
-                    BN_copy(diff, temp);
-                    BN_free(temp);
+                } else {
+                    // Handle negative difference: compute prime - (xj - xi)
+                    BN_set_word(diff, shares[j].x - shares[i].x);
+                    BN_sub(diff, prime, diff);
                 }
                 
-                BN_mul(denominator, denominator, diff, BN_CTX_new());
+                BN_mod_mul(denominator, denominator, diff, prime, ctx);
+                BN_free(xi);
+                BN_free(xj);
                 BN_free(diff);
             }
         }
         
-        // Modular inverse
+        // Compute Lagrange coefficient: numerator / denominator mod prime
         BIGNUM* inv = BN_new();
-        BN_mod_inverse(inv, denominator, prime, BN_CTX_new());
+        if (BN_mod_inverse(inv, denominator, prime, ctx) == NULL) {
+            // Denominator is zero, which shouldn't happen with distinct x values
+            BN_free(numerator);
+            BN_free(denominator);
+            BN_free(inv);
+            BN_free(result);
+            BN_free(prime);
+            BN_CTX_free(ctx);
+            throw OpenADPError("Failed to compute modular inverse in Lagrange interpolation");
+        }
         
         BIGNUM* lagrange = BN_new();
-        BN_mul(lagrange, numerator, inv, BN_CTX_new());
-        BN_mod(lagrange, lagrange, prime, BN_CTX_new());
+        BN_mod_mul(lagrange, numerator, inv, prime, ctx);
         
+        // Multiply by the y-value of this share
         BIGNUM* y = hex_to_bn(shares[i].y);
-        BN_mul(lagrange, lagrange, y, BN_CTX_new());
-        BN_add(result, result, lagrange);
+        BN_mod_mul(lagrange, lagrange, y, prime, ctx);
+        
+        // Add to result
+        BN_mod_add(result, result, lagrange, prime, ctx);
         
         BN_free(numerator);
         BN_free(denominator);
@@ -768,11 +811,11 @@ std::string ShamirSecretSharing::recover_secret(const std::vector<Share>& shares
         BN_free(y);
     }
     
-    BN_mod(result, result, prime, BN_CTX_new());
     std::string secret_hex = bn_to_hex(result);
     
     BN_free(result);
     BN_free(prime);
+    BN_CTX_free(ctx);
     
     return secret_hex;
 }

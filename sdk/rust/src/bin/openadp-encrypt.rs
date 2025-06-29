@@ -1,12 +1,11 @@
 use clap::Parser;
-use openadp_ocrypt::{GenerateEncryptionKeyResult, Identity, ServerInfo, get_servers, get_fallback_server_info, OpenADPClient};
+use openadp_ocrypt::{Identity, ServerInfo, get_servers, get_fallback_server_info, OpenADPClient};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{self, Write};
 use std::process;
 use std::path::Path;
 use aes_gcm::{Aes256Gcm, Key, Nonce, KeyInit};
-use aes_gcm::aead::Aead;
 use rand::RngCore;
 use std::collections::HashMap;
 

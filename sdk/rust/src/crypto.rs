@@ -16,7 +16,6 @@ use rand_core::{OsRng, RngCore};
 use rug::{Integer, Complete};
 use num_bigint::BigUint;
 use num_traits::{Zero, One};
-use hex;
 
 // Ed25519 curve parameters (matching Go implementation)
 lazy_static::lazy_static! {
@@ -324,12 +323,8 @@ pub fn prefixed(data: &[u8]) -> Vec<u8> {
     result
 }
 
-/// Reverse bytes for little-endian conversion
-fn reverse_bytes(data: &[u8]) -> Vec<u8> {
-    data.iter().rev().copied().collect()
-}
-
 /// Hash-to-point function H (matching Go H function exactly)
+#[allow(non_snake_case)]
 pub fn H(uid: &[u8], did: &[u8], bid: &[u8], pin: &[u8]) -> Result<Point4D> {
     // Concatenate all inputs with length prefixes (matching Go implementation)
     let mut data = prefixed(uid);
@@ -616,6 +611,7 @@ pub fn recover_point_secret(point_shares: Vec<PointShare>) -> Result<Point4D> {
 pub struct Ed25519;
 
 impl Ed25519 {
+    #[allow(non_snake_case)]
     pub fn H(uid: &[u8], did: &[u8], bid: &[u8], pin: &[u8]) -> Result<Point4D> {
         H(uid, did, bid, pin)
     }

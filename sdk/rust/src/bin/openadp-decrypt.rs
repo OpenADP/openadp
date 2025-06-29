@@ -1,15 +1,13 @@
 use clap::Parser;
-use openadp_ocrypt::{RecoverEncryptionKeyResult, Identity, ServerInfo, get_servers, get_fallback_server_info, OpenADPClient, AuthCodes};
+use openadp_ocrypt::{Identity, ServerInfo, get_servers, get_fallback_server_info, OpenADPClient, AuthCodes};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{self, Write};
 use std::process;
 use std::path::Path;
 use aes_gcm::{Aes256Gcm, Key, Nonce, KeyInit};
-use aes_gcm::aead::Aead;
 use std::collections::HashMap;
 use sha2::{Sha256, Digest};
-use hex;
 
 const VERSION: &str = "0.1.2";
 const NONCE_SIZE: usize = 12; // AES-GCM nonce size

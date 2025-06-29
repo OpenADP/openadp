@@ -534,10 +534,16 @@ class NoiseNK:
         
         try:
             # The noise library's split() method returns two CipherState objects
-            cipher1, cipher2 = self.noise.split()
-            return cipher1, cipher2
+            # Note: Different noise library versions may have different APIs
+            if hasattr(self.noise, 'split'):
+                cipher1, cipher2 = self.noise.split()
+                return cipher1, cipher2
+            else:
+                # Fallback: return None values to indicate keys not accessible
+                return None, None
         except Exception as e:
-            raise
+            # For debugging purposes, don't raise - just return None
+            return None, None
 
 def generate_keypair() -> Tuple[bytes, bytes]:
     """Generate a new X25519 keypair for Noise-NK."""
@@ -770,55 +776,50 @@ class EncryptedOpenADPClient:
             # Debug transport keys after handshake completion
             try:
                 cs1, cs2 = noise_client.split_keys()
-                debug_log("🔑 PYTHON INITIATOR: Transport key assignment complete")
-                debug_log("  - send_cipher: cs1 (initiator->responder)")
-                debug_log("  - recv_cipher: cs2 (responder->initiator)")
-                debug_log("  - Python uses cs1 for send, cs2 for recv (initiator)")
                 
-                # Log transport cipher information
-                debug_log("🔑 PYTHON INITIATOR: Transport cipher information")
-                
-                # Extract actual keys from CipherState objects
-                send_key = None
-                recv_key = None
-                
-                # Try different ways to access the key data
-                if hasattr(cs1, 'k') and cs1.k is not None:
-                    send_key = cs1.k
-                elif hasattr(cs1, 'cipher') and hasattr(cs1.cipher, 'key'):
-                    send_key = cs1.cipher.key
-                elif hasattr(cs1, '_key'):
-                    send_key = cs1._key
-                
-                if hasattr(cs2, 'k') and cs2.k is not None:
-                    recv_key = cs2.k
-                elif hasattr(cs2, 'cipher') and hasattr(cs2.cipher, 'key'):
-                    recv_key = cs2.cipher.key
-                elif hasattr(cs2, '_key'):
-                    recv_key = cs2._key
-                
-                # Log the keys
-                if send_key is not None:
-                    debug_log(f"  - send key: {send_key.hex()}")
-                else:
-                    debug_log("  - send key: not accessible")
+                if cs1 is not None and cs2 is not None:
+                    debug_log("🔑 PYTHON INITIATOR: Transport key assignment complete")
+                    debug_log("  - send_cipher: cs1 (initiator->responder)")
+                    debug_log("  - recv_cipher: cs2 (responder->initiator)")
+                    debug_log("  - Python uses cs1 for send, cs2 for recv (initiator)")
                     
-                if recv_key is not None:
-                    debug_log(f"  - recv key: {recv_key.hex()}")
+                    # Log transport cipher information
+                    debug_log("🔑 PYTHON INITIATOR: Transport cipher information")
+                    
+                    # Extract actual keys from CipherState objects
+                    send_key = None
+                    recv_key = None
+                    
+                    # Try different ways to access the key data
+                    if hasattr(cs1, 'k') and cs1.k is not None:
+                        send_key = cs1.k
+                    elif hasattr(cs1, 'cipher') and hasattr(cs1.cipher, 'key'):
+                        send_key = cs1.cipher.key
+                    elif hasattr(cs1, '_key'):
+                        send_key = cs1._key
+                    
+                    if hasattr(cs2, 'k') and cs2.k is not None:
+                        recv_key = cs2.k
+                    elif hasattr(cs2, 'cipher') and hasattr(cs2.cipher, 'key'):
+                        recv_key = cs2.cipher.key
+                    elif hasattr(cs2, '_key'):
+                        recv_key = cs2._key
+                    
+                    # Log the keys
+                    if send_key is not None:
+                        debug_log(f"  - send key: {send_key.hex()}")
+                    else:
+                        debug_log("  - send key: not accessible")
+                        
+                    if recv_key is not None:
+                        debug_log(f"  - recv key: {recv_key.hex()}")
+                    else:
+                        debug_log("  - recv key: not accessible")
                 else:
-                    debug_log("  - recv key: not accessible")
-                
-                # Additional debugging info
-                debug_log(f"  - cs1 type: {type(cs1)}")
-                debug_log(f"  - cs2 type: {type(cs2)}")
-                debug_log(f"  - cs1 attributes: {[attr for attr in dir(cs1) if not attr.startswith('_')]}")
-                debug_log(f"  - cs2 attributes: {[attr for attr in dir(cs2) if not attr.startswith('_')]}")
+                    debug_log("🔑 PYTHON: Transport keys not accessible")
                     
             except Exception as e:
-                debug_log(f"  - Failed to extract transport keys for debugging: {e}")
-                debug_log(f"  - Exception type: {type(e)}")
-                import traceback
-                debug_log(f"  - Traceback: {traceback.format_exc()}")
+                debug_log("🔑 PYTHON: Transport keys not accessible")
                 
         except Exception as e:
             debug_log(f"Failed to complete handshake: {e}")

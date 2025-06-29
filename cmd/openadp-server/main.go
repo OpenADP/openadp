@@ -326,75 +326,31 @@ func (s *Server) handleRegisterSecret(params []interface{}) (interface{}, error)
 		return nil, fmt.Errorf("y must be a string")
 	}
 
-	// Try to decode Y coordinate - support both decimal string and base64 formats
+	// Y coordinate must be base64-encoded 32-byte little-endian format (per API spec)
 	var y []byte
 	var err error
-
-	// First try parsing as decimal integer (openadp.org compatible format)
-	// Check if the string looks like a decimal number (all digits)
-	isDecimal := true
-	for _, b := range []byte(yStr) {
-		if b < '0' || b > '9' {
-			isDecimal = false
-			break
-		}
+	y, err = base64.StdEncoding.DecodeString(yStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid y coordinate: must be valid base64 encoding")
 	}
 
-	if isDecimal {
-		yInt := new(big.Int)
-		yInt, ok := yInt.SetString(yStr, 10)
-		if ok {
-			// Validate that Y is within valid range (< P, the prime modulus)
-			if yInt.Cmp(common.P) >= 0 {
-				return nil, fmt.Errorf("invalid y coordinate: value must be less than prime modulus P")
-			}
-
-			// Convert big integer to little-endian bytes (to match Python server)
-			// Use fixed 32-byte length like Python server: y_int.to_bytes(32, "little")
-			y = make([]byte, 32)
-
-			// Get big-endian bytes and reverse to little-endian
-			bigEndianBytes := yInt.Bytes()
-
-			// Copy in reverse order to convert big-endian to little-endian
-			// Start from the least significant byte (rightmost in big-endian)
-			for i, b := range bigEndianBytes {
-				if len(bigEndianBytes)-1-i < 32 {
-					y[len(bigEndianBytes)-1-i] = b
-				}
-			}
-		} else {
-			isDecimal = false
-		}
+	// Validate that we got exactly 32 bytes (per API spec)
+	if len(y) != 32 {
+		return nil, fmt.Errorf("invalid y coordinate: base64 must decode to exactly 32 bytes, got %d", len(y))
 	}
 
-	// If decimal parsing failed or string doesn't look decimal, try base64
-	if !isDecimal {
-		y, err = base64.StdEncoding.DecodeString(yStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid y coordinate: not valid decimal integer or base64")
-		}
-
-		// Validate that we got exactly 32 bytes (per API spec)
-		if len(y) != 32 {
-			return nil, fmt.Errorf("invalid y coordinate: base64 must decode to exactly 32 bytes, got %d", len(y))
-		}
-
-		// Validate base64 decoded values
-		// Note: y is in little-endian format (per API spec), so we need to convert it
-		// to big-endian for SetBytes validation by reversing the bytes
-		yBytes := make([]byte, len(y))
-		copy(yBytes, y)
-		// Reverse bytes to convert from little-endian to big-endian for SetBytes
-		for i, j := 0, len(yBytes)-1; i < j; i, j = i+1, j-1 {
-			yBytes[i], yBytes[j] = yBytes[j], yBytes[i]
-		}
-		yInt := new(big.Int).SetBytes(yBytes)
-		if yInt.Cmp(common.Q) >= 0 {
-			return nil, fmt.Errorf("invalid y coordinate: value must be less than group order Q")
-		}
-
-		// Note: y is kept in little-endian format for storage (as received from client)
+	// Validate that the decoded value is within valid range (< Q, the group order)
+	// Note: y is in little-endian format (per API spec), so we need to convert it
+	// to big-endian for SetBytes validation by reversing the bytes
+	yBytes := make([]byte, len(y))
+	copy(yBytes, y)
+	// Reverse bytes to convert from little-endian to big-endian for SetBytes
+	for i, j := 0, len(yBytes)-1; i < j; i, j = i+1, j-1 {
+		yBytes[i], yBytes[j] = yBytes[j], yBytes[i]
+	}
+	yInt := new(big.Int).SetBytes(yBytes)
+	if yInt.Cmp(common.Q) >= 0 {
+		return nil, fmt.Errorf("invalid y coordinate: value must be less than group order Q")
 	}
 
 	maxGuessesFloat, ok := params[7].(float64)
@@ -411,8 +367,8 @@ func (s *Server) handleRegisterSecret(params []interface{}) (interface{}, error)
 
 	// Debug: Print what we're storing
 	// Convert little-endian bytes back to correct decimal value for logging
-	yInt := new(big.Int)
-	yBytes := make([]byte, len(y))
+	yInt.SetBytes([]byte{}) // Reset the existing yInt
+	yBytes = make([]byte, len(y))
 	copy(yBytes, y)
 	// Reverse bytes to convert from little-endian to big-endian for SetBytes
 	for i, j := 0, len(yBytes)-1; i < j; i, j = i+1, j-1 {

@@ -289,14 +289,22 @@ export async function generateEncryptionKey(
             const [x, y] = shares[i];
             const authCode = authCodes.serverAuthCodes[serverUrl];
             
-            // Convert Y coordinate to decimal string format (matches Python/Go implementations)
+            // Convert Y coordinate to base64-encoded 32-byte little-endian format (per API spec)
             // Y is the Shamir share Y coordinate, not an elliptic curve point
-            // Send as decimal string to match server expectations (no scientific notation)
-            const yString = y.toString(); // y is already BigInt
-            
-            // Debug: Show what we're sending
             const yBig = y; // y is already BigInt
             
+            // Convert BigInt to 32-byte little-endian array
+            const yBytes = new Uint8Array(32);
+            let yTemp = yBig;
+            for (let byteIdx = 0; byteIdx < 32; byteIdx++) {
+                yBytes[byteIdx] = Number(yTemp & 0xFFn);
+                yTemp = yTemp >> 8n;
+            }
+            
+            // Encode as base64
+            const yString = Buffer.from(yBytes).toString('base64');
+            
+            // Debug: Show what we're sending
             // Convert BigInt to hex string properly (big-endian)
             let yHex = yBig.toString(16).padStart(64, '0'); // 32 bytes = 64 hex chars
             

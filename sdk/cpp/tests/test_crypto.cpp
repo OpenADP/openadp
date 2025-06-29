@@ -194,8 +194,8 @@ TEST_F(CryptoTest, Ed25519CompressDecompress) {
 
 // Test Shamir Secret Sharing
 TEST_F(CryptoTest, ShamirSecretSharing) {
-    // Use a simple secret for testing
-    std::string secret = "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
+    // Use a small secret that's definitely within the Ed25519 group order Q
+    std::string secret = "deadbeefcafebabe1234567890abcdef";
     
     auto shares = crypto::ShamirSecretSharing::split_secret(secret, 3, 5);
     EXPECT_EQ(shares.size(), 5);
@@ -489,10 +489,10 @@ TEST_F(CryptoTest, Ed25519PointOperations) {
 
 // Test point secret sharing
 TEST_F(CryptoTest, PointSecretSharing) {
-    // Create a test point
+    // Create a test point with coordinates within the Ed25519 group order Q
     Point2D point;
-    point.x = "deadbeefcafebabe1234567890abcdef0123456789abcdef0123456789abcdef";
-    point.y = "0123456789abcdefdeadbeefcafebabe0123456789abcdefdeadbeefcafebabe";
+    point.x = "deadbeefcafebabe1234567890abcdef";
+    point.y = "0123456789abcdefdeadbeefcafebabe";
     
     // Split point into shares
     auto shares = crypto::PointSecretSharing::split_point(point, 2, 3);

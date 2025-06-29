@@ -56,14 +56,15 @@ def get_deterministic_main_secret() -> str:
     This is a fixed large value that properly exercises the cryptographic operations.
     
     Returns the same value as Go and C++ implementations:
-    0x23456789abcdef0fedcba9876543220ffd555c99f7c5421aa6ca577e195e5e23
+    0x023456789abcdef0fedcba9876543220ffd555c99f7c5421aa6ca577e195e5e23
     """
     if not _debug_mode:
         raise RuntimeError("get_deterministic_main_secret called outside debug mode")
     
     # Use the same large deterministic constant as Go and C++ implementations
     # This is the hex pattern reduced modulo Ed25519 group order q
-    deterministic_secret = "23456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23"
+    # 64 characters (even length) for consistent hex parsing across all SDKs
+    deterministic_secret = "023456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23"
     
     debug_log(f"Using deterministic main secret r = 0x{deterministic_secret}")
     return deterministic_secret

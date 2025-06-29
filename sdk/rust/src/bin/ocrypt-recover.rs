@@ -2,7 +2,6 @@ use clap::Parser;
 use openadp_ocrypt::recover;
 use serde_json::json;
 use std::fs;
-use std::io::{self, Write};
 use std::process;
 
 #[derive(Parser)]

@@ -40,9 +40,10 @@ std::string get_deterministic_main_secret() {
         throw std::runtime_error("get_deterministic_main_secret called outside debug mode");
     }
     
-    // Use the same large deterministic constant as Python and Go implementations
+    // Use the same large deterministic constant as Python/Go/JavaScript implementations
     // This is the hex pattern reduced modulo Ed25519 group order q
-    std::string deterministic_secret = "23456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e230";
+    // 64 characters (even length) for consistent hex parsing across all SDKs
+    std::string deterministic_secret = "023456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23";
     
     debug_log("Using deterministic main secret r = 0x" + deterministic_secret);
     return deterministic_secret;
@@ -83,15 +84,25 @@ std::string get_deterministic_random_hex(size_t length) {
     
     // Generate deterministic hex string with C++ prefix to avoid session ID conflicts
     // Use 'C' (0x43) as first byte to make C++ session IDs unique from Python/Go
-    ss << "43"; // 'C' in hex
+    ss << "43"; // 'C' in hex - this is 2 characters
     
-    // Generate the rest of the hex string
-    for (size_t i = 2; i < length; i++) {
-        ss << std::hex << std::setfill('0') << std::setw(2) 
-           << ((deterministic_counter + i) % 256);
+    // Generate the rest of the hex string, ensuring we always produce exactly 'length' characters
+    for (size_t i = 2; i < length; i += 2) {
+        // Generate a full byte (2 hex chars) at a time
+        int byte_val = (deterministic_counter + i) % 256;
+        ss << std::hex << std::setfill('0') << std::setw(2) << byte_val;
     }
     
-    std::string result = ss.str().substr(0, length);
+    std::string result = ss.str();
+    
+    // Ensure we have exactly the requested length
+    if (result.length() > length) {
+        result = result.substr(0, length);
+    } else if (result.length() < length) {
+        // Pad with zeros if needed
+        result += std::string(length - result.length(), '0');
+    }
+    
     debug_log("Generated deterministic hex (" + std::to_string(length) + " chars): " + result);
     return result;
 }

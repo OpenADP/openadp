@@ -23,7 +23,7 @@ use crate::client::{
 };
 use crate::crypto::{
     H, point_compress, ShamirSecretSharing, point_decompress, unexpand, point_mul, 
-    derive_enc_key, recover_point_secret, PointShare, expand, mod_inverse
+    derive_enc_key, recover_point_secret, PointShare, mod_inverse
 };
 
 /// Identity represents the three-part key for OpenADP: (UID, DID, BID)
@@ -172,7 +172,7 @@ pub async fn generate_encryption_key(
         let public_key = if !server_info.public_key.is_empty() {
             match parse_server_public_key(&server_info.public_key) {
                 Ok(key) => Some(key),
-                Err(e) => {
+                Err(_) => {
                     None
                 }
             }
@@ -180,7 +180,7 @@ pub async fn generate_encryption_key(
             None
         };
         
-        let mut client = EncryptedOpenADPClient::new(server_info.url.clone(), public_key, 30);
+        let client = EncryptedOpenADPClient::new(server_info.url.clone(), public_key, 30);
         
         // Test server connectivity
         match client.test_connection().await {
@@ -188,7 +188,7 @@ pub async fn generate_encryption_key(
                 clients.push(client);
                 live_server_infos.push(server_info);
             }
-            Err(e) => {
+            Err(_) => {
             }
         }
     }
@@ -225,7 +225,7 @@ pub async fn generate_encryption_key(
     
     // Step 6: Compute U = H(uid, did, bid, pin)
     let u = H(identity.uid.as_bytes(), identity.did.as_bytes(), identity.bid.as_bytes(), &pin)?;
-    let u_2d = unexpand(&u)?;
+    let _u_2d = unexpand(&u)?;
     
     // Step 7: Register shares with servers
     
@@ -238,8 +238,17 @@ pub async fn generate_encryption_key(
         let server_auth_code = auth_codes.get_server_code(server_url)
             .ok_or_else(|| OpenADPError::Authentication("Missing server auth code".to_string()))?;
         
-        // Convert share Y to string (server expects integer, not base64) - matching Go implementation
-        let y_string = share_data.to_string();
+        // Convert share Y to base64-encoded 32-byte little-endian format (per API spec)
+        let y_big_int = rug::Integer::from(share_data);
+        
+        // Convert to 32-byte little-endian array
+        let mut y_bytes = vec![0u8; 32];
+        let y_digits = y_big_int.to_digits::<u8>(rug::integer::Order::LsfLe);
+        let copy_len = std::cmp::min(y_digits.len(), 32);
+        y_bytes[..copy_len].copy_from_slice(&y_digits[..copy_len]);
+        
+        // Encode as base64
+        let y_string = BASE64.encode(&y_bytes);
         
         let request = RegisterSecretRequest {
             auth_code: server_auth_code.clone(),
@@ -258,7 +267,7 @@ pub async fn generate_encryption_key(
         match client.register_secret_standardized(request).await {
             Ok(response) => {
                 if response.success {
-                    let enc_status = if client.has_public_key() { "encrypted" } else { "unencrypted" };
+                    let _enc_status = if client.has_public_key() { "encrypted" } else { "unencrypted" };
                     successful_registrations += 1;
                 } else {
                     let error_msg = format!("Server {} ({}): Registration returned false: {}", 
@@ -266,8 +275,8 @@ pub async fn generate_encryption_key(
                     registration_errors.push(error_msg);
                 }
             }
-            Err(e) => {
-                let error_msg = format!("Server {} ({}): {}", i + 1, server_url, e);
+            Err(err) => {
+                let error_msg = format!("Server {} ({}): {}", i + 1, server_url, err);
                 registration_errors.push(error_msg);
             }
         }
@@ -311,7 +320,7 @@ pub async fn recover_encryption_key(
     // Step 1: Compute U = H(uid, did, bid, pin) - same as in generation
     let pin = password.as_bytes().to_vec();
     let u = H(identity.uid.as_bytes(), identity.did.as_bytes(), identity.bid.as_bytes(), &pin)?;
-    let u_2d = unexpand(&u)?;
+    let _u_2d = unexpand(&u)?;
     
     // Step 1.5: Compute r scalar for blinding
     let r_scalar = {
@@ -373,7 +382,7 @@ pub async fn recover_encryption_key(
     
     // Step 3: Compute B = r * U  
     let b = point_mul(&r_scalar, &u);
-    let b_2d = unexpand(&b)?;
+    let _b_2d = unexpand(&b)?;
     
     // Compress B for transmission
     let b_compressed = point_compress(&b)?;
@@ -387,7 +396,7 @@ pub async fn recover_encryption_key(
         let public_key = if !server_info.public_key.is_empty() {
             match parse_server_public_key(&server_info.public_key) {
                 Ok(key) => Some(key),
-                Err(e) => {
+                Err(_) => {
                     None
                 }
             }
@@ -422,8 +431,8 @@ pub async fn recover_encryption_key(
                     }
                 }
             }
-            Err(e) => {
-                return Err(OpenADPError::Server(format!("Cannot get current guess number for idempotency: {}", e)));
+            Err(err) => {
+                return Err(OpenADPError::Server(format!("Cannot get current guess number for idempotency: {}", err)));
             }
         }
         
@@ -463,20 +472,14 @@ pub async fn recover_encryption_key(
                             Ok(si_b_bytes) => {
                                 
                                 // Decompress the point
-                                match point_decompress(&si_b_bytes) {
-                                    Ok(si_b_point) => {
-                                        let si_b_2d = unexpand(&si_b_point)?;
-                                        
-                                        // Add to point shares for Lagrange interpolation
-                                        recovered_point_shares.push(PointShare::new(response.x as usize, si_b_point));
-                                    }
-                                    Err(e) => {
-                                        return Err(e);
-                                    }
-                                }
+                                let si_b_point = point_decompress(&si_b_bytes)?;
+                                let _si_b_2d = unexpand(&si_b_point)?;
+                                
+                                // Add to point shares for Lagrange interpolation
+                                recovered_point_shares.push(PointShare::new(response.x as usize, si_b_point));
                             }
                             Err(e) => {
-                                return Err(OpenADPError::Crypto(format!("Base64 decode error: {}", e)));
+                                return Err(OpenADPError::Crypto(format!("Failed to decompress point: {}", e)));
                             }
                         }
                     } else {
@@ -486,35 +489,33 @@ pub async fn recover_encryption_key(
                     return Err(OpenADPError::Server(format!("Server error: {}", response.message)));
                 }
             }
-            Err(e) => {
-                return Err(e);
+            Err(err) => {
+                return Err(OpenADPError::Server(format!("Cannot recover secret: {}", err)));
             }
         }
     }
     
     // Step 5: Check if we have enough shares
     if recovered_point_shares.len() < threshold {
-        return Err(OpenADPError::SecretSharing(format!(
+        return Ok(RecoverEncryptionKeyResult::error(format!(
             "Not enough shares recovered: got {}, need {}", 
             recovered_point_shares.len(), threshold
         )));
     }
     
     
-    // Step 6: Reconstruct the secret point using Lagrange interpolation
+    // Step 6: Recover the secret point s*U using Lagrange interpolation
     let recovered_sb_4d = recover_point_secret(recovered_point_shares)?;
-    let recovered_sb_2d = unexpand(&recovered_sb_4d)?;
+    let _recovered_sb_2d = unexpand(&recovered_sb_4d)?;
     
-    // Step 7: Compute original secret point: s*U = (s*b) / r = (s*b) * r^(-1)
-    let q = crate::crypto::Q.clone();
-    let r_inv = mod_inverse(&r_scalar, &q);
+    // Step 7: Compute r^-1 mod q 
+    let r_inv = mod_inverse(&r_scalar, &crate::crypto::Q.clone());
     
-    // Apply r^-1 to unblind: s*U = r^-1 * (s*B)
+    // Step 8: Compute s*U = r^-1 * (s*r*U) = r^-1 * recovered_sb_4d
     let original_su = point_mul(&r_inv, &recovered_sb_4d);
+    let _original_su_2d = unexpand(&original_su)?;
     
-    let original_su_2d = unexpand(&original_su)?;
-    
-    // Step 8: Derive encryption key from the recovered secret point
+    // Step 9: Derive encryption key from the recovered secret point
     let encryption_key = derive_enc_key(&original_su)?;
     
     
@@ -535,7 +536,7 @@ pub async fn fetch_remaining_guesses_for_servers(
         let public_key = if !server_info.public_key.is_empty() {
             match parse_server_public_key(&server_info.public_key) {
                 Ok(key) => Some(key),
-                Err(e) => {
+                Err(_) => {
                     None
                 }
             }
@@ -568,7 +569,7 @@ pub async fn fetch_remaining_guesses_for_servers(
                     updated_info.remaining_guesses = Some(0);
                 }
             }
-            Err(e) => {
+            Err(_) => {
                 updated_info.remaining_guesses = Some(0);
             }
         }
@@ -614,8 +615,8 @@ pub fn select_servers_by_remaining_guesses(
     let num_to_select = std::cmp::min(available_servers.len(), threshold + 2);
     let selected_servers = available_servers.into_iter().take(num_to_select).collect::<Vec<_>>();
     
-    for (i, server) in selected_servers.iter().enumerate() {
-        let guesses_str = if server.remaining_guesses.unwrap_or(-1) == -1 {
+    for (_, server) in selected_servers.iter().enumerate() {
+        let _guesses_str = if server.remaining_guesses.unwrap_or(-1) == -1 {
             "unknown".to_string()
         } else {
             server.remaining_guesses.unwrap_or(0).to_string()

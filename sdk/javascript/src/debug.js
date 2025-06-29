@@ -45,7 +45,7 @@ export function debugLog(message) {
  * This is a fixed large value that properly exercises the cryptographic operations.
  * 
  * Returns the same value as Go, Python, and C++ implementations:
- * 0x23456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23
+ * 0x023456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23
  */
 export function getDeterministicMainSecret() {
     if (!debugMode) {
@@ -53,8 +53,9 @@ export function getDeterministicMainSecret() {
     }
     
     // Use the same large deterministic constant as other implementations
-    // This is the hex pattern that matches Python/Go/C++ (63 characters, not 64)
-    const deterministicSecret = "23456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23";
+    // This is the hex pattern that matches Python/Go/C++ (64 characters, even length)
+    // 64 characters (even length) for consistent hex parsing across all SDKs
+    const deterministicSecret = "023456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23";
     
     debugLog(`Using deterministic main secret r = 0x${deterministicSecret}`);
     return deterministicSecret;

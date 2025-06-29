@@ -217,9 +217,9 @@ func TestEdgeCaseValues(t *testing.T) {
 	}{
 		{big.NewInt(0), "zero value", true},
 		{big.NewInt(1), "minimum positive", true},
-		{new(big.Int).Sub(common.P, big.NewInt(1)), "maximum valid (P-1)", true},
-		{common.P, "exactly P (should fail)", false},
-		{new(big.Int).Add(common.P, big.NewInt(1)), "P+1 (should fail)", false},
+		{new(big.Int).Sub(common.Q, big.NewInt(1)), "maximum valid (Q-1)", true},
+		{common.Q, "exactly Q (should fail)", false},
+		{new(big.Int).Add(common.Q, big.NewInt(1)), "Q+1 (should fail)", false},
 	}
 
 	for i, tc := range edgeCases {

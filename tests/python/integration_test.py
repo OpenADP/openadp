@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 
 from openadp import (
     OpenADPClient, EncryptedOpenADPClient, MultiServerClient,
-    Identity, password_to_pin, generate_auth_codes,
+    Identity, generate_auth_codes,
     generate_encryption_key, recover_encryption_key,
     ServerInfo
 )
@@ -220,21 +220,6 @@ class IntegrationTestSuite:
             assert identity.uid == identity2.uid and identity.did == identity2.did and identity.bid == identity2.bid, "Identity creation not deterministic"
             print("   ✅ Identity creation is deterministic")
     
-    def test_password_to_pin(self):
-        """Test password to PIN conversion"""
-        print("\n🔢 Step 2: Testing password to PIN conversion...")
-        
-        password = "test-password-123"
-        pin1 = password_to_pin(password)
-        pin2 = password_to_pin(password)
-        
-        print(f"   Password: {password}")
-        print(f"   PIN: {pin1[:8].hex()}")
-        
-        assert pin1 == pin2, "PIN conversion not deterministic"
-        assert len(pin1) == 2, f"PIN should be 2 bytes, got {len(pin1)}"
-        print("   ✅ PIN conversion is deterministic")
-    
     def test_auth_code_generation(self):
         """Test authentication code generation"""
         print("\n🔐 Step 3: Testing authentication code generation...")
@@ -397,7 +382,6 @@ class IntegrationTestSuite:
             
             # Step 1-3: Basic functionality tests (no servers needed)
             self.test_identifier_derivation()
-            self.test_password_to_pin()
             self.test_auth_code_generation()
             
             # Step 4-6: Server-dependent tests

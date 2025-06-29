@@ -6,6 +6,7 @@
 #include "openadp/debug.hpp"
 #include <chrono>
 #include <algorithm>
+#include <openssl/bn.h>
 
 namespace openadp {
 namespace keygen {
@@ -102,9 +103,9 @@ GenerateEncryptionKeyResult generate_encryption_key(
         // Generate deterministic main secret in debug mode
         std::string secret_hex;
         if (debug::is_debug_mode_enabled()) {
-            // Use the same deterministic secret as Python/Go
-            secret_hex = "23456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e230";
-            debug::debug_log("Using deterministic main secret r = 0x23456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23");
+            // Use the same deterministic secret as Python/Go/JavaScript (64 characters)
+            secret_hex = "023456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23";
+            debug::debug_log("Using deterministic main secret r = 0x023456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23");
         } else {
             // Generate random secret
             secret_hex = utils::random_hex(32); // 32 bytes = 64 hex chars
@@ -125,7 +126,6 @@ GenerateEncryptionKeyResult generate_encryption_key(
         
         // Debug: Show auth codes
         if (debug::is_debug_mode_enabled()) {
-            debug::debug_log("Generated base auth code: " + base_auth_code);
             for (const auto& server_auth : auth_codes.server_auth_codes) {
                 debug::debug_log("Auth code for server " + server_auth.first + ": " + server_auth.second);
             }
@@ -134,25 +134,68 @@ GenerateEncryptionKeyResult generate_encryption_key(
         // Implement proper Shamir Secret Sharing (replacing scalar approach)
         // Use simpler approach matching Python/Go debug values for now
         if (debug::is_debug_mode_enabled()) {
-            debug::debug_log("Using deterministic secret: 0x" + secret_hex);
+            // Get the actual deterministic secret from debug module for consistency
+            std::string debug_secret_hex = debug::get_deterministic_main_secret();
+            debug::debug_log("Using deterministic secret: 0x" + debug_secret_hex);
+            
+            // Convert hex secret to decimal for logging (to match other SDKs)
+            BIGNUM* secret_bn = BN_new();
+            BN_hex2bn(&secret_bn, debug_secret_hex.c_str());
+            char* secret_decimal = BN_bn2dec(secret_bn);
+            debug::debug_log("Secret (decimal): " + std::string(secret_decimal));
+            
             debug::debug_log("Computed U point for identity: UID=" + identity.uid + 
                             ", DID=" + identity.did + ", BID=" + identity.bid);
             debug::debug_log("Computed S = secret * U");
             debug::debug_log("Splitting secret with threshold " + std::to_string(threshold) + 
                             ", num_shares " + std::to_string(num_shares));
             
-            // For debug mode, generate the same Y values as Python/Go
-            // Use the full 256-bit values to match Python/Go output exactly
-            std::string base_y_str = "9970985462102226925988234690218146098612018864044240922709192074716133369891";
-            debug::debug_log("Polynomial coefficient a0 (secret): " + base_y_str);
-            debug::debug_log("Using deterministic polynomial coefficient: 1");
-            debug::debug_log("Using deterministic polynomial coefficient a1: 1");
-            debug::debug_log("Polynomial coefficients: [" + base_y_str + ", 1]");
+            // Use the actual secret value for polynomial coefficient a0
+            debug::debug_log("Polynomial coefficient a0 (secret): " + std::string(secret_decimal));
             
-            // Generate the exact same Y values as Python/Go
-            debug::debug_log("Share 1: (x=1, y=9970985462102226925988234690218146098612018864044240922709192074716133369892)");
-            debug::debug_log("Share 2: (x=2, y=9970985462102226925988234690218146098612018864044240922709192074716133369893)");
+            // For proper Shamir secret sharing, implement polynomial evaluation
+            if (threshold == 1) {
+                // For 1-of-1 threshold, polynomial is degree 0: P(x) = secret
+                // So P(1) = secret (no additional coefficients needed)
+                debug::debug_log("Polynomial coefficients: [" + std::string(secret_decimal) + "]");
+                debug::debug_log("Share 1: (x=1, y=" + std::string(secret_decimal) + ")");
+            } else {
+                // For higher thresholds, use deterministic coefficients in debug mode
+                debug::debug_log("Using deterministic polynomial coefficient a1: 1");
+                debug::debug_log("Polynomial coefficients: [" + std::string(secret_decimal) + ", 1]");
+                
+                // Evaluate polynomial P(x) = a0 + a1*x for each share
+                BIGNUM* a0 = BN_dup(secret_bn);  // a0 = secret
+                BIGNUM* a1 = BN_new();
+                BN_set_word(a1, 1);  // a1 = 1 (deterministic)
+                
+                BN_CTX* ctx = BN_CTX_new();
+                for (int x = 1; x <= num_shares; x++) {
+                    // P(x) = a0 + a1*x
+                    BIGNUM* x_bn = BN_new();
+                    BIGNUM* y_bn = BN_new();
+                    BN_set_word(x_bn, x);
+                    
+                    // y = a0 + a1*x
+                    BN_mul(y_bn, a1, x_bn, ctx);
+                    BN_add(y_bn, y_bn, a0);
+                    
+                    char* y_decimal = BN_bn2dec(y_bn);
+                    debug::debug_log("Share " + std::to_string(x) + ": (x=" + std::to_string(x) + ", y=" + std::string(y_decimal) + ")");
+                    
+                    OPENSSL_free(y_decimal);
+                    BN_free(x_bn);
+                    BN_free(y_bn);
+                }
+                
+                BN_free(a0);
+                BN_free(a1);
+                BN_CTX_free(ctx);
+            }
             debug::debug_log("Generated " + std::to_string(num_shares) + " shares");
+            
+            OPENSSL_free(secret_decimal);
+            BN_free(secret_bn);
         }
         
         // Set expiration if not provided
@@ -183,17 +226,47 @@ GenerateEncryptionKeyResult generate_encryption_key(
                 // Generate Y coordinate for this share
                 std::string y_base64;
                 if (debug::is_debug_mode_enabled()) {
-                    // Use the exact base64-encoded Y coordinates from Python/Go debug output
-                    // to ensure cross-language consistency
-                    if (i == 0) {
-                        // For server 1 (x=1): share y=9970985462102226925988234690218146098612018864044240922709192074716133
-                        // Python/Go output: JF5eGX5XyqYaQsX3mVxV/Q8yVHaYutz+8N68mnhWNAI=
-                        y_base64 = "JF5eGX5XyqYaQsX3mVxV/Q8yVHaYutz+8N68mnhWNAI=";
+                    // Compute actual Shamir secret share for this server
+                    // Get the actual deterministic secret from debug module
+                    std::string debug_secret_hex = debug::get_deterministic_main_secret();
+                    BIGNUM* secret_bn = BN_new();
+                    BN_hex2bn(&secret_bn, debug_secret_hex.c_str());
+                    
+                    // Compute the actual share for this server using polynomial evaluation
+                    int x = static_cast<int>(i + 1);  // Server index (1-based)
+                    BIGNUM* y_bn = BN_new();
+                    
+                    if (threshold == 1) {
+                        // For 1-of-1 threshold: P(x) = secret, so y = secret
+                        BN_copy(y_bn, secret_bn);
                     } else {
-                        // For server 2 (x=2): share y=9970985462102226925988234690218146098612018864044240922709192074716133
-                        // Python/Go output: JV5eGX5XyqYaQsX3mVxV/Q8yVHaYutz+8N68mnhWNAI=
-                        y_base64 = "JV5eGX5XyqYaQsX3mVxV/Q8yVHaYutz+8N68mnhWNAI=";
+                        // For higher thresholds: P(x) = a0 + a1*x where a0=secret, a1=1
+                        BIGNUM* x_bn = BN_new();
+                        BN_set_word(x_bn, x);
+                        
+                        // y = secret + 1*x = secret + x
+                        BN_add(y_bn, secret_bn, x_bn);
+                        BN_free(x_bn);
                     }
+                    
+                    // Convert y to little-endian 32-byte array for base64 encoding
+                    Bytes y_bytes(32, 0);
+                    int y_size = BN_num_bytes(y_bn);
+                    if (y_size <= 32) {
+                        // Convert to big-endian first
+                        Bytes temp_bytes(y_size);
+                        BN_bn2bin(y_bn, temp_bytes.data());
+                        
+                        // Copy to 32-byte array (right-aligned) and reverse to little-endian
+                        std::copy(temp_bytes.begin(), temp_bytes.end(), 
+                                y_bytes.end() - temp_bytes.size());
+                        std::reverse(y_bytes.begin(), y_bytes.end());
+                    }
+                    
+                    y_base64 = utils::base64_encode(y_bytes);
+                    
+                    BN_free(secret_bn);
+                    BN_free(y_bn);
                 } else {
                     // For non-debug mode, use the secret_hex directly (temporary implementation)
                     Bytes secret_bytes = utils::hex_decode(secret_hex);

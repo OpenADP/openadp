@@ -1198,7 +1198,7 @@ impl MultiServerClient {
         // For now, just test existing servers
         let mut live_clients = Vec::new();
         
-        for mut client in self.clients.drain(..) {
+        for client in self.clients.drain(..) {
             if client.test_connection().await.is_ok() {
                 live_clients.push(client);
             }
