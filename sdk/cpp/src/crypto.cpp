@@ -853,8 +853,14 @@ Point2D PointSecretSharing::recover_point(const std::vector<PointShare>& shares)
 
 // Key derivation
 Bytes derive_encryption_key(const Point4D& point) {
+    // Use HKDF to derive 32-byte key (matches Python's derive_enc_key)
     Bytes point_bytes = Ed25519::compress(point);
-    return sha256_hash(point_bytes);
+    
+    // Use same salt and info as Python
+    Bytes salt = {0x4f, 0x70, 0x65, 0x6e, 0x41, 0x44, 0x50, 0x2d, 0x45, 0x6e, 0x63, 0x4b, 0x65, 0x79, 0x2d, 0x76, 0x31}; // "OpenADP-EncKey-v1"
+    Bytes info = {0x41, 0x45, 0x53, 0x2d, 0x32, 0x35, 0x36, 0x2d, 0x47, 0x43, 0x4d}; // "AES-256-GCM"
+    
+    return hkdf_derive(point_bytes, salt, info, 32);
 }
 
 // AES-GCM encryption

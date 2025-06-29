@@ -5,6 +5,7 @@
 #include <getopt.h>
 #include <termios.h>
 #include <unistd.h>
+#include <sstream>
 
 using namespace openadp;
 
@@ -105,7 +106,25 @@ std::string get_output_filename(const std::string& input_file) {
     return input_file + ".dec"; // fallback if no .enc extension
 }
 
-int main(int argc, char* argv[]) {
+// Get hostname for device identification (matching Python implementation)
+std::string get_hostname() {
+    char hostname[256];
+    if (gethostname(hostname, sizeof(hostname)) == 0) {
+        return std::string(hostname);
+    }
+    return "unknown";  // fallback if gethostname fails
+}
+
+// Extract basename from file path (matching Python's os.path.basename)
+std::string get_basename(const std::string& path) {
+    size_t last_slash = path.find_last_of("/\\");
+    if (last_slash == std::string::npos) {
+        return path;  // no path separator found, return the whole string
+    }
+    return path.substr(last_slash + 1);
+}
+
+int real_main(int argc, char* argv[]) {
     std::string input_file;
     std::string user_id;
     std::string password;
@@ -202,7 +221,7 @@ int main(int argc, char* argv[]) {
     }
     
     try {
-        // Read input file with embedded metadata (matching other SDKs)
+        // Read input file with embedded metadata (matching Python SDK format)
         Bytes file_data = utils::read_file(input_file);
         
         // Validate file size
@@ -231,7 +250,7 @@ int main(int argc, char* argv[]) {
         size_t nonce_start = metadata_end;
         size_t nonce_end = nonce_start + 12;
         
-        std::string metadata_str(file_data.begin() + metadata_start, file_data.begin() + metadata_end);
+        std::string clean_metadata_str(file_data.begin() + metadata_start, file_data.begin() + metadata_end);
         Bytes nonce(file_data.begin() + nonce_start, file_data.begin() + nonce_end);
         Bytes encrypted_data(file_data.begin() + nonce_end, file_data.end());
         
@@ -244,28 +263,14 @@ int main(int argc, char* argv[]) {
         Bytes ciphertext(encrypted_data.begin(), encrypted_data.end() - 16);
         Bytes tag(encrypted_data.end() - 16, encrypted_data.end());
         
-        // Parse metadata
-        nlohmann::json metadata_json = nlohmann::json::parse(metadata_str);
-        
-        // Use the exact metadata string that was read from the file as AAD
-        // Add crypto fields for the legacy decrypt_data function interface
-        nlohmann::json full_metadata = metadata_json;
-        full_metadata["ciphertext"] = utils::base64_encode(ciphertext);
-        full_metadata["tag"] = utils::base64_encode(tag);
-        full_metadata["nonce"] = utils::base64_encode(nonce);
-        full_metadata["_original_metadata_aad"] = metadata_str;  // Pass exact string for AAD
-        
-        std::string full_metadata_str = full_metadata.dump();
-        Bytes metadata = utils::string_to_bytes(full_metadata_str);
-        
-        // Override ciphertext to use the extracted raw ciphertext
-        ciphertext = ciphertext;
+        // Parse clean metadata (without nonce/tag)
+        nlohmann::json clean_metadata_json = nlohmann::json::parse(clean_metadata_str);
         
         // Get user ID from metadata, environment, or prompt
         if (user_id.empty()) {
             // Try to extract from metadata first
-            if (metadata_json.contains("user_id")) {
-                user_id = metadata_json["user_id"].get<std::string>();
+            if (clean_metadata_json.contains("user_id")) {
+                user_id = clean_metadata_json["user_id"].get<std::string>();
                 std::cout << "Using User ID from file metadata: " << user_id << "\n";
             } else {
                 const char* env_user_id = std::getenv("OPENADP_USER_ID");
@@ -283,28 +288,140 @@ int main(int argc, char* argv[]) {
             std::cerr << "⚠️  Warning: User ID provided via command line (visible in process list)\n";
         }
         
-        // Create identity
-        std::string device_id = "beast";
-        std::string backup_id = "file://" + get_output_filename(input_file);
-        Identity identity(user_id, device_id, backup_id);
+        // Create identity using values from metadata (for portability)
+        // The device_id and backup_id must match what was used during encryption
+        std::string device_id, backup_id;
         
-        // Handle --servers parameter (similar to encrypt tool)
+        if (clean_metadata_json.contains("device_id") && clean_metadata_json.contains("backup_id")) {
+            // Read from metadata (new portable format)
+            device_id = clean_metadata_json["device_id"].get<std::string>();
+            backup_id = clean_metadata_json["backup_id"].get<std::string>();
+            std::cout << "✅ Using device_id and backup_id from metadata (portable format)\n";
+        } else {
+            // Fallback to current environment (legacy compatibility)
+            device_id = get_hostname();
+            backup_id = "file://" + get_basename(get_output_filename(input_file));
+            std::cout << "⚠️  Using current environment for device_id and backup_id (legacy mode)\n";
+        }
+        
+        Identity identity(user_id, device_id, backup_id);
+        std::cout << "🔑 Identity: user_id=" << identity.uid << ", device_id=" << identity.did << ", backup_id=" << identity.bid << "\n";
+        
+        // Get server list (from metadata or override)
+        std::vector<ServerInfo> server_infos;
         if (!servers.empty()) {
-            // Override servers with command line parameter
+            // Parse servers from command line (comma-separated list)
+            std::istringstream ss(servers);
+            std::string server;
+            while (std::getline(ss, server, ',')) {
+                if (!server.empty()) {
+                    server_infos.emplace_back(server);
+                }
+            }
             std::cout << "Using servers from command line (overriding metadata)\n";
+            for (const auto& server_info : server_infos) {
+                std::cout << "  - " << server_info.url << "\n";
+            }
         } else {
             // Use servers from metadata
-            if (metadata_json.contains("servers")) {
-                auto servers_array = metadata_json["servers"];
+            if (clean_metadata_json.contains("servers")) {
+                auto servers_array = clean_metadata_json["servers"];
                 std::cout << "Found " << servers_array.size() << " servers in metadata\n";
                 for (const auto& server : servers_array) {
+                    server_infos.emplace_back(server.get<std::string>());
                     std::cout << "  - " << server.get<std::string>() << "\n";
+                }
+            } else {
+                // Use default servers (this shouldn't happen in normal operation)
+                server_infos = client::get_servers(servers_url);
+            }
+        }
+        
+        // Get server noise_nk_public_keys if needed
+        for (auto& server_info : server_infos) {
+            if (server_info.public_key.has_value()) {
+                if (debug::is_debug_mode_enabled()) {
+                    debug::debug_log("Using noise_nk_public_key from registry for server: " + server_info.url);
+                }
+                continue;
+            }
+            
+            if (debug::is_debug_mode_enabled()) {
+                debug::debug_log("Public key not in registry, calling GetServerInfo for: " + server_info.url);
+            }
+            
+            try {
+                client::BasicOpenADPClient client(server_info.url);
+                nlohmann::json info = client.get_server_info();
+                
+                if (info.contains("noise_nk_public_key")) {
+                    std::string public_key_str = info["noise_nk_public_key"].get<std::string>();
+                    server_info.public_key = utils::base64_decode(public_key_str);
+                    
+                    if (debug::is_debug_mode_enabled()) {
+                        debug::debug_log("Successfully fetched noise_nk_public_key via GetServerInfo for: " + server_info.url);
+                    }
+                } else {
+                    if (debug::is_debug_mode_enabled()) {
+                        debug::debug_log("GetServerInfo response missing public_key for: " + server_info.url);
+                    }
+                }
+            } catch (const std::exception& e) {
+                if (debug::is_debug_mode_enabled()) {
+                    debug::debug_log("Failed to get noise_nk_public_key via GetServerInfo for " + server_info.url + ": " + e.what());
                 }
             }
         }
         
-        // Decrypt data
-        Bytes plaintext = decrypt_data(ciphertext, metadata, identity, password, servers_url);
+        // Reconstruct auth codes from base auth code
+        std::string base_auth_code = clean_metadata_json["auth_code"].get<std::string>();
+        AuthCodes auth_codes = keygen::generate_auth_codes(base_auth_code, server_infos);
+        
+        // Recover encryption key using OpenADP protocol  
+        auto recovery_result = keygen::recover_encryption_key(identity, password, auth_codes, server_infos);
+        
+        if (recovery_result.error_message.has_value()) {
+            throw OpenADPError("Failed to recover encryption key: " + recovery_result.error_message.value());
+        }
+        
+        if (!recovery_result.encryption_key.has_value()) {
+            throw OpenADPError("Key recovery succeeded but no encryption key returned");
+        }
+        
+        // FINAL FIX: Use the stored metadata directly as AAD
+        // The metadata now contains all identity fields needed for AAD reconstruction
+        std::string aad_json = clean_metadata_str;
+        
+        std::cout << "🔍 AES-GCM DECRYPTION INPUTS:\n";
+        std::cout << "  - Ciphertext size: " << ciphertext.size() << " bytes\n";
+        std::cout << "  - Ciphertext hex: " << crypto::bytes_to_hex(ciphertext) << "\n";
+        std::cout << "  - Tag size: " << tag.size() << " bytes\n";
+        std::cout << "  - Tag hex: " << crypto::bytes_to_hex(tag) << "\n";
+        std::cout << "  - Nonce size: " << nonce.size() << " bytes\n";
+        std::cout << "  - Nonce hex: " << crypto::bytes_to_hex(nonce) << "\n";
+        std::cout << "  - Key size: " << recovery_result.encryption_key.value().size() << " bytes\n";
+        std::cout << "  - Key hex: " << crypto::bytes_to_hex(recovery_result.encryption_key.value()) << "\n";
+        std::cout << "  - AAD size: " << aad_json.size() << " bytes\n";
+        std::cout << "  - AAD: " << aad_json << "\n";
+        
+        // Validate nonce size
+        if (nonce.size() != 12) {
+            throw OpenADPError("Invalid nonce size: expected 12 bytes, got " + std::to_string(nonce.size()));
+        }
+        
+        // Perform AES-GCM decryption using the stored metadata as AAD
+        std::vector<uint8_t> plaintext;
+        try {
+            plaintext = crypto::aes_gcm_decrypt(
+                ciphertext,
+                tag,
+                nonce,
+                recovery_result.encryption_key.value(),
+                std::vector<uint8_t>(aad_json.begin(), aad_json.end())
+            );
+        } catch (const std::exception& e) {
+            throw OpenADPError("AES-GCM decryption failed: " + std::string(e.what()));
+        }
         
         // Write decrypted data
         utils::write_file(output_file, plaintext);
@@ -330,4 +447,10 @@ int main(int argc, char* argv[]) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
-} 
+}
+
+// Temp hack for gdb debugging.
+int main(int argc, char* argv[]) {
+    return real_main(argc, argv);
+}
+

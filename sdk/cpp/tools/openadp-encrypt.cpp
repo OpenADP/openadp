@@ -94,6 +94,24 @@ std::string read_user_id() {
     return user_id;
 }
 
+// Get hostname for device identification (matching Python implementation)
+std::string get_hostname() {
+    char hostname[256];
+    if (gethostname(hostname, sizeof(hostname)) == 0) {
+        return std::string(hostname);
+    }
+    return "unknown";  // fallback if gethostname fails
+}
+
+// Extract basename from file path (matching Python's os.path.basename)
+std::string get_basename(const std::string& path) {
+    size_t last_slash = path.find_last_of("/\\");
+    if (last_slash == std::string::npos) {
+        return path;  // no path separator found, return the whole string
+    }
+    return path.substr(last_slash + 1);
+}
+
 int main(int argc, char* argv[]) {
     std::string input_file;
     std::string user_id;
@@ -150,7 +168,7 @@ int main(int argc, char* argv[]) {
                 break;
         }
     }
-    
+
     // Set debug mode if requested
     if (debug_mode) {
         debug::set_debug(true);
@@ -210,9 +228,10 @@ int main(int argc, char* argv[]) {
         // Read input file
         Bytes plaintext = utils::read_file(input_file);
         
-        // Create identity
-        std::string device_id = "beast";
-        std::string backup_id = "file://" + input_file;
+        // Create identity using hostname (matching Python implementation)
+        // The backup_id should match what decrypt expects: "file://<basename>"
+        std::string device_id = get_hostname();
+        std::string backup_id = "file://" + get_basename(input_file);
         Identity identity(user_id, device_id, backup_id);
         
         // Handle --servers parameter by parsing comma-separated URLs
@@ -245,7 +264,7 @@ int main(int argc, char* argv[]) {
             result = encrypt_data(plaintext, identity, password, 10, 0, servers_url);
         }
         
-        // Write encrypted data with embedded metadata (matching other SDKs)
+        // Write encrypted data with embedded metadata (matching Python SDK format)
         // Format: [metadata_length][metadata][nonce][encrypted_data]
         
         // Parse the existing metadata to extract components and rebuild in proper format
@@ -256,12 +275,10 @@ int main(int argc, char* argv[]) {
         Bytes nonce = utils::base64_decode(existing_metadata["nonce"].get<std::string>());
         Bytes tag = utils::base64_decode(existing_metadata["tag"].get<std::string>());
         
-        // Create new metadata JSON matching other SDKs format (without embedded crypto data)
+        // Create clean metadata JSON matching Python SDK format (without embedded crypto data)
         // This must match exactly what was used as AAD during encryption
         nlohmann::json metadata;
         metadata["auth_code"] = existing_metadata["auth_code"];
-        metadata["backup_id"] = existing_metadata["backup_id"];
-        metadata["device_id"] = existing_metadata["device_id"];
         metadata["servers"] = existing_metadata["servers"];
         metadata["threshold"] = existing_metadata["threshold"];
         metadata["user_id"] = existing_metadata["user_id"];
@@ -270,18 +287,28 @@ int main(int argc, char* argv[]) {
         std::string metadata_str = metadata.dump();
         std::vector<uint8_t> metadata_bytes(metadata_str.begin(), metadata_str.end());
         
+        // Add identity fields to metadata for portable decryption
+        // This ensures the AAD can be reconstructed identically during decryption
+        nlohmann::json metadata_with_identity = metadata;
+        metadata_with_identity["device_id"] = identity.did;
+        metadata_with_identity["backup_id"] = identity.bid;
+        
+        // Use the metadata with identity fields as the actual stored metadata
+        std::string stored_metadata_str = metadata_with_identity.dump();
+        std::vector<uint8_t> stored_metadata_bytes(stored_metadata_str.begin(), stored_metadata_str.end());
+        
         // Prepare final output: [metadata_length][metadata][nonce][encrypted_data]
         std::vector<uint8_t> output_data;
         
         // Write metadata length (4 bytes, little endian)
-        uint32_t metadata_len = static_cast<uint32_t>(metadata_bytes.size());
+        uint32_t metadata_len = static_cast<uint32_t>(stored_metadata_bytes.size());
         output_data.push_back(metadata_len & 0xFF);
         output_data.push_back((metadata_len >> 8) & 0xFF);
         output_data.push_back((metadata_len >> 16) & 0xFF);
         output_data.push_back((metadata_len >> 24) & 0xFF);
         
         // Write metadata
-        output_data.insert(output_data.end(), metadata_bytes.begin(), metadata_bytes.end());
+        output_data.insert(output_data.end(), stored_metadata_bytes.begin(), stored_metadata_bytes.end());
         
         // Write nonce (12 bytes)
         output_data.insert(output_data.end(), nonce.begin(), nonce.end());

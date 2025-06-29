@@ -106,8 +106,7 @@ GenerateEncryptionKeyResult generate_encryption_key(
         if (debug::is_debug_mode_enabled()) {
             // 🔧 CRITICAL FIX: Use same deterministic secret as other SDKs for consistency
             // Both r (blinding factor) and s (Shamir secret) use the same value in debug mode
-            secret_hex = "023456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23";
-            debug::debug_log("Using deterministic main secret r = 0x023456789abcdef0fedcba987654320ffd555c99f7c5421aa6ca577e195e5e23");
+            secret_hex = debug::get_deterministic_main_secret();
         } else {
             // Generate random secret
             secret_hex = utils::random_hex(32); // 32 bytes = 64 hex chars
@@ -234,19 +233,20 @@ GenerateEncryptionKeyResult generate_encryption_key(
             );
         }
         
-        // Derive encryption key from the secret
-        Bytes secret_bytes = utils::hex_decode(secret_hex);
+        // Derive encryption key from the secret point S = secret * U
+        // First compute U point for this identity
+        Bytes password_bytes = utils::string_to_bytes(password);
+        Bytes uid_bytes = utils::string_to_bytes(identity.uid);
+        Bytes did_bytes = utils::string_to_bytes(identity.did);
+        Bytes bid_bytes = utils::string_to_bytes(identity.bid);
         
-        // Ensure it's exactly 32 bytes
-        if (secret_bytes.size() < 32) {
-            Bytes padded_bytes(32, 0);
-            std::copy(secret_bytes.begin(), secret_bytes.end(), 
-                     padded_bytes.end() - secret_bytes.size());
-            secret_bytes = padded_bytes;
-        }
+        Point4D U = crypto::Ed25519::hash_to_point(uid_bytes, did_bytes, bid_bytes, password_bytes);
         
-        // Use existing crypto function to derive key
-        Bytes encryption_key = crypto::sha256_hash(secret_bytes);
+        // Compute S = secret * U (the secret point)
+        Point4D S = crypto::point_mul(secret_hex, U);
+        
+        // Derive encryption key from the secret point S (matching Python version)
+        Bytes encryption_key = crypto::derive_encryption_key(S);
         
         return GenerateEncryptionKeyResult::success(encryption_key, auth_codes, successful_servers, threshold);
         
@@ -289,7 +289,8 @@ RecoverEncryptionKeyResult recover_encryption_key(
         
         if (debug::is_debug_mode_enabled()) {
             debug::debug_log("Recovery: r_scalar=" + r_scalar_hex);
-            debug::debug_log("Recovery: U point computed");
+            debug::debug_log("Recovery: U point (2D): " + crypto::unexpand(U));
+            debug::debug_log("Recovery: B point (2D): " + crypto::unexpand(B));
             debug::debug_log("Recovery: B = r * U computed");
         }
         
@@ -365,13 +366,94 @@ RecoverEncryptionKeyResult recover_encryption_key(
             return RecoverEncryptionKeyResult::error("No valid shares recovered");
         }
         
-        // For now, assume we only need one share (1-of-N threshold)
-        // In a full implementation, this would use Shamir secret sharing
-        std::string si_b_base64 = shares[0].y;
+        // Convert Share objects to PointShare objects for threshold reconstruction
+        std::vector<PointShare> point_shares;
+        for (const auto& share : shares) {
+            // Decode base64 point and decompress to Point4D, then convert to Point2D
+            Bytes si_b_bytes = utils::base64_decode(share.y);
+            Point4D si_b_4d = crypto::point_decompress(si_b_bytes);
+            Point2D si_b_2d = crypto::Ed25519::unexpand(si_b_4d);
+            point_shares.emplace_back(share.x, si_b_2d);
+            
+            if (debug::is_debug_mode_enabled()) {
+                debug::debug_log("Share " + std::to_string(share.x) + ": base64=" + share.y);
+                debug::debug_log("Share " + std::to_string(share.x) + ": Point2D=(" + si_b_2d.x + "," + si_b_2d.y + ")");
+            }
+        }
         
-        // si_b is the server's response: s*B point (where B = r*U)
-        Bytes si_b_point_bytes = utils::base64_decode(si_b_base64);
-        Point4D si_b_point = crypto::point_decompress(si_b_point_bytes);
+        // Use manual Lagrange interpolation (matching Python implementation)
+        // Initialize result as point at infinity (identity element)
+        Point4D result_point("0", "1", "1", "0");  // Extended coordinates for identity
+        
+        for (size_t i = 0; i < point_shares.size(); i++) {
+            // Compute Lagrange coefficient Li(0)
+            BIGNUM* numerator = BN_new();
+            BIGNUM* denominator = BN_new();
+            BIGNUM* q_bn = BN_new();
+            BN_CTX* ctx = BN_CTX_new();
+            
+            // Ed25519 curve order (Q)
+            BN_hex2bn(&q_bn, "1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed");
+            BN_one(numerator);
+            BN_one(denominator);
+            
+            for (size_t j = 0; j < point_shares.size(); j++) {
+                if (i != j) {
+                    // numerator *= (-share_j.x) mod Q
+                    BIGNUM* neg_xj = BN_new();
+                    BN_set_word(neg_xj, point_shares[j].x);
+                    BN_mod_sub(neg_xj, q_bn, neg_xj, q_bn, ctx);  // -xj mod Q
+                    BN_mod_mul(numerator, numerator, neg_xj, q_bn, ctx);
+                    
+                    // denominator *= (share_i.x - share_j.x) mod Q
+                    BIGNUM* diff = BN_new();
+                    BIGNUM* xi = BN_new();
+                    BIGNUM* xj = BN_new();
+                    BN_set_word(xi, point_shares[i].x);
+                    BN_set_word(xj, point_shares[j].x);
+                    BN_mod_sub(diff, xi, xj, q_bn, ctx);  // (xi - xj) mod Q
+                    BN_mod_mul(denominator, denominator, diff, q_bn, ctx);
+                    
+                    BN_free(neg_xj);
+                    BN_free(diff);
+                    BN_free(xi);
+                    BN_free(xj);
+                }
+            }
+            
+            // Compute Li(0) = numerator / denominator mod Q (using modular inverse)
+            BIGNUM* li_0 = BN_new();
+            BIGNUM* inv_denom = BN_new();
+            BN_mod_inverse(inv_denom, denominator, q_bn, ctx);
+            BN_mod_mul(li_0, numerator, inv_denom, q_bn, ctx);
+            
+            // Convert Li(0) to hex string for point multiplication
+            char* li_0_hex = BN_bn2hex(li_0);
+            std::string li_0_str(li_0_hex);
+            OPENSSL_free(li_0_hex);
+            
+            // Multiply point by Li(0): Li(0) * point_shares[i]
+            Point4D share_point_4d = crypto::Ed25519::expand(point_shares[i].point);
+            Point4D weighted_point = crypto::point_mul(li_0_str, share_point_4d);
+            
+            // Add to result: result += Li(0) * point_shares[i]
+            result_point = crypto::point_add(result_point, weighted_point);
+            
+            // Clean up
+            BN_free(numerator);
+            BN_free(denominator);
+            BN_free(q_bn);
+            BN_free(li_0);
+            BN_free(inv_denom);
+            BN_CTX_free(ctx);
+        }
+        
+        Point4D si_b_point = result_point;
+        Point2D si_b_2d = crypto::Ed25519::unexpand(si_b_point);
+        
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("Manual Lagrange interpolation: recovered s*B point=(" + si_b_2d.x + "," + si_b_2d.y + ")");
+        }
         
         // Recover the original secret point: s*U = r^-1 * (s*B) = r^-1 * si_b
         // This is the core of the blinding protocol - we must compute r^-1 * si_b
@@ -423,6 +505,11 @@ RecoverEncryptionKeyResult recover_encryption_key(
         // Apply r^-1 to recover the original secret point: s*U = r^-1 * si_b
         secret_point = crypto::point_mul(r_inv_scalar_hex, si_b_point);
         
+        if (debug::is_debug_mode_enabled()) {
+            Point2D secret_point_2d = crypto::Ed25519::unexpand(secret_point);
+            debug::debug_log("Unblinding: s*U point=(" + secret_point_2d.x + "," + secret_point_2d.y + ")");
+        }
+        
         // Derive encryption key from the recovered secret point s*U
         Bytes encryption_key = crypto::derive_encryption_key(secret_point);
         
@@ -431,6 +518,7 @@ RecoverEncryptionKeyResult recover_encryption_key(
             debug::debug_log("Key recovery: r_inv_scalar=" + r_inv_scalar_hex);
             debug::debug_log("Key recovery: computed s*U = r^-1 * si_b");
             debug::debug_log("Key recovery: derived key size=" + std::to_string(encryption_key.size()));
+            debug::debug_log("Key recovery: encryption_key hex=" + crypto::bytes_to_hex(encryption_key));
         }
         
         return RecoverEncryptionKeyResult::success(encryption_key, remaining_guesses);

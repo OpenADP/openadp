@@ -344,20 +344,9 @@ Bytes decrypt_data(
         throw OpenADPError("Failed to recover encryption key: " + result.error_message.value());
     }
     
-    // Use the exact original metadata string that was written to the .enc file as AAD
-    std::string aad_metadata_str;
-    if (metadata_json.contains("_original_metadata_aad")) {
-        // Use the exact metadata string that was read from the .enc file
-        aad_metadata_str = metadata_json["_original_metadata_aad"].get<std::string>();
-    } else {
-        // Fallback: reconstruct from metadata (for backward compatibility)
-        nlohmann::json original_metadata = metadata_json;
-        original_metadata.erase("ciphertext");
-        original_metadata.erase("tag");
-        original_metadata.erase("nonce");
-        aad_metadata_str = original_metadata.dump();
-    }
-    Bytes metadata_aad = utils::string_to_bytes(aad_metadata_str);
+    // Use the exact metadata bytes that were passed to us as AAD
+    // (This is the metadata that was originally used during encryption)
+    Bytes metadata_aad = metadata;
     
     // 🔍 DEBUG: AES-GCM decryption inputs
     if (debug::is_debug_mode_enabled()) {
@@ -371,7 +360,7 @@ Bytes decrypt_data(
         debug::debug_log("  - Key size: " + std::to_string(result.encryption_key.value().size()) + " bytes");
         debug::debug_log("  - Key hex: " + crypto::bytes_to_hex(result.encryption_key.value()));
         debug::debug_log("  - AAD size: " + std::to_string(metadata_aad.size()) + " bytes");
-        debug::debug_log("  - AAD: " + aad_metadata_str);
+        debug::debug_log("  - AAD: " + utils::bytes_to_string(metadata_aad));
     }
     
     // Decrypt the data using metadata as AAD (matching what was used during encryption)
@@ -431,7 +420,7 @@ void encrypt_data(const std::string& input_file, const std::string& output_file,
     metadata["uid"] = identity.uid;
     metadata["did"] = identity.did;
     metadata["bid"] = identity.bid;
-    metadata["encryption_key"] = utils::hex_encode(result.encryption_key.value());
+    // Do NOT store encryption key - it must be derived for security
     metadata["tag"] = utils::hex_encode(encrypted.tag);
     metadata["nonce"] = utils::hex_encode(encrypted.nonce);
     metadata["auth_codes"] = result.auth_codes.value().base_auth_code;
@@ -471,14 +460,35 @@ void decrypt_data(const std::string& input_file, const std::string& output_file,
     std::string uid = metadata["uid"];
     std::string did = metadata["did"];
     std::string bid = metadata["bid"];
-    Bytes encryption_key = utils::hex_decode(metadata["encryption_key"]);
+    std::string base_auth_code = metadata["auth_codes"];
     Bytes tag = utils::hex_decode(metadata["tag"]);
     Bytes nonce = utils::hex_decode(metadata["nonce"]);
+    
+    // Get server URLs from metadata
+    std::vector<ServerInfo> server_infos;
+    if (servers.empty() && metadata.contains("server_urls")) {
+        // Use servers from metadata if not overridden
+        for (const auto& url : metadata["server_urls"]) {
+            server_infos.push_back(ServerInfo{url.get<std::string>(), {}});
+        }
+    } else {
+        // Use provided servers
+        server_infos = servers;
+    }
     
     // Read encrypted file
     Bytes ciphertext = read_file_bytes(input_file);
     
-    // Decrypt data
+    // Derive encryption key (DO NOT read from metadata for security)
+    Identity identity(uid, did, bid);
+    AuthCodes auth_codes = keygen::generate_auth_codes(base_auth_code, server_infos);
+    auto result = keygen::recover_encryption_key(identity, password, auth_codes, server_infos);
+    
+    if (result.error_message.has_value()) {
+        throw OpenADPError("Failed to recover encryption key: " + result.error_message.value());
+    }
+    
+    // Debug logging AFTER key recovery
     if (debug::is_debug_mode_enabled()) {
         debug::debug_log("🔍 AES-GCM DECRYPTION INPUTS (file-based):");
         debug::debug_log("  - Ciphertext size: " + std::to_string(ciphertext.size()) + " bytes");
@@ -487,11 +497,12 @@ void decrypt_data(const std::string& input_file, const std::string& output_file,
         debug::debug_log("  - Tag hex: " + crypto::bytes_to_hex(tag));
         debug::debug_log("  - Nonce size: " + std::to_string(nonce.size()) + " bytes");
         debug::debug_log("  - Nonce hex: " + crypto::bytes_to_hex(nonce));
-        debug::debug_log("  - Key size: " + std::to_string(encryption_key.size()) + " bytes");
-        debug::debug_log("  - Key hex: " + crypto::bytes_to_hex(encryption_key));
+        debug::debug_log("  - Key size: " + std::to_string(result.encryption_key.value().size()) + " bytes");
+        debug::debug_log("  - Key hex: " + crypto::bytes_to_hex(result.encryption_key.value()));
         debug::debug_log("  - AAD: None");
     }
-    Bytes plaintext = crypto::aes_gcm_decrypt(ciphertext, tag, nonce, encryption_key);
+    
+    Bytes plaintext = crypto::aes_gcm_decrypt(ciphertext, tag, nonce, result.encryption_key.value());
     
     // Write decrypted file
     write_file_bytes(output_file, plaintext);

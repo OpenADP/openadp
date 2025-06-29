@@ -28,7 +28,7 @@ bool is_debug_mode_enabled() {
 
 void debug_log(const std::string& message) {
     if (g_debug_mode) {
-        std::cerr << "[DEBUG] " << message << std::endl;
+        std::cout << "[DEBUG] " << message << std::endl;
     }
 }
 
