@@ -45,6 +45,9 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
+# Rust
+sdk/rust/target
+
 # Test artifacts
 *.test
 fuzz_test_*.db
