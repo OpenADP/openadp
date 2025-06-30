@@ -37,40 +37,49 @@ CARGO_TEST=$(CARGO) test
 # Build flags
 LDFLAGS=-ldflags "-X main.version=$(VERSION)"
 
-.PHONY: all build build-server build-encrypt build-decrypt build-serverinfo build-ocrypt-register build-ocrypt-recover build-rust build-rust-encrypt build-rust-decrypt build-rust-ocrypt-register build-rust-ocrypt-recover test-rust clean clean-rust test test-verbose deps fmt lint help install encrypt decrypt rust-encrypt rust-decrypt rust-ocrypt-register rust-ocrypt-recover serverinfo ocrypt-register ocrypt-recover fuzz fuzz-server fuzz-crypto fuzz-api fuzz-all fuzz-quick fuzz-extended fuzz-coverage fuzz-clean fuzz-help
+.PHONY: all build-go build-server build-encrypt build-decrypt build-serverinfo build-ocrypt-register build-ocrypt-recover build-rust build-rust-encrypt build-rust-decrypt build-rust-ocrypt-register build-rust-ocrypt-recover test-rust clean clean-rust test test-verbose deps fmt lint help install encrypt decrypt rust-encrypt rust-decrypt rust-ocrypt-register rust-ocrypt-recover serverinfo ocrypt-register ocrypt-recover fuzz fuzz-server fuzz-crypto fuzz-api fuzz-all fuzz-quick fuzz-extended fuzz-coverage fuzz-clean fuzz-help
 
 # Default target
-all: clean deps fmt test build build-server build-encrypt build-decrypt build-serverinfo build-ocrypt-register build-ocrypt-recover build-rust
+all: clean deps fmt test build-server build-encrypt build-decrypt build-serverinfo build-ocrypt-register build-ocrypt-recover build-rust
 
 # Build the server application
 build-server:
 	@echo "🔨 Building OpenADP server application..."
+	@mkdir -p $(BUILD_DIR)
 	$(GOBUILD) -o $(BUILD_DIR)/$(SERVER_BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/openadp-server
 
 # Build the encryption tool
 build-encrypt:
 	@echo "🔨 Building OpenADP encryption tool..."
+	@mkdir -p $(BUILD_DIR)
 	$(GOBUILD) -o $(BUILD_DIR)/$(ENCRYPT_BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/openadp-encrypt
 
 # Build the decryption tool
 build-decrypt:
 	@echo "🔨 Building OpenADP decryption tool..."
+	@mkdir -p $(BUILD_DIR)
 	$(GOBUILD) -o $(BUILD_DIR)/$(DECRYPT_BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/openadp-decrypt
 
 # Build the server info tool
 build-serverinfo:
 	@echo "🔨 Building OpenADP server info tool..."
+	@mkdir -p $(BUILD_DIR)
 	$(GOBUILD) -o $(BUILD_DIR)/$(SERVERINFO_BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/openadp-serverinfo
 
 # Build the ocrypt register tool
 build-ocrypt-register:
 	@echo "🔨 Building Ocrypt register tool..."
+	@mkdir -p $(BUILD_DIR)
 	$(GOBUILD) -o $(BUILD_DIR)/$(OCRYPT_REGISTER_BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/ocrypt-register
 
 # Build the ocrypt recover tool
 build-ocrypt-recover:
 	@echo "🔨 Building Ocrypt recover tool..."
+	@mkdir -p $(BUILD_DIR)
 	$(GOBUILD) -o $(BUILD_DIR)/$(OCRYPT_RECOVER_BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/ocrypt-recover
+
+# Build all Go tools
+build-go: build-server build-encrypt build-decrypt build-serverinfo build-ocrypt-register build-ocrypt-recover
 
 # Build all Rust tools
 build-rust: build-rust-encrypt build-rust-decrypt build-rust-ocrypt-register build-rust-ocrypt-recover
@@ -204,12 +213,14 @@ lint:
 	fi
 
 # Install binaries to GOPATH/bin
-install: build-server build-encrypt build-decrypt build-serverinfo build-rust
+install: build-server build-encrypt build-decrypt build-serverinfo build-ocrypt-register build-ocrypt-recover build-rust
 	@echo "📥 Installing binaries..."
 	cp $(BUILD_DIR)/$(SERVER_BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(ENCRYPT_BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(DECRYPT_BINARY_NAME) $(GOPATH)/bin/
 	cp $(BUILD_DIR)/$(SERVERINFO_BINARY_NAME) $(GOPATH)/bin/
+	cp $(BUILD_DIR)/$(OCRYPT_REGISTER_BINARY_NAME) $(GOPATH)/bin/
+	cp $(BUILD_DIR)/$(OCRYPT_RECOVER_BINARY_NAME) $(GOPATH)/bin/
 	@if [ -f "$(BUILD_DIR)/$(RUST_ENCRYPT_BINARY_NAME)" ]; then \
 		cp $(BUILD_DIR)/$(RUST_ENCRYPT_BINARY_NAME) $(GOPATH)/bin/; \
 		cp $(BUILD_DIR)/$(RUST_DECRYPT_BINARY_NAME) $(GOPATH)/bin/; \
@@ -363,9 +374,11 @@ help:
 	@echo ""
 	@echo "🔨 Build Targets:"
 	@echo "  all              - Build all components (default)"
+	@echo "  build-go         - Build all Go tools"
 	@echo "  build-server     - Build server application"
 	@echo "  build-encrypt    - Build encryption tool"
 	@echo "  build-decrypt    - Build decryption tool"
+	@echo "  build-serverinfo - Build server info tool"
 	@echo "  build-ocrypt-register - Build Ocrypt register tool"
 	@echo "  build-ocrypt-recover - Build Ocrypt recover tool"
 	@echo "  build-rust               - Build all Rust tools"

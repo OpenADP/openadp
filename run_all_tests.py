@@ -604,6 +604,18 @@ class OpenADPTestRunner:
         self.log("🧪 Running C++ unit tests...", Colors.INFO)
         
         cpp_build_dir = self.root_dir / "sdk" / "cpp" / "build"
+        test_vectors_file = cpp_build_dir / "test_vectors.json"
+        
+        # Generate test vectors if they don't exist (needed for crypto vector tests)
+        if not test_vectors_file.exists():
+            self.log("📝 Generating test vectors...", Colors.INFO)
+            gen_success, gen_stdout, gen_stderr = self.run_command(["./generate_test_vectors"], cwd=cpp_build_dir)
+            if not gen_success:
+                # Don't fail the entire test suite if test vector generation fails,
+                # just log a warning since not all tests depend on it
+                self.log("⚠️  Test vector generation failed, some crypto vector tests may fail", Colors.WARNING)
+            else:
+                self.log("✅ Test vectors generated successfully", Colors.SUCCESS)
         
         # Run the C++ tests
         success, stdout, stderr = self.run_command(["./openadp_tests"], cwd=cpp_build_dir, timeout=600)
@@ -622,6 +634,17 @@ class OpenADPTestRunner:
         self.log("🔐 Running C++ crypto test vectors...", Colors.INFO)
         
         cpp_build_dir = self.root_dir / "sdk" / "cpp" / "build"
+        test_vectors_file = cpp_build_dir / "test_vectors.json"
+        
+        # Generate test vectors if they don't exist
+        if not test_vectors_file.exists():
+            self.log("📝 Generating test vectors...", Colors.INFO)
+            gen_success, gen_stdout, gen_stderr = self.run_command(["./generate_test_vectors"], cwd=cpp_build_dir)
+            if not gen_success:
+                duration = time.time() - start_time
+                self.log("❌ Test vector generation: FAIL", Colors.FAILURE)
+                return TestResult("C++ Crypto Vectors", False, duration, gen_stdout, gen_stderr)
+            self.log("✅ Test vectors generated successfully", Colors.SUCCESS)
         
         # Run only the crypto vector tests
         success, stdout, stderr = self.run_command([
@@ -692,7 +715,7 @@ class OpenADPTestRunner:
             return success2
         
         # Check for key C++ executables
-        cpp_executables = ["openadp_tests", "openadp-encrypt", "openadp-decrypt"]
+        cpp_executables = ["openadp_tests", "openadp-encrypt", "openadp-decrypt", "generate_test_vectors"]
         missing_tools = []
         
         for exe in cpp_executables:
