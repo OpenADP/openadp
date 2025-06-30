@@ -1,7 +1,7 @@
 /**
  * Ocrypt - Nation-state resistant password hashing using OpenADP distributed cryptography
  * 
- * This module provides a simple 2-function API for distributed password hashing
+ * This module provides a simple 3-function API for distributed password hashing
  * using OpenADP's Oblivious Pseudo Random Function (OPRF) cryptography.
  * 
  * This package replaces traditional password hashing functions like bcrypt, scrypt,
@@ -16,13 +16,16 @@
  * - Generic secret protection (not just passwords)
  * 
  * @example
- * import { register, recover } from '@openadp/ocrypt';
+ * import { register, recover, recoverAndReregister } from '@openadp/ocrypt';
  * 
  * // Register a secret
  * const metadata = await register('alice@example.com', 'my_app', secret, 'password123', 10);
  * 
- * // Later, recover the secret
+ * // Later, recover the secret with backup refresh
  * const { secret: recoveredSecret, remaining, updatedMetadata } = await recover(metadata, 'password123');
+ * 
+ * // Or recover and get completely fresh metadata 
+ * const { secret, newMetadata } = await recoverAndReregister(metadata, 'password123');
  */
 
 import { sha256 } from '@noble/hashes/sha256';
@@ -121,7 +124,7 @@ async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, b
     // Random server selection for load balancing (max 15 servers for performance)
     if (serverInfos.length > 15) {
         serverInfos = serverInfos.sort(() => 0.5 - Math.random()).slice(0, 15);
-        console.log(`   �� Randomly selected 15 servers for load balancing`);
+        console.log(`    Randomly selected 15 servers for load balancing`);
     }
 
     // Step 2: Generate encryption key using REAL OpenADP protocol
@@ -335,7 +338,7 @@ async function recoverWithoutRefresh(metadataBytes, pin, serversUrl = "") {
 
         // Unwrap the long-term secret using WebCrypto API
         console.log('🔐 Validating PIN by unwrapping secret...');
-        const secret = await unwrapSecret(metadata.wrapped_long_term_secret, result.encryptionKey);
+        const secret = await unwrapSecret(metadata.wrapped_long_term_secret, result.encryptionKey, result.maxGuesses, result.numGuesses);
         
         console.log('✅ PIN validation successful - secret unwrapped');
 
@@ -434,7 +437,7 @@ async function wrapSecret(secret, key) {
  * Decrypts a secret using AES-256-GCM with WebCrypto API
  * @private
  */
-async function unwrapSecret(wrapped, key) {
+async function unwrapSecret(wrapped, key, maxGuesses = 10, numGuesses = 0) {
     try {
         // Convert key to WebCrypto format
         const cryptoKey = await crypto.subtle.importKey(
@@ -463,6 +466,73 @@ async function unwrapSecret(wrapped, key) {
 
         return new Uint8Array(decrypted);
     } catch (error) {
+        // Invalid PIN - show helpful message with actual remaining guesses
+        if (maxGuesses > 0 && numGuesses > 0) {
+            const remaining = maxGuesses - numGuesses;
+            if (remaining > 0) {
+                console.error(`❌ Invalid PIN! You have ${remaining} guesses remaining.`);
+            } else {
+                console.error('❌ Invalid PIN! No more guesses remaining - account may be locked.');
+            }
+        } else {
+            console.error('❌ Invalid PIN! Check your password and try again.');
+        }
         throw new OcryptError(`Invalid PIN or corrupted data: ${error.message}`, 'INVALID_PIN');
     }
+}
+
+/**
+ * Recovers a secret and reregisters with completely fresh metadata.
+ * 
+ * This function provides a clean separation between recovery and registration:
+ * 1. Recovers the long-term secret using existing metadata
+ * 2. Performs a completely fresh registration with new cryptographic material
+ * 
+ * @param {Uint8Array|Buffer} metadataBytes - Metadata blob from register()
+ * @param {string} pin - Password/PIN to unlock the secret
+ * @param {string} [serversUrl] - Custom URL for server registry (optional)
+ * @returns {Promise<{secret: Uint8Array, newMetadata: Uint8Array}>}
+ * @throws {OcryptError} Any error that occurred during recovery or registration
+ */
+export async function recoverAndReregister(metadataBytes, pin, serversUrl = "") {
+    // Input validation
+    if (!metadataBytes || metadataBytes.length === 0) {
+        throw new OcryptError('metadata cannot be empty', 'INVALID_INPUT');
+    }
+    if (!pin || typeof pin !== 'string') {
+        throw new OcryptError('pin must be a non-empty string', 'INVALID_INPUT');
+    }
+
+    console.log('🔄 Starting recovery and re-registration...');
+
+    // Step 1: Recover with existing backup (without refresh)
+    console.log('📋 Step 1: Recovering with existing metadata...');
+    const { secret, remaining } = await recoverWithoutRefresh(metadataBytes, pin, serversUrl);
+    
+    // Parse original metadata to get registration parameters
+    const metadataText = new TextDecoder().decode(metadataBytes);
+    const metadata = JSON.parse(metadataText);
+    
+    // Extract original registration parameters
+    const userID = metadata.user_id;
+    const appID = metadata.app_id;
+    const maxGuesses = metadata.max_guesses || 10;
+
+    console.log(`   ✅ Secret recovered successfully (${remaining} guesses remaining)`);
+    console.log(`   🔑 User: ${userID}, App: ${appID}`);
+
+    // Step 2: Completely fresh registration with new cryptographic material
+    console.log('📋 Step 2: Fresh registration with new cryptographic material...');
+    
+    // Generate next backup ID to ensure alternation (critical for prepare/commit safety)
+    const oldBackupID = metadata.backup_id || 'even';
+    const newBackupID = generateNextBackupID(oldBackupID);
+    console.log(`🔄 Backup ID alternation: ${oldBackupID} → ${newBackupID}`);
+    
+    const newMetadata = await registerWithBID(userID, appID, secret, pin, maxGuesses, newBackupID, serversUrl);
+
+    console.log('✅ Recovery and re-registration complete!');
+    console.log('   📝 New metadata contains completely fresh cryptographic material');
+    
+    return { secret, newMetadata };
 } 

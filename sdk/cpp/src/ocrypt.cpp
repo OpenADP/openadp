@@ -4,9 +4,13 @@
 #include "openadp/client.hpp"
 #include "openadp/crypto.hpp"
 #include "openadp/utils.hpp"
+#include "openadp/debug.hpp"
 #include <nlohmann/json.hpp>
 #include <chrono>
 #include <random>
+#include <sstream>
+#include <fstream>
+#include <iostream>
 
 namespace openadp {
 namespace ocrypt {
@@ -76,30 +80,68 @@ Bytes register_with_bid(
     }
     
     try {
-        // Get server list
-        std::vector<ServerInfo> server_infos = client::get_servers(servers_url);
+        // Get server list - check if servers_url contains direct URLs (comma-separated)
+        std::vector<ServerInfo> server_infos;
+        if (!servers_url.empty() && (servers_url.find("http://") != std::string::npos || servers_url.find("https://") != std::string::npos)) {
+            // Parse comma-separated server URLs directly
+            std::istringstream ss(servers_url);
+            std::string server_url;
+            while (std::getline(ss, server_url, ',')) {
+                // Trim whitespace
+                server_url.erase(0, server_url.find_first_not_of(" \t"));
+                server_url.erase(server_url.find_last_not_of(" \t") + 1);
+                if (!server_url.empty()) {
+                    server_infos.emplace_back(server_url);
+                }
+            }
+        } else {
+            // Use registry lookup
+            server_infos = client::get_servers(servers_url);
+        }
         
         if (server_infos.empty()) {
             throw OpenADPError("No servers available");
         }
         
-        // Get server public keys
+        // Get server public keys - try each server, continue with ones that work
+        std::vector<ServerInfo> working_servers;
         for (auto& server_info : server_infos) {
             try {
                 client::BasicOpenADPClient client(server_info.url);
                 nlohmann::json info = client.get_server_info();
                 
-                if (info.contains("public_key")) {
-                    std::string public_key_str = info["public_key"].get<std::string>();
+                if (info.contains("noise_nk_public_key")) {
+                    std::string public_key_str = info["noise_nk_public_key"].get<std::string>();
                     server_info.public_key = utils::base64_decode(public_key_str);
+                    working_servers.push_back(server_info);
+                    
+                    if (debug::is_debug_mode_enabled()) {
+                        debug::debug_log("✅ Successfully connected to server: " + server_info.url);
+                    }
+                } else {
+                    if (debug::is_debug_mode_enabled()) {
+                        debug::debug_log("⚠️  Server " + server_info.url + " does not provide noise_nk_public_key, skipping");
+                    }
                 }
-            } catch (...) {
-                // Continue without public key (will use unencrypted)
+            } catch (const std::exception& e) {
+                if (debug::is_debug_mode_enabled()) {
+                    debug::debug_log("⚠️  Failed to connect to server " + server_info.url + ": " + std::string(e.what()) + ", skipping");
+                }
+                // Continue with other servers
             }
         }
         
-        // Create identity
-        std::string device_id = utils::get_hostname(); // Use hostname like Python/Go for cross-language consistency
+        // Check if we have enough working servers  
+        if (working_servers.empty()) {
+            throw OpenADPError("No OpenADP servers are accessible");
+        }
+        
+        // Use only the working servers
+        server_infos = working_servers;
+        
+        // Create identity - for Ocrypt, device_id should be app_id for cross-language consistency
+        // This matches Python/JavaScript pattern: Identity(user_id, app_id, backup_id)
+        std::string device_id = app_id; // Ocrypt uses app_id as device_id for cross-language consistency
         Identity identity(user_id, device_id, backup_id);
         
         // Generate encryption key using OpenADP
@@ -111,27 +153,41 @@ Bytes register_with_bid(
             throw OpenADPError("Failed to generate encryption key: " + result.error_message.value());
         }
         
-        // Encrypt the long-term secret
-        auto aes_result = crypto::aes_gcm_encrypt(long_term_secret, result.encryption_key.value());
+        // Encrypt the long-term secret with deterministic nonce in debug mode
+        auto aes_result = [&]() {
+            if (debug::is_debug_mode_enabled()) {
+                // Use deterministic nonce in debug mode for cross-language compatibility
+                Bytes deterministic_nonce = debug::get_deterministic_random_bytes(12);
+                return crypto::aes_gcm_encrypt(long_term_secret, result.encryption_key.value(), deterministic_nonce, Bytes{});
+            } else {
+                // Use random nonce in production
+                return crypto::aes_gcm_encrypt(long_term_secret, result.encryption_key.value());
+            }
+        }();
         
-        // Create metadata
+        // Create metadata in standard format (matching other SDKs)
         nlohmann::json metadata;
-        metadata["user_id"] = user_id;
-        metadata["app_id"] = app_id;
-        metadata["backup_id"] = backup_id;
-        metadata["device_id"] = device_id;
-        metadata["auth_code"] = result.auth_codes.value().base_auth_code;
-        metadata["ciphertext"] = utils::base64_encode(aes_result.ciphertext);
-        metadata["tag"] = utils::base64_encode(aes_result.tag);
-        metadata["nonce"] = utils::base64_encode(aes_result.nonce);
-        metadata["threshold"] = result.threshold;
-        
-        // Add server URLs
-        nlohmann::json servers_array = nlohmann::json::array();
+        metadata["servers"] = nlohmann::json::array();
         for (const auto& server : result.server_infos) {
-            servers_array.push_back(server.url);
+            metadata["servers"].push_back(server.url);
         }
-        metadata["servers"] = servers_array;
+        metadata["threshold"] = result.threshold;
+        metadata["version"] = "1.0";
+        metadata["auth_code"] = result.auth_codes.value().base_auth_code;
+        metadata["user_id"] = user_id;
+        
+        // Wrapped secret structure (standard format)
+        nlohmann::json wrapped_secret;
+        wrapped_secret["nonce"] = utils::base64_encode(aes_result.nonce);
+        wrapped_secret["ciphertext"] = utils::base64_encode(aes_result.ciphertext);
+        wrapped_secret["tag"] = utils::base64_encode(aes_result.tag);
+        metadata["wrapped_long_term_secret"] = wrapped_secret;
+        
+        metadata["backup_id"] = backup_id;
+        metadata["app_id"] = app_id;
+        // Note: device_id is used for Identity construction but not stored in metadata for cross-language compatibility
+        metadata["max_guesses"] = max_guesses;
+        metadata["ocrypt_version"] = "1.0";
         
         std::string metadata_str = metadata.dump();
         return utils::string_to_bytes(metadata_str);
@@ -168,15 +224,8 @@ Bytes register_secret(
         throw OpenADPError("Registration failed: " + std::string(e.what()));
     }
     
-    // Generate a unique backup ID
-    auto now = std::chrono::system_clock::now();
-    auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
-    
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(1000, 9999);
-    
-    std::string backup_id = "file://ocrypt_" + std::to_string(timestamp) + "_" + std::to_string(dis(gen)) + ".backup";
+    // Generate backup ID - always deterministic for cross-language compatibility
+    std::string backup_id = "even";
     
     return register_with_bid(user_id, app_id, long_term_secret, pin, max_guesses, backup_id, servers_url);
 }
@@ -192,13 +241,18 @@ OcryptRecoverResult recover_without_refresh(
         nlohmann::json metadata_json = nlohmann::json::parse(metadata_str);
         
         std::string user_id = metadata_json["user_id"].get<std::string>();
-        std::string device_id = metadata_json["device_id"].get<std::string>();
         std::string backup_id = metadata_json["backup_id"].get<std::string>();
         std::string base_auth_code = metadata_json["auth_code"].get<std::string>();
         
-        Bytes ciphertext = utils::base64_decode(metadata_json["ciphertext"].get<std::string>());
-        Bytes tag = utils::base64_decode(metadata_json["tag"].get<std::string>());
-        Bytes nonce = utils::base64_decode(metadata_json["nonce"].get<std::string>());
+        // Extract wrapped secret (standard format)
+        nlohmann::json wrapped_secret = metadata_json["wrapped_long_term_secret"];
+        Bytes ciphertext = utils::base64_decode(wrapped_secret["ciphertext"].get<std::string>());
+        Bytes tag = utils::base64_decode(wrapped_secret["tag"].get<std::string>());
+        Bytes nonce = utils::base64_decode(wrapped_secret["nonce"].get<std::string>());
+        
+        // Extract app_id for device_id construction - cross-language compatibility
+        std::string app_id = metadata_json["app_id"].get<std::string>();
+        std::string device_id = app_id; // Ocrypt uses app_id as device_id for cross-language consistency
         
         // Get server list
         std::vector<ServerInfo> server_infos;
@@ -207,23 +261,60 @@ OcryptRecoverResult recover_without_refresh(
                 server_infos.emplace_back(server_url.get<std::string>());
             }
         } else {
-            server_infos = client::get_servers(servers_url);
+            // Check if servers_url contains direct URLs (comma-separated)
+            if (!servers_url.empty() && (servers_url.find("http://") != std::string::npos || servers_url.find("https://") != std::string::npos)) {
+                // Parse comma-separated server URLs directly
+                std::istringstream ss(servers_url);
+                std::string server_url;
+                while (std::getline(ss, server_url, ',')) {
+                    // Trim whitespace
+                    server_url.erase(0, server_url.find_first_not_of(" \t"));
+                    server_url.erase(server_url.find_last_not_of(" \t") + 1);
+                    if (!server_url.empty()) {
+                        server_infos.emplace_back(server_url);
+                    }
+                }
+            } else {
+                // Use registry lookup
+                server_infos = client::get_servers(servers_url);
+            }
         }
         
-        // Get server public keys
+        // Get server public keys - try each server, continue with ones that work
+        std::vector<ServerInfo> working_servers;
         for (auto& server_info : server_infos) {
             try {
                 client::BasicOpenADPClient client(server_info.url);
                 nlohmann::json info = client.get_server_info();
                 
-                if (info.contains("public_key")) {
-                    std::string public_key_str = info["public_key"].get<std::string>();
+                if (info.contains("noise_nk_public_key")) {
+                    std::string public_key_str = info["noise_nk_public_key"].get<std::string>();
                     server_info.public_key = utils::base64_decode(public_key_str);
+                    working_servers.push_back(server_info);
+                    
+                    if (debug::is_debug_mode_enabled()) {
+                        debug::debug_log("✅ Successfully connected to server: " + server_info.url);
+                    }
+                } else {
+                    if (debug::is_debug_mode_enabled()) {
+                        debug::debug_log("⚠️  Server " + server_info.url + " does not provide noise_nk_public_key, skipping");
+                    }
                 }
-            } catch (...) {
-                // Continue without public key
+            } catch (const std::exception& e) {
+                if (debug::is_debug_mode_enabled()) {
+                    debug::debug_log("⚠️  Failed to connect to server " + server_info.url + ": " + std::string(e.what()) + ", skipping");
+                }
+                // Continue with other servers
             }
         }
+        
+        // Check if we have enough working servers for recovery
+        if (working_servers.empty()) {
+            throw OpenADPError("No OpenADP servers are accessible for recovery");
+        }
+        
+        // Use only the working servers
+        server_infos = working_servers;
         
         // Reconstruct auth codes
         AuthCodes auth_codes = keygen::generate_auth_codes(base_auth_code, server_infos);
@@ -239,9 +330,26 @@ OcryptRecoverResult recover_without_refresh(
         }
         
         // Decrypt the long-term secret
-        Bytes decrypted = crypto::aes_gcm_decrypt(ciphertext, tag, nonce, result.encryption_key.value());
-        
-        return OcryptRecoverResult(decrypted, result.remaining_guesses, metadata);
+        try {
+            Bytes decrypted = crypto::aes_gcm_decrypt(ciphertext, tag, nonce, result.encryption_key.value());
+            return OcryptRecoverResult(decrypted, result.remaining_guesses, metadata);
+        } catch (const std::exception& e) {
+            // Invalid PIN - show helpful message with actual remaining guesses
+            std::string error_msg = e.what();
+            if (error_msg.find("Authentication tag verification failed") != std::string::npos) {
+                if (result.max_guesses > 0 && result.num_guesses > 0) {
+                    int remaining = result.max_guesses - result.num_guesses;
+                    if (remaining > 0) {
+                        std::cerr << "❌ Invalid PIN! You have " << remaining << " guesses remaining." << std::endl;
+                    } else {
+                        std::cerr << "❌ Invalid PIN! No more guesses remaining - account may be locked." << std::endl;
+                    }
+                } else {
+                    std::cerr << "❌ Invalid PIN! Check your password and try again." << std::endl;
+                }
+            }
+            throw OpenADPError("Invalid PIN or corrupted data: " + error_msg);
+        }
         
     } catch (const std::exception& e) {
         throw OpenADPError("Recovery failed: " + std::string(e.what()));
@@ -270,9 +378,26 @@ OcryptRecoverResult recover(
         std::string next_backup_id = generate_next_backup_id(current_backup_id);
         
         try {
+            // Preserve the original server list from metadata for refresh
+            std::string preserved_servers_url = servers_url;
+            if (metadata_json.contains("servers")) {
+                // Convert servers array back to comma-separated string
+                std::vector<std::string> server_urls;
+                for (const auto& server_url : metadata_json["servers"]) {
+                    server_urls.push_back(server_url.get<std::string>());
+                }
+                if (!server_urls.empty()) {
+                    preserved_servers_url = "";
+                    for (size_t i = 0; i < server_urls.size(); ++i) {
+                        if (i > 0) preserved_servers_url += ",";
+                        preserved_servers_url += server_urls[i];
+                    }
+                }
+            }
+            
             // Register with new backup ID to refresh the backup
             Bytes new_metadata = register_with_bid(
-                user_id, app_id, result.secret, pin, max_guesses, next_backup_id, servers_url
+                user_id, app_id, result.secret, pin, max_guesses, next_backup_id, preserved_servers_url
             );
             
             return OcryptRecoverResult(result.secret, result.remaining_guesses, new_metadata);
@@ -283,6 +408,59 @@ OcryptRecoverResult recover(
         
     } catch (const std::exception& e) {
         throw OpenADPError("Recovery with refresh failed: " + std::string(e.what()));
+    }
+}
+
+OcryptRecoverAndReregisterResult recover_and_reregister(
+    const Bytes& metadata,
+    const std::string& pin,
+    const std::string& servers_url
+) {
+    try {
+        // Step 1: Recover with existing metadata (without refresh)
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("📋 Step 1: Recovering with existing metadata...");
+        }
+        
+        auto result = recover_without_refresh(metadata, pin, servers_url);
+        
+        // Parse original metadata to get registration parameters
+        std::string metadata_str = utils::bytes_to_string(metadata);
+        nlohmann::json metadata_json = nlohmann::json::parse(metadata_str);
+        
+        // Extract original registration parameters
+        std::string user_id = metadata_json["user_id"].get<std::string>();
+        std::string app_id = metadata_json["app_id"].get<std::string>();
+        int max_guesses = metadata_json.contains("max_guesses") ? metadata_json["max_guesses"].get<int>() : 10;
+
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("   ✅ Secret recovered successfully (" + std::to_string(result.remaining_guesses) + " guesses remaining)");
+            debug::debug_log("   🔑 User: " + user_id + ", App: " + app_id);
+        }
+
+        // Step 2: Completely fresh registration with new cryptographic material
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("📋 Step 2: Fresh registration with new cryptographic material...");
+        }
+        
+        // Generate next backup ID to ensure alternation (critical for prepare/commit safety)
+        std::string old_backup_id = metadata_json.contains("backup_id") ? metadata_json["backup_id"].get<std::string>() : "even";
+        std::string new_backup_id = generate_next_backup_id(old_backup_id);
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("🔄 Backup ID alternation: " + old_backup_id + " → " + new_backup_id);
+        }
+        
+        Bytes new_metadata = register_with_bid(user_id, app_id, result.secret, pin, max_guesses, new_backup_id, servers_url);
+
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("✅ Recovery and re-registration complete!");
+            debug::debug_log("   📝 New metadata contains completely fresh cryptographic material");
+        }
+        
+        return OcryptRecoverAndReregisterResult(result.secret, new_metadata);
+        
+    } catch (const std::exception& e) {
+        throw OpenADPError("Recovery and re-registration failed: " + std::string(e.what()));
     }
 }
 

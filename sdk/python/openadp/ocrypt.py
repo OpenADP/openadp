@@ -11,6 +11,7 @@ that enables secure, distributed key protection without revealing secrets to ind
 Core API:
 - ocrypt.register(user_id, app_id, long_term_secret, pin, max_guesses=10) -> metadata
 - ocrypt.recover(metadata, pin) -> (long_term_secret, remaining_guesses)
+- ocrypt.recover_and_reregister(metadata, pin) -> (long_term_secret, new_metadata)
 
 Both functions throw exceptions on errors.
 """
@@ -22,7 +23,8 @@ import hashlib
 import random
 import time
 import os
-from typing import Tuple, Optional
+import sys
+from typing import Tuple, Optional, NamedTuple
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 
@@ -391,6 +393,17 @@ def _recover_without_refresh(metadata: bytes, pin: str, servers_url: str = "") -
         except Exception as e:
             # Decryption failed = wrong PIN (or corrupted data)
             # Note: Server guess counters were already incremented during key recovery
+            
+            # Show helpful message with actual remaining guesses
+            if result.max_guesses > 0 and result.num_guesses > 0:
+                remaining = result.max_guesses - result.num_guesses
+                if remaining > 0:
+                    print(f"❌ Invalid PIN! You have {remaining} guesses remaining.", file=sys.stderr)
+                else:
+                    print("❌ Invalid PIN! No more guesses remaining - account may be locked.", file=sys.stderr)
+            else:
+                print("❌ Invalid PIN! Check your password and try again.", file=sys.stderr)
+            
             raise Exception(f"Invalid PIN or corrupted data: {e}")
         
         # Return the recovered secret
@@ -487,10 +500,93 @@ def _register_with_commit_internal(user_id: str, app_id: str, long_term_secret: 
         raise Exception(f"Backup refresh failed, old backup still valid: {e}")
 
 
+class RecoverAndReregisterResult(NamedTuple):
+    """Result of recover_and_reregister operation"""
+    secret: bytes  # The recovered long-term secret
+    new_metadata: bytes  # Fresh metadata from re-registration
 
 
-
-
+def recover_and_reregister(old_metadata: bytes, pin: str, servers_url: str = "") -> RecoverAndReregisterResult:
+    """
+    Recover a long-term secret and re-register with fresh cryptographic material.
+    
+    This function:
+    1. Recovers the secret using the old metadata
+    2. Performs a completely fresh registration with new cryptographic material
+    3. Returns both the recovered secret and new metadata
+    
+    This is the recommended approach for recovery as it provides:
+    - Fresh cryptographic material (new nonces, keys, etc.)
+    - Clean separation between recovery and registration
+    - Consistent behavior across language SDKs
+    
+    Args:
+        old_metadata: Metadata blob from previous registration
+        pin: Password/PIN to unlock secret
+        servers_url: Optional custom URL for server registry (empty string uses default)
+        
+    Returns:
+        RecoverAndReregisterResult with:
+        - secret: The recovered long-term secret
+        - new_metadata: Fresh metadata for future recoveries
+        
+    Raises:
+        Exception: If recovery or re-registration fails
+        
+    Example:
+        # Recover and get fresh metadata
+        result = ocrypt.recover_and_reregister(old_metadata, "1234")
+        secret = result.secret
+        new_metadata = result.new_metadata
+        
+        # Use the secret
+        private_key = ed25519.Ed25519PrivateKey.from_private_bytes(secret)
+        
+        # Store new_metadata for future recoveries
+        save_metadata_to_user_account(new_metadata)
+    """
+    print("🔄 Step 1: Recovering secret from old metadata...")
+    
+    # Step 1: Recover the secret using existing metadata
+    secret, remaining = _recover_without_refresh(old_metadata, pin, servers_url)
+    
+    print("✅ Secret recovered successfully")
+    
+    # Step 2: Parse old metadata to get user info for re-registration
+    try:
+        old_metadata_dict = json.loads(old_metadata.decode('utf-8'))
+        user_id = old_metadata_dict["user_id"]
+        app_id = old_metadata_dict["app_id"]
+        max_guesses = old_metadata_dict.get("max_guesses", 10)
+    except Exception as e:
+        raise Exception(f"Failed to parse old metadata: {e}")
+    
+    print(f"🔄 Step 2: Re-registering with fresh cryptographic material...")
+    print(f"   User: {user_id}, App: {app_id}")
+    
+    # Step 3: Fresh registration with the recovered secret
+    # Generate next backup ID to ensure alternation (critical for prepare/commit safety)
+    old_backup_id = old_metadata_dict.get("backup_id", "even")
+    backup_id = _generate_next_backup_id(old_backup_id)
+    print(f"🔄 Backup ID alternation: {old_backup_id} → {backup_id}")
+    debug_log(f"Backup ID alternation: {old_backup_id} → {backup_id}")
+    
+    new_metadata = _register_with_bid(
+        user_id=user_id,
+        app_id=app_id,
+        long_term_secret=secret,
+        pin=pin,
+        max_guesses=max_guesses,
+        backup_id=backup_id,
+        servers_url=servers_url
+    )
+    
+    print("✅ Re-registration completed with fresh cryptographic material")
+    
+    return RecoverAndReregisterResult(
+        secret=secret,
+        new_metadata=new_metadata
+    )
 
 
 # Module metadata
@@ -501,5 +597,6 @@ __description__ = "Drop-in replacement for password hashing functions using dist
 # Export public API
 __all__ = [
     'register',
-    'recover'
+    'recover',
+    'recover_and_reregister'
 ] 

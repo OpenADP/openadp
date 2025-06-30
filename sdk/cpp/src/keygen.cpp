@@ -6,6 +6,7 @@
 #include "openadp/debug.hpp"
 #include <chrono>
 #include <algorithm>
+#include <cctype>
 #include <openssl/bn.h>
 #include <sstream>
 
@@ -37,10 +38,13 @@ std::string generate_random_scalar() {
     // Reduce modulo Q to ensure it's in valid range
     BN_mod(scalar_bn, scalar_bn, q_bn, ctx);
     
-    // Convert back to hex
+    // Convert back to hex (lowercase for consistency with other SDKs)
     char* reduced_hex = BN_bn2hex(scalar_bn);
     std::string result(reduced_hex);
     OPENSSL_free(reduced_hex);
+    
+    // Convert to lowercase for consistency with Go/Python/JS implementations
+    std::transform(result.begin(), result.end(), result.begin(), ::tolower);
     
     // Clean up
     BN_free(scalar_bn);
@@ -150,6 +154,9 @@ GenerateEncryptionKeyResult generate_encryption_key(
             char* reduced_hex = BN_bn2hex(code_bn);
             base_auth_code = std::string(reduced_hex);
             OPENSSL_free(reduced_hex);
+            
+            // Convert to lowercase for consistency with Go/Python/JS implementations
+            std::transform(base_auth_code.begin(), base_auth_code.end(), base_auth_code.begin(), ::tolower);
             
             BN_free(code_bn);
             BN_free(q_bn);
@@ -333,6 +340,8 @@ RecoverEncryptionKeyResult recover_encryption_key(
         // Recover shares from servers
         std::vector<Share> shares;
         int remaining_guesses = 0;
+        int actual_num_guesses = 0;
+        int actual_max_guesses = 0;
         
         for (const auto& server_info : server_infos) {
             try {
@@ -380,6 +389,17 @@ RecoverEncryptionKeyResult recover_encryption_key(
                 // Check if RecoverSecret succeeded (response contains si_b)
                 if (response.contains("si_b")) {
                     std::string si_b = response["si_b"].get<std::string>();
+                    
+                    // Capture guess information from server response (first successful server)
+                    if (actual_num_guesses == 0 && actual_max_guesses == 0) {
+                        if (response.contains("num_guesses")) {
+                            actual_num_guesses = response["num_guesses"].get<int>();
+                        }
+                        if (response.contains("max_guesses")) {
+                            actual_max_guesses = response["max_guesses"].get<int>();
+                        }
+                    }
+                    
                     remaining_guesses = response.contains("max_guesses") ? 
                         response["max_guesses"].get<int>() - (response.contains("num_guesses") ? response["num_guesses"].get<int>() : 0) : 10;
                     
@@ -557,7 +577,7 @@ RecoverEncryptionKeyResult recover_encryption_key(
             debug::debug_log("Key recovery: encryption_key hex=" + crypto::bytes_to_hex(encryption_key));
         }
         
-        return RecoverEncryptionKeyResult::success(encryption_key, remaining_guesses);
+        return RecoverEncryptionKeyResult::success(encryption_key, remaining_guesses, actual_num_guesses, actual_max_guesses);
         
     } catch (const std::exception& e) {
         return RecoverEncryptionKeyResult::error(std::string("Key recovery failed: ") + e.what());

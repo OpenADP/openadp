@@ -12,14 +12,19 @@ using namespace openadp;
 void print_usage(const char* program_name) {
     std::cout << "Usage: " << program_name << " [OPTIONS]\n"
               << "\n"
-              << "Recover a long-term secret using Ocrypt distributed cryptography.\n"
+              << "Recover a long-term secret and re-register with fresh cryptographic material.\n"
+              << "\n"
+              << "This tool:\n"
+              << "  1. Recovers your secret from old metadata\n"
+              << "  2. Re-registers it with fresh cryptographic material\n"
+              << "  3. Outputs new metadata (automatically backs up existing files)\n"
               << "\n"
               << "Options:\n"
               << "  --metadata <string>     Metadata blob from registration (required)\n"
               << "  --password <string>     Password/PIN to unlock the secret (will prompt if not provided)\n"
               << "  --servers-url <string>  Custom URL for server registry (empty uses default)\n"
-              << "  --servers <string>      Comma-separated list of servers (overrides registry)\n"
-              << "  --output <string>       File to write recovery result JSON (writes to stdout if not specified)\n"
+              << "  --output <string>       File to write new metadata JSON (writes to stdout if not specified)\n"
+              << "  --test-mode             Enable test mode (outputs JSON with secret and metadata)\n"
               << "  --debug                 Enable debug mode for deterministic operations\n"
               << "  --version               Show version information\n"
               << "  --help                  Show this help message\n"
@@ -35,9 +40,9 @@ void print_usage(const char* program_name) {
               << "\n"
               << "Examples:\n"
               << "  " << program_name << " --metadata '{\"servers\":[...]}'\n"
-              << "  " << program_name << " --metadata \"$(cat metadata.json)\" --output result.json\n"
+              << "  " << program_name << " --metadata \"$(cat metadata.json)\" --output metadata.json\n"
               << "  " << program_name << " --metadata \"$(cat metadata.json)\" --password mypin\n"
-              << "  " << program_name << " --metadata \"$(cat metadata.json)\" --debug\n";
+              << "  " << program_name << " --metadata \"$(cat metadata.json)\" --test-mode\n";
 }
 
 void print_version() {
@@ -65,13 +70,39 @@ std::string read_password() {
     return password;
 }
 
+void safe_write_file(const std::string& filename, const std::string& data) {
+    // Check if file exists
+    std::ifstream check_file(filename);
+    if (check_file.good()) {
+        check_file.close();
+        // File exists, create backup
+        std::string backup_name = filename + ".old";
+        std::cerr << "📋 Backing up existing " << filename << " to " << backup_name << std::endl;
+        
+        if (std::rename(filename.c_str(), backup_name.c_str()) != 0) {
+            throw std::runtime_error("Failed to backup existing file");
+        }
+        std::cerr << "✅ Backup created: " << backup_name << std::endl;
+    }
+    
+    // Write new file
+    std::ofstream file(filename);
+    if (!file) {
+        throw std::runtime_error("Failed to write file: " + filename);
+    }
+    file << data;
+    file.close();
+    
+    std::cerr << "✅ New metadata written to " << filename << std::endl;
+}
+
 int main(int argc, char* argv[]) {
     std::string metadata_str;
     std::string password;
     std::string servers_url;
-    std::string servers;
     std::string output_file;
     bool debug_mode = false;
+    bool test_mode = false;
     
     // Check environment variables
     const char* env_password = std::getenv("OPENADP_PASSWORD");
@@ -84,8 +115,8 @@ int main(int argc, char* argv[]) {
         {"metadata", required_argument, 0, 'm'},
         {"password", required_argument, 0, 'p'},
         {"servers-url", required_argument, 0, 's'},
-        {"servers", required_argument, 0, 'S'},
         {"output", required_argument, 0, 'o'},
+        {"test-mode", no_argument, 0, 't'},
         {"debug", no_argument, 0, 'D'},
         {"version", no_argument, 0, 'V'},
         {"help", no_argument, 0, 'h'},
@@ -95,7 +126,7 @@ int main(int argc, char* argv[]) {
     int option_index = 0;
     int c;
     
-    while ((c = getopt_long(argc, argv, "m:p:s:S:o:DVh", long_options, &option_index)) != -1) {
+    while ((c = getopt_long(argc, argv, "m:p:s:o:tDVh", long_options, &option_index)) != -1) {
         switch (c) {
             case 'm':
                 metadata_str = optarg;
@@ -107,11 +138,11 @@ int main(int argc, char* argv[]) {
             case 's':
                 servers_url = optarg;
                 break;
-            case 'S':
-                servers = optarg;
-                break;
             case 'o':
                 output_file = optarg;
+                break;
+            case 't':
+                test_mode = true;
                 break;
             case 'D':
                 debug_mode = true;
@@ -133,6 +164,7 @@ int main(int argc, char* argv[]) {
     // Set debug mode if requested
     if (debug_mode) {
         debug::set_debug(true);
+        std::cerr << "🐛 Debug mode enabled - using deterministic operations\n";
     }
     
     // Validate required arguments
@@ -152,81 +184,67 @@ int main(int argc, char* argv[]) {
     }
     
     try {
-        // Parse metadata (could be base64 encoded or JSON string)
+        // Use default servers URL if none provided
+        std::string effective_servers_url = servers_url;
+        if (effective_servers_url.empty()) {
+            effective_servers_url = "https://servers.openadp.org/api/servers.json";
+        }
+        
+        // Read metadata from file or treat as literal string
         Bytes metadata;
-        
-        // Try to parse as JSON first
-        try {
-            nlohmann::json metadata_json = nlohmann::json::parse(metadata_str);
-            
-            // If it has a "metadata" field, it's a result from register
-            if (metadata_json.contains("metadata")) {
-                std::string metadata_b64 = metadata_json["metadata"].get<std::string>();
-                metadata = utils::base64_decode(metadata_b64);
-            } else {
-                // It's raw metadata JSON
-                metadata = utils::string_to_bytes(metadata_str);
-            }
-        } catch (...) {
-            // Try as base64
-            try {
-                metadata = utils::base64_decode(metadata_str);
-            } catch (...) {
-                // Treat as raw string
-                metadata = utils::string_to_bytes(metadata_str);
-            }
-        }
-        
-        // Recover the secret
-        auto result = ocrypt::recover(metadata, password, servers_url);
-        
-        // Convert secret to string
-        std::string secret_str = utils::bytes_to_string(result.secret);
-        
-        // Create result JSON
-        nlohmann::json json_result;
-        json_result["success"] = true;
-        json_result["secret"] = secret_str;
-        json_result["remaining_guesses"] = result.remaining_guesses;
-        json_result["updated_metadata"] = utils::base64_encode(result.updated_metadata);
-        json_result["message"] = "Secret recovered successfully";
-        
-        std::string json_output = json_result.dump(2); // Pretty print with 2-space indent
-        
-        // Write output
-        if (output_file.empty()) {
-            std::cout << json_output << std::endl;
+        if (metadata_str.find('{') == 0) {
+            // Starts with '{', treat as literal JSON string
+            metadata = utils::string_to_bytes(metadata_str);
         } else {
-            std::ofstream file(output_file);
-            if (!file) {
-                std::cerr << "Error: Failed to create output file: " << output_file << std::endl;
-                return 1;
-            }
-            file << json_output << std::endl;
-            std::cerr << "Recovery result saved to " << output_file << std::endl;
+            // Treat as file path and read file contents
+            metadata = utils::read_file(metadata_str);
         }
         
-        return 0;
+        // Call the new recover_and_reregister API
+        auto result = ocrypt::recover_and_reregister(metadata, password, effective_servers_url);
+        
+        // Convert results to strings
+        std::string secret_str = utils::bytes_to_string(result.secret);
+        std::string new_metadata_str = utils::bytes_to_string(result.new_metadata);
+        
+        // Handle test mode
+        if (test_mode) {
+            nlohmann::json test_result;
+            test_result["secret"] = secret_str;
+            test_result["new_metadata"] = new_metadata_str;
+            
+            std::cout << test_result.dump() << std::endl;
+            return 0;
+        }
+        
+        // Normal mode: Print recovered secret to stderr for user verification
+        std::cerr << "🔑 Recovered secret: " << secret_str << std::endl;
+        
+        // Output new metadata
+        if (!output_file.empty()) {
+            // Write to file with safe backup
+            safe_write_file(output_file, new_metadata_str);
+        } else {
+            // Write to stdout
+            std::cout << new_metadata_str << std::endl;
+        }
+        
+        std::cerr << "✅ Recovery and re-registration complete!" << std::endl;
+        std::cerr << "📝 New metadata contains completely fresh cryptographic material" << std::endl;
         
     } catch (const std::exception& e) {
-        // Create error JSON
-        nlohmann::json result;
-        result["success"] = false;
-        result["error"] = e.what();
-        result["remaining_guesses"] = 0;
+        nlohmann::json error_result;
+        error_result["success"] = false;
+        error_result["error"] = e.what();
+        error_result["remaining_guesses"] = 0;
         
-        std::string json_output = result.dump(2);
-        
-        if (output_file.empty()) {
-            std::cout << json_output << std::endl;
+        if (test_mode) {
+            std::cout << error_result.dump() << std::endl;
         } else {
-            std::ofstream file(output_file);
-            if (file) {
-                file << json_output << std::endl;
-            }
+            std::cerr << "❌ Recovery failed: " << e.what() << std::endl;
         }
-        
-        std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
+    
+    return 0;
 } 

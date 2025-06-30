@@ -15,6 +15,15 @@ struct OcryptRecoverResult {
         : secret(secret), remaining_guesses(remaining), updated_metadata(metadata) {}
 };
 
+// Ocrypt recover and reregister result structure
+struct OcryptRecoverAndReregisterResult {
+    Bytes secret;
+    Bytes new_metadata;
+    
+    OcryptRecoverAndReregisterResult(const Bytes& secret, const Bytes& metadata)
+        : secret(secret), new_metadata(metadata) {}
+};
+
 // Register a long-term secret protected by a PIN using OpenADP distributed cryptography
 Bytes register_secret(
     const std::string& user_id,
@@ -50,6 +59,13 @@ OcryptRecoverResult recover_without_refresh(
 );
 
 std::string generate_next_backup_id(const std::string& current_backup_id);
+
+// Recover a long-term secret and reregister with completely fresh metadata
+OcryptRecoverAndReregisterResult recover_and_reregister(
+    const Bytes& metadata,
+    const std::string& pin,
+    const std::string& servers_url = ""
+);
 
 } // namespace ocrypt
 } // namespace openadp 

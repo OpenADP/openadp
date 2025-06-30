@@ -1,6 +1,6 @@
 //! Ocrypt - Drop-in replacement for password hashing functions
 //!
-//! Ocrypt provides a simple 2-function API that replaces traditional password hashing functions
+//! Ocrypt provides a simple 3-function API that replaces traditional password hashing functions
 //! (bcrypt, scrypt, Argon2, PBKDF2) with OpenADP's distributed threshold cryptography for
 //! nation-state-resistant password protection.
 
@@ -153,6 +153,89 @@ pub async fn recover(
     };
 
     Ok((secret, remaining, updated_metadata))
+}
+
+/// Recover a long-term secret and reregister with completely fresh metadata.
+///
+/// This function provides a clean separation between recovery and registration:
+/// 1. Recovers the long-term secret using existing metadata
+/// 2. Performs a completely fresh registration with new cryptographic material
+///
+/// # Arguments
+///
+/// * `metadata_bytes` - Metadata blob from register()
+/// * `pin` - Password/PIN to unlock the secret  
+/// * `servers_url` - Optional custom URL for server registry (empty string uses default)
+///
+/// # Returns
+///
+/// Returns a tuple of (secret, new_metadata).
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use openadp_ocrypt::{register, recover_and_reregister};
+///
+/// #[tokio::main]
+/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     // ... register first ...
+///     let metadata = register("alice@example.com", "app", b"secret", "pin", 10, "").await?;
+///     
+///     // Later: recover and get completely fresh metadata
+///     let (secret, new_metadata) = recover_and_reregister(&metadata, "pin", "").await?;
+///     
+///     // new_metadata contains completely fresh cryptographic material
+///     println!("Fresh metadata length: {} bytes", new_metadata.len());
+///     
+///     Ok(())
+/// }
+/// ```
+pub async fn recover_and_reregister(
+    metadata_bytes: &[u8],
+    pin: &str,
+    servers_url: &str,
+) -> Result<(Vec<u8>, Vec<u8>)> {
+    // Input validation
+    if metadata_bytes.is_empty() {
+        return Err(OpenADPError::InvalidInput("metadata cannot be empty".to_string()));
+    }
+    if pin.is_empty() {
+        return Err(OpenADPError::InvalidInput("pin cannot be empty".to_string()));
+    }
+
+    eprintln!("🔄 Starting recovery and re-registration...");
+
+    // Step 1: Recover with existing metadata (without refresh)
+    eprintln!("📋 Step 1: Recovering with existing metadata...");
+    let (secret, remaining) = recover_without_refresh(metadata_bytes, pin, servers_url).await?;
+    
+    // Parse original metadata to get registration parameters
+    let metadata_text = String::from_utf8_lossy(metadata_bytes);
+    let metadata: OcryptMetadata = serde_json::from_str(&metadata_text)
+        .map_err(|e| OpenADPError::InvalidInput(format!("Invalid metadata format: {}", e)))?;
+    
+    // Extract original registration parameters
+    let user_id = &metadata.user_id;
+    let app_id = &metadata.app_id;
+    let max_guesses = metadata.max_guesses;
+
+    eprintln!("   ✅ Secret recovered successfully ({} guesses remaining)", remaining);
+    eprintln!("   🔑 User: {}, App: {}", user_id, app_id);
+
+    // Step 2: Completely fresh registration with new cryptographic material
+    eprintln!("📋 Step 2: Fresh registration with new cryptographic material...");
+    
+    // Generate next backup ID to ensure alternation (critical for prepare/commit safety)
+    let old_backup_id = &metadata.backup_id;
+    let new_backup_id = generate_next_backup_id(old_backup_id);
+    eprintln!("🔄 Backup ID alternation: {} → {}", old_backup_id, new_backup_id);
+    
+    let new_metadata = register_with_bid(user_id, app_id, &secret, pin, max_guesses, &new_backup_id, servers_url).await?;
+
+    eprintln!("✅ Recovery and re-registration complete!");
+    eprintln!("   📝 New metadata contains completely fresh cryptographic material");
+    
+    Ok((secret, new_metadata))
 }
 
 /// Internal function to register with specific backup ID
@@ -311,7 +394,7 @@ async fn recover_without_refresh(
     let encryption_key = recovery_result.encryption_key.unwrap();
     
     // Unwrap the long-term secret
-    let secret = unwrap_secret(&metadata.wrapped_long_term_secret, &encryption_key)?;
+    let secret = unwrap_secret(&metadata.wrapped_long_term_secret, &encryption_key, recovery_result.max_guesses, recovery_result.num_guesses)?;
     
     Ok((secret, 0)) // 0 remaining guesses = success
 }
@@ -396,7 +479,7 @@ fn wrap_secret(secret: &[u8], key: &[u8]) -> Result<WrappedSecret> {
 }
 
 /// Unwrap secret with AES-256-GCM
-fn unwrap_secret(wrapped: &WrappedSecret, key: &[u8]) -> Result<Vec<u8>> {
+fn unwrap_secret(wrapped: &WrappedSecret, key: &[u8], max_guesses: i32, num_guesses: i32) -> Result<Vec<u8>> {
     if key.len() != 32 {
         return Err(OpenADPError::Crypto("Key must be 32 bytes".to_string()));
     }
@@ -418,7 +501,20 @@ fn unwrap_secret(wrapped: &WrappedSecret, key: &[u8]) -> Result<Vec<u8>> {
     ciphertext_with_tag.extend_from_slice(&tag);
     
     let plaintext = cipher.decrypt(nonce, ciphertext_with_tag.as_slice())
-        .map_err(|_| OpenADPError::Authentication("Invalid PIN or corrupted data".to_string()))?;
+        .map_err(|_| {
+            // Show helpful message with actual remaining guesses
+            if max_guesses > 0 && num_guesses > 0 {
+                let remaining = max_guesses - num_guesses;
+                if remaining > 0 {
+                    eprintln!("❌ Invalid PIN! You have {} guesses remaining.", remaining);
+                } else {
+                    eprintln!("❌ Invalid PIN! No more guesses remaining - account may be locked.");
+                }
+            } else {
+                eprintln!("❌ Invalid PIN! Check your password and try again.");
+            }
+            OpenADPError::Authentication("Invalid PIN or corrupted data".to_string())
+        })?;
     
     Ok(plaintext)
 }
@@ -498,7 +594,7 @@ mod tests {
         let key = [42u8; 32];
         
         let wrapped = wrap_secret(secret, &key).unwrap();
-        let unwrapped = unwrap_secret(&wrapped, &key).unwrap();
+        let unwrapped = unwrap_secret(&wrapped, &key, 10, 0).unwrap();
         
         assert_eq!(secret, unwrapped.as_slice());
     }

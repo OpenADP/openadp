@@ -1,13 +1,21 @@
 use clap::Parser;
-use openadp_ocrypt::recover;
+use openadp_ocrypt::recover_and_reregister;
 use serde_json::json;
 use std::fs;
+use std::path::Path;
 use std::process;
 
 #[derive(Parser)]
 #[command(name = "ocrypt-recover")]
-#[command(about = "Recover a long-term secret using Ocrypt distributed cryptography")]
-#[command(version = "0.1.2")]
+#[command(about = "Recover a long-term secret and reregister with fresh cryptographic material.
+
+This tool performs two steps:
+1. Recovers the secret from existing metadata
+2. Reregisters with completely fresh cryptographic material
+
+The recovered secret is printed to stderr for verification, and the new metadata
+is written to the specified output file (or stdout).")]
+#[command(version = "0.1.3")]
 struct Args {
     /// Metadata blob from registration (required)
     #[arg(long)]
@@ -17,20 +25,45 @@ struct Args {
     #[arg(long)]
     password: Option<String>,
 
-    /// Custom URL for server registry (empty uses default)
+    /// Custom URL for server registry (default: https://servers.openadp.org/api/servers.json)
     #[arg(long, default_value = "")]
     servers_url: String,
 
-    /// File to write recovery result JSON (writes to stdout if not specified)
+    /// File to write new metadata to (writes to stdout if not specified)
     #[arg(long)]
     output: Option<String>,
+
+    /// Enable test mode (outputs JSON with secret and metadata)
+    #[arg(long)]
+    test_mode: bool,
+}
+
+/// Safely write data to a file, backing up existing file first.
+fn safe_write_file(filename: &str, data: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let path = Path::new(filename);
+    
+    // Check if file exists
+    if path.exists() {
+        // File exists, create backup
+        let backup_name = format!("{}.old", filename);
+        eprintln!("📋 Backing up existing {} to {}", filename, backup_name);
+        
+        fs::rename(filename, &backup_name)?;
+        eprintln!("✅ Backup created: {}", backup_name);
+    }
+    
+    // Write new file
+    fs::write(filename, data)?;
+    eprintln!("✅ New metadata written to: {}", filename);
+    
+    Ok(())
 }
 
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
 
-    // Handle password input - exactly like other versions
+    // Handle password input
     let pin = match args.password {
         Some(password) => password,
         None => {
@@ -51,47 +84,63 @@ async fn main() {
         process::exit(1);
     }
 
-    // Call ocrypt::recover
-    let (secret, remaining_guesses, updated_metadata) = match recover(
+    // Use default servers URL if none provided
+    let servers_url = if args.servers_url.is_empty() {
+        "https://servers.openadp.org/api/servers.json"
+    } else {
+        &args.servers_url
+    };
+
+    // Call ocrypt::recover_and_reregister
+    eprintln!("🔄 Starting recovery and re-registration...");
+    let (secret, new_metadata) = match recover_and_reregister(
         args.metadata.as_bytes(),
         &pin,
-        &args.servers_url,
+        servers_url,
     ).await {
         Ok(result) => result,
         Err(e) => {
-            eprintln!("Recovery failed: {}", e);
+            eprintln!("❌ Recovery failed: {}", e);
             process::exit(1);
         }
     };
 
-    // Create JSON tuple output - exactly like other versions
-    let output_data = json!({
-        "secret": String::from_utf8_lossy(&secret),
-        "remaining_guesses": remaining_guesses,
-        "updated_metadata": String::from_utf8_lossy(&updated_metadata)
-    });
+    // Handle test mode
+    if args.test_mode {
+        let secret_str = String::from_utf8_lossy(&secret);
+        let new_metadata_str = String::from_utf8_lossy(&new_metadata);
+        
+        let test_result = json!({
+            "secret": secret_str,
+            "new_metadata": new_metadata_str
+        });
+        
+        println!("{}", test_result);
+        return;
+    }
 
-    let output_json = match serde_json::to_string(&output_data) {
-        Ok(json) => json,
-        Err(e) => {
-            eprintln!("JSON encoding failed: {}", e);
-            process::exit(1);
-        }
-    };
+    // Normal mode: Print recovered secret to stderr for verification
+    let secret_str = String::from_utf8_lossy(&secret);
+    eprintln!("🔓 Recovered secret: {}", secret_str);
 
-    // Output result as JSON - exactly like other versions
+    // Convert new metadata to string
+    let new_metadata_str = String::from_utf8_lossy(&new_metadata);
+
+    // Output new metadata  
     match args.output {
         Some(output_path) => {
-            // Write to file
-            if let Err(e) = fs::write(&output_path, &output_json) {
-                eprintln!("Failed to write result to file {}: {}", output_path, e);
+            // Write to file with backup
+            if let Err(e) = safe_write_file(&output_path, &new_metadata_str) {
+                eprintln!("❌ Failed to write metadata to file {}: {}", output_path, e);
                 process::exit(1);
             }
-            eprintln!("✅ Recovery result written to {}", output_path);
         }
         None => {
             // Write to stdout
-            println!("{}", output_json);
+            println!("{}", new_metadata_str);
         }
     }
+
+    eprintln!("✅ Recovery and re-registration complete!");
+    eprintln!("📝 New metadata contains completely fresh cryptographic material");
 } 

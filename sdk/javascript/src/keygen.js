@@ -66,9 +66,11 @@ export class GenerateEncryptionKeyResult {
  * Result of encryption key recovery
  */
 export class RecoverEncryptionKeyResult {
-    constructor(encryptionKey = null, error = null) {
+    constructor(encryptionKey = null, error = null, numGuesses = 0, maxGuesses = 0) {
         this.encryptionKey = encryptionKey;
         this.error = error;
+        this.numGuesses = numGuesses; // Actual number of guesses used (from server responses)
+        this.maxGuesses = maxGuesses; // Maximum guesses allowed (from server responses)
     }
 }
 
@@ -552,12 +554,25 @@ export async function recoverEncryptionKey(
         
         // Process recovery results
         const validShares = [];
+        let actualNumGuesses = 0;
+        let actualMaxGuesses = 0;
+        
         for (const settledResult of recoveryResults) {
             if (settledResult.status === 'fulfilled') {
                 const { serverUrl, serverInfo, result, error } = settledResult.value;
                 if (error) {
                     console.warn(`OpenADP: Failed to recover from ${serverUrl}: ${error.message}`);
                 } else {
+                    // Capture guess information from server response (first successful server)
+                    if (actualNumGuesses === 0 && actualMaxGuesses === 0) {
+                        if (result.num_guesses !== undefined) {
+                            actualNumGuesses = parseInt(result.num_guesses);
+                        }
+                        if (result.max_guesses !== undefined) {
+                            actualMaxGuesses = parseInt(result.max_guesses);
+                        }
+                    }
+                    
                     const guessesStr = serverInfo.remainingGuesses === -1 ? "unknown" : serverInfo.remainingGuesses.toString();
                     console.log(`OpenADP: ✓ Recovered share from ${serverUrl} (${guessesStr} remaining guesses)`);
                     
@@ -578,7 +593,9 @@ export async function recoverEncryptionKey(
         if (validShares.length < threshold) {
             return new RecoverEncryptionKeyResult(
                 null,
-                `Not enough valid shares recovered. Got ${validShares.length}, need ${threshold}`
+                `Not enough valid shares recovered. Got ${validShares.length}, need ${threshold}`,
+                actualNumGuesses,
+                actualMaxGuesses
             );
         }
         
@@ -600,11 +617,11 @@ export async function recoverEncryptionKey(
         const encryptionKey = deriveEncKey(originalSU);
         console.log(`OpenADP: Successfully recovered encryption key`);
         
-        return new RecoverEncryptionKeyResult(encryptionKey, null);
+        return new RecoverEncryptionKeyResult(encryptionKey, null, actualNumGuesses, actualMaxGuesses);
         
     } catch (error) {
         console.error(`OpenADP encryption key recovery failed: ${error.message}`);
-        return new RecoverEncryptionKeyResult(null, `Key recovery failed: ${error.message}`);
+        return new RecoverEncryptionKeyResult(null, `Key recovery failed: ${error.message}`, 0, 0);
     }
 }
 

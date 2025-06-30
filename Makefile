@@ -10,6 +10,8 @@ OCRYPT_REGISTER_BINARY_NAME=ocrypt-register
 OCRYPT_RECOVER_BINARY_NAME=ocrypt-recover
 RUST_ENCRYPT_BINARY_NAME=openadp-encrypt-rust
 RUST_DECRYPT_BINARY_NAME=openadp-decrypt-rust
+RUST_OCRYPT_REGISTER_BINARY_NAME=ocrypt-register-rust
+RUST_OCRYPT_RECOVER_BINARY_NAME=ocrypt-recover-rust
 VERSION=0.1.2
 BUILD_DIR=build
 PKG_DIR=pkg
@@ -35,7 +37,7 @@ CARGO_TEST=$(CARGO) test
 # Build flags
 LDFLAGS=-ldflags "-X main.version=$(VERSION)"
 
-.PHONY: all build build-server build-encrypt build-decrypt build-serverinfo build-ocrypt-register build-ocrypt-recover build-rust build-rust-encrypt build-rust-decrypt test-rust clean clean-rust test test-verbose deps fmt lint help install encrypt decrypt rust-encrypt rust-decrypt serverinfo ocrypt-register ocrypt-recover fuzz fuzz-server fuzz-crypto fuzz-api fuzz-all fuzz-quick fuzz-extended fuzz-coverage fuzz-clean fuzz-help
+.PHONY: all build build-server build-encrypt build-decrypt build-serverinfo build-ocrypt-register build-ocrypt-recover build-rust build-rust-encrypt build-rust-decrypt build-rust-ocrypt-register build-rust-ocrypt-recover test-rust clean clean-rust test test-verbose deps fmt lint help install encrypt decrypt rust-encrypt rust-decrypt rust-ocrypt-register rust-ocrypt-recover serverinfo ocrypt-register ocrypt-recover fuzz fuzz-server fuzz-crypto fuzz-api fuzz-all fuzz-quick fuzz-extended fuzz-coverage fuzz-clean fuzz-help
 
 # Default target
 all: clean deps fmt test build build-server build-encrypt build-decrypt build-serverinfo build-ocrypt-register build-ocrypt-recover build-rust
@@ -71,7 +73,7 @@ build-ocrypt-recover:
 	$(GOBUILD) -o $(BUILD_DIR)/$(OCRYPT_RECOVER_BINARY_NAME) $(LDFLAGS) ./$(CMD_DIR)/ocrypt-recover
 
 # Build all Rust tools
-build-rust: build-rust-encrypt build-rust-decrypt
+build-rust: build-rust-encrypt build-rust-decrypt build-rust-ocrypt-register build-rust-ocrypt-recover
 
 # Build the Rust encryption tool
 build-rust-encrypt:
@@ -94,6 +96,32 @@ build-rust-decrypt:
 		cd $(RUST_SDK_DIR) && $(CARGO_BUILD_RELEASE) --bin openadp-decrypt; \
 		cp target/release/openadp-decrypt ../../$(BUILD_DIR)/$(RUST_DECRYPT_BINARY_NAME); \
 		echo "✅ Rust decrypt tool built successfully"; \
+	else \
+		echo "❌ Rust SDK not found at $(RUST_SDK_DIR)"; \
+		exit 1; \
+	fi
+
+# Build the Rust ocrypt register tool
+build-rust-ocrypt-register:
+	@echo "🦀 Building Rust Ocrypt register tool..."
+	@mkdir -p $(BUILD_DIR)
+	@if [ -f "$(RUST_SDK_DIR)/Cargo.toml" ]; then \
+		cd $(RUST_SDK_DIR) && $(CARGO_BUILD_RELEASE) --bin ocrypt-register; \
+		cp target/release/ocrypt-register ../../$(BUILD_DIR)/$(RUST_OCRYPT_REGISTER_BINARY_NAME); \
+		echo "✅ Rust ocrypt-register tool built successfully"; \
+	else \
+		echo "❌ Rust SDK not found at $(RUST_SDK_DIR)"; \
+		exit 1; \
+	fi
+
+# Build the Rust ocrypt recover tool
+build-rust-ocrypt-recover:
+	@echo "🦀 Building Rust Ocrypt recover tool..."
+	@mkdir -p $(BUILD_DIR)
+	@if [ -f "$(RUST_SDK_DIR)/Cargo.toml" ]; then \
+		cd $(RUST_SDK_DIR) && $(CARGO_BUILD_RELEASE) --bin ocrypt-recover; \
+		cp target/release/ocrypt-recover ../../$(BUILD_DIR)/$(RUST_OCRYPT_RECOVER_BINARY_NAME); \
+		echo "✅ Rust ocrypt-recover tool built successfully"; \
 	else \
 		echo "❌ Rust SDK not found at $(RUST_SDK_DIR)"; \
 		exit 1; \
@@ -124,7 +152,7 @@ clean-rust:
 	@if [ -f "$(RUST_SDK_DIR)/Cargo.toml" ]; then \
 		cd $(RUST_SDK_DIR) && $(CARGO_CLEAN); \
 		rm -f $(BUILD_DIR)/$(RUST_ENCRYPT_BINARY_NAME) $(BUILD_DIR)/$(RUST_DECRYPT_BINARY_NAME); \
-		rm -f $(BUILD_DIR)/$(OCRYPT_REGISTER_BINARY_NAME) $(BUILD_DIR)/$(OCRYPT_RECOVER_BINARY_NAME); \
+		rm -f $(BUILD_DIR)/$(RUST_OCRYPT_REGISTER_BINARY_NAME) $(BUILD_DIR)/$(RUST_OCRYPT_RECOVER_BINARY_NAME); \
 		echo "✅ Rust artifacts cleaned"; \
 	else \
 		echo "❌ Rust SDK not found at $(RUST_SDK_DIR)"; \
@@ -229,6 +257,16 @@ rust-decrypt: build-rust-decrypt
 	@echo "🦀 Running Rust OpenADP decryption tool..."
 	./$(BUILD_DIR)/$(RUST_DECRYPT_BINARY_NAME) --help
 
+# Run the Rust ocrypt register tool
+rust-ocrypt-register: build-rust-ocrypt-register
+	@echo "🦀 Running Rust Ocrypt register tool..."
+	./$(BUILD_DIR)/$(RUST_OCRYPT_REGISTER_BINARY_NAME) --help
+
+# Run the Rust ocrypt recover tool
+rust-ocrypt-recover: build-rust-ocrypt-recover
+	@echo "🦀 Running Rust Ocrypt recover tool..."
+	./$(BUILD_DIR)/$(RUST_OCRYPT_RECOVER_BINARY_NAME) --help
+
 # Test server connectivity
 test-server: build-server
 	@echo "🌐 Testing server connectivity..."
@@ -330,9 +368,11 @@ help:
 	@echo "  build-decrypt    - Build decryption tool"
 	@echo "  build-ocrypt-register - Build Ocrypt register tool"
 	@echo "  build-ocrypt-recover - Build Ocrypt recover tool"
-	@echo "  build-rust       - Build all Rust tools"
-	@echo "  build-rust-encrypt - Build Rust encryption tool"
-	@echo "  build-rust-decrypt - Build Rust decryption tool"
+	@echo "  build-rust               - Build all Rust tools"
+	@echo "  build-rust-encrypt       - Build Rust encryption tool"
+	@echo "  build-rust-decrypt       - Build Rust decryption tool"
+	@echo "  build-rust-ocrypt-register - Build Rust Ocrypt register tool"
+	@echo "  build-rust-ocrypt-recover  - Build Rust Ocrypt recover tool"
 	@echo ""
 	@echo "🧪 Test Targets:"
 	@echo "  test             - Run all tests"
@@ -349,8 +389,10 @@ help:
 	@echo "  decrypt          - Run decryption tool"
 	@echo "  ocrypt-register  - Run Ocrypt register tool"
 	@echo "  ocrypt-recover   - Run Ocrypt recover tool"
-	@echo "  rust-encrypt     - Run Rust encryption tool"
-	@echo "  rust-decrypt     - Run Rust decryption tool"
+	@echo "  rust-encrypt         - Run Rust encryption tool"
+	@echo "  rust-decrypt         - Run Rust decryption tool"
+	@echo "  rust-ocrypt-register - Run Rust Ocrypt register tool"
+	@echo "  rust-ocrypt-recover  - Run Rust Ocrypt recover tool"
 	@echo ""
 	@echo "🏗️  Node Operator Targets:"
 	@echo "  install-node     - Install/update OpenADP node (requires sudo)"

@@ -31,3 +31,5 @@ require (
 )
 
 replace github.com/openadp/server => ./server
+
+replace github.com/openadp/ocrypt => /home/waywardgeek/projects/ocrypt

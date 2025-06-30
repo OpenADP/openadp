@@ -63,6 +63,8 @@ class RecoverEncryptionKeyResult:
     """Result of encryption key recovery."""
     encryption_key: Optional[bytes] = None
     error: Optional[str] = None
+    num_guesses: int = 0  # Actual number of guesses used (from server responses)
+    max_guesses: int = 0  # Maximum guesses allowed (from server responses)
 
 def generate_auth_codes(server_urls: List[str]) -> AuthCodes:
     """
@@ -372,19 +374,19 @@ def recover_encryption_key(
     """
     # Input validation
     if identity is None:
-        return RecoverEncryptionKeyResult(error="Identity cannot be None")
+        return RecoverEncryptionKeyResult(error="Identity cannot be None", num_guesses=0, max_guesses=0)
     
     if not identity.uid:
-        return RecoverEncryptionKeyResult(error="UID cannot be empty")
+        return RecoverEncryptionKeyResult(error="UID cannot be empty", num_guesses=0, max_guesses=0)
     
     if not identity.did:
-        return RecoverEncryptionKeyResult(error="DID cannot be empty")
+        return RecoverEncryptionKeyResult(error="DID cannot be empty", num_guesses=0, max_guesses=0)
     
     if not identity.bid:
-        return RecoverEncryptionKeyResult(error="BID cannot be empty")
+        return RecoverEncryptionKeyResult(error="BID cannot be empty", num_guesses=0, max_guesses=0)
     
     if threshold <= 0:
-        return RecoverEncryptionKeyResult(error="Threshold must be positive")
+        return RecoverEncryptionKeyResult(error="Threshold must be positive", num_guesses=0, max_guesses=0)
     
     print(f"OpenADP: Identity={identity}")
     
@@ -432,7 +434,7 @@ def recover_encryption_key(
                 print(f"Warning: Server {server_info.url} is not accessible: {e}")
         
         if not clients:
-            return RecoverEncryptionKeyResult(error="No servers are accessible")
+            return RecoverEncryptionKeyResult(error="No servers are accessible", num_guesses=0, max_guesses=0)
         
         print(f"OpenADP: Using {len(clients)} live servers")
         
@@ -474,6 +476,8 @@ def recover_encryption_key(
         # Step 5: Recover shares from servers (use all available servers, already intelligently selected)
         print("OpenADP: Recovering shares from servers...")
         valid_shares = []
+        actual_num_guesses = 0
+        actual_max_guesses = 0
         
         for i in range(len(clients)):  # Use all available servers (already filtered by remaining guesses)
             client = clients[i]
@@ -506,6 +510,13 @@ def recover_encryption_key(
                         auth_code, identity.uid, identity.did, identity.bid, b_base64_format, guess_num, True
                     )
                     result_map = result if isinstance(result, dict) else result.__dict__
+                    
+                    # Capture guess information from server response (first successful server)
+                    if actual_num_guesses == 0 and actual_max_guesses == 0:
+                        if 'num_guesses' in result_map:
+                            actual_num_guesses = int(result_map['num_guesses'])
+                        if 'max_guesses' in result_map:
+                            actual_max_guesses = int(result_map['max_guesses'])
                     
                     debug_log(f"🔍 DEBUG: Server {i+1} response - x: {result_map.get('x')}, si_b: {result_map.get('si_b')}")
                     debug_log(f"🔍 DEBUG: si_b length: {len(result_map.get('si_b', ''))}")
@@ -550,6 +561,13 @@ def recover_encryption_key(
                                 )
                                 retry_result_map = retry_result if isinstance(retry_result, dict) else retry_result.__dict__
                                 
+                                # Capture guess information from retry response (first successful server)
+                                if actual_num_guesses == 0 and actual_max_guesses == 0:
+                                    if 'num_guesses' in retry_result_map:
+                                        actual_num_guesses = int(retry_result_map['num_guesses'])
+                                    if 'max_guesses' in retry_result_map:
+                                        actual_max_guesses = int(retry_result_map['max_guesses'])
+                                
                                 guesses_str = "unknown" if server_info.remaining_guesses == -1 else f"{server_info.remaining_guesses}"
                                 print(f"OpenADP: ✓ Recovered share from server {i+1} ({server_url}, {guesses_str} remaining guesses) on retry")
                                 
@@ -581,7 +599,9 @@ def recover_encryption_key(
         
         if len(valid_shares) < threshold:
             return RecoverEncryptionKeyResult(
-                error=f"Not enough valid shares recovered. Got {len(valid_shares)}, need {threshold}"
+                error=f"Not enough valid shares recovered. Got {len(valid_shares)}, need {threshold}",
+                num_guesses=actual_num_guesses,
+                max_guesses=actual_max_guesses
             )
         
         print(f"OpenADP: Recovered {len(valid_shares)} valid shares")
@@ -609,10 +629,10 @@ def recover_encryption_key(
         debug_log(f"🔍 DEBUG: Final encryption key: {encryption_key.hex()}")
         print("OpenADP: Successfully recovered encryption key")
         
-        return RecoverEncryptionKeyResult(encryption_key=encryption_key)
+        return RecoverEncryptionKeyResult(encryption_key=encryption_key, num_guesses=actual_num_guesses, max_guesses=actual_max_guesses)
         
     except Exception as e:
-        return RecoverEncryptionKeyResult(error=f"Unexpected error: {e}")
+        return RecoverEncryptionKeyResult(error=f"Unexpected error: {e}", num_guesses=0, max_guesses=0)
 
 
 def fetch_remaining_guesses_for_servers(identity: Identity, server_infos: List[ServerInfo]) -> List[ServerInfo]:

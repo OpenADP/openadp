@@ -284,7 +284,18 @@ void EncryptedOpenADPClient::perform_handshake() {
 }
 
 std::string EncryptedOpenADPClient::generate_session_id() {
-    return utils::random_hex(16); // 16 bytes = 32 hex chars
+    if (debug::is_debug_mode_enabled()) {
+        // In debug mode, create deterministic but unique session ID per server
+        std::string combined = "session_" + basic_client_->url();
+        Bytes combined_bytes = utils::string_to_bytes(combined);
+        Bytes hash = crypto::sha256_hash(combined_bytes);
+        // Take first 16 bytes (32 hex chars) of hash for session ID
+        Bytes session_bytes(hash.begin(), hash.begin() + 16);
+        return utils::hex_encode(session_bytes);
+    } else {
+        // In normal mode, use random session ID
+        return utils::random_hex(16); // 16 bytes = 32 hex chars
+    }
 }
 
 nlohmann::json EncryptedOpenADPClient::make_encrypted_request(const std::string& method, const nlohmann::json& params) {
@@ -378,19 +389,14 @@ nlohmann::json EncryptedOpenADPClient::make_encrypted_request(const std::string&
 }
 
 nlohmann::json EncryptedOpenADPClient::register_secret(const RegisterSecretRequest& request) {
-    // Get hostname for device ID (matching Python/Go behavior)
-    char hostname[256];
-    if (gethostname(hostname, sizeof(hostname)) != 0) {
-        strncpy(hostname, "unknown", sizeof(hostname) - 1);
-        hostname[sizeof(hostname) - 1] = '\0';
-    }
-    std::string device_id = std::string(hostname);
+    // Use device_id from the request identity (not hostname override)
+    std::string device_id = request.identity.did;
     
     // Server expects array format: [auth_code, uid, did, bid, version, x, y, max_guesses, expiration]
     nlohmann::json params = nlohmann::json::array();
     params.push_back(request.auth_code);           // auth_code from request
     params.push_back(request.identity.uid);        // uid  
-    params.push_back(device_id);                   // did (hostname, not hardcoded)
+    params.push_back(device_id);                   // did (from request identity)
     params.push_back(request.identity.bid);        // bid
     params.push_back(request.version);             // version
     params.push_back(request.x);                   // x (Shamir X coordinate)

@@ -186,7 +186,8 @@ def run_go_recover(metadata):
         BUILD_PATH + "/ocrypt-recover",
         "--metadata", json.dumps(metadata),
         "--password", TEST_PASSWORD,
-        "--servers-url", f"file://{os.path.abspath(SERVERS_JSON_FILE)}"
+        "--servers-url", f"file://{os.path.abspath(SERVERS_JSON_FILE)}",
+        "--test-mode"
     ]
     
     log(f"Running Go recover with local servers.json")
@@ -282,7 +283,8 @@ def run_python_recover(metadata):
         "python3", SDK_PYTHON_PATH + "/ocrypt-recover.py",
         "--metadata", json.dumps(metadata),
         "--password", TEST_PASSWORD,
-        "--servers-url", f"file://{os.path.abspath(SERVERS_JSON_FILE)}"
+        "--servers-url", f"file://{os.path.abspath(SERVERS_JSON_FILE)}",
+        "--test-mode"
     ]
     
     log(f"Running Python recover with local servers.json")
@@ -378,7 +380,8 @@ def run_javascript_recover(metadata):
         "node", SDK_JAVASCRIPT_PATH + "/ocrypt-recover.js",
         "--metadata", json.dumps(metadata),
         "--password", TEST_PASSWORD,
-        "--servers-url", f"file://{os.path.abspath(SERVERS_JSON_FILE)}"
+        "--servers-url", f"file://{os.path.abspath(SERVERS_JSON_FILE)}",
+        "--test-mode"
     ]
     
     log(f"Running JavaScript recover with local servers.json")
@@ -459,7 +462,8 @@ def run_rust_recover(metadata):
         SDK_RUST_PATH + "/target/release/ocrypt-recover",  # Assuming Rust ocrypt tools follow similar naming
         "--metadata", json.dumps(metadata),
         "--password", TEST_PASSWORD,
-        "--servers-url", f"file://{os.path.abspath(SERVERS_JSON_FILE)}"
+        "--servers-url", f"file://{os.path.abspath(SERVERS_JSON_FILE)}",
+        "--test-mode"
     ]
     
     log(f"Running Rust recover with local servers.json")
@@ -597,7 +601,8 @@ def run_cpp_recover(metadata):
         SDK_CPP_PATH + "/build/ocrypt-recover",  # Corrected path
         "--metadata", json.dumps(metadata),
         "--password", TEST_PASSWORD,
-        "--servers-url", f"file://{os.path.abspath(SERVERS_JSON_FILE)}"
+        "--servers-url", f"file://{os.path.abspath(SERVERS_JSON_FILE)}",
+        "--test-mode"
     ]
     
     log(f"Running C++ recover with local servers.json")

@@ -102,13 +102,17 @@ impl GenerateEncryptionKeyResult {
 pub struct RecoverEncryptionKeyResult {
     pub encryption_key: Option<Vec<u8>>,
     pub error: Option<String>,
+    pub num_guesses: i32,  // Actual number of guesses used (from server responses)
+    pub max_guesses: i32,  // Maximum guesses allowed (from server responses)
 }
 
 impl RecoverEncryptionKeyResult {
-    pub fn success(encryption_key: Vec<u8>) -> Self {
+    pub fn success(encryption_key: Vec<u8>, num_guesses: i32, max_guesses: i32) -> Self {
         Self {
             encryption_key: Some(encryption_key),
             error: None,
+            num_guesses,
+            max_guesses,
         }
     }
 
@@ -116,6 +120,8 @@ impl RecoverEncryptionKeyResult {
         Self {
             encryption_key: None,
             error: Some(error),
+            num_guesses: 0,
+            max_guesses: 0,
         }
     }
 }
@@ -390,6 +396,8 @@ pub async fn recover_encryption_key(
 
     // Step 4: Recover shares from servers
     let mut recovered_point_shares = Vec::new();
+    let mut actual_num_guesses = 0i32;
+    let mut actual_max_guesses = 0i32;
     
     for server_info in &selected_server_infos {
         // Parse public key if available
@@ -464,6 +472,12 @@ pub async fn recover_encryption_key(
             Ok(response) => {
                 if response.success {
                     
+                    // Capture guess information from server response (first successful server)
+                    if actual_num_guesses == 0 && actual_max_guesses == 0 {
+                        actual_num_guesses = response.num_guesses;
+                        actual_max_guesses = response.max_guesses;
+                    }
+                    
                     // Parse the returned share
                     if let Some(si_b) = response.si_b {
                         
@@ -519,7 +533,7 @@ pub async fn recover_encryption_key(
     let encryption_key = derive_enc_key(&original_su)?;
     
     
-    Ok(RecoverEncryptionKeyResult::success(encryption_key))
+    Ok(RecoverEncryptionKeyResult::success(encryption_key, actual_num_guesses, actual_max_guesses))
 }
 
 /// Fetch remaining guesses for all servers

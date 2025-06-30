@@ -3,6 +3,8 @@
 * Clean up old database entries.  Pick how long 0 means (5 years?)
 * Rerun fuzzing.  Automate this?
 * Load testing and optimization
+* Add functional test that verifies even/odd alternating with bad guesses in ocrypt.
+* Functional test verifying we get no more guesses at some point.
 
 # Client
 

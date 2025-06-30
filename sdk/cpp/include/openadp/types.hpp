@@ -119,11 +119,15 @@ struct RecoverEncryptionKeyResult {
     std::optional<Bytes> encryption_key;
     int remaining_guesses;
     std::optional<std::string> error_message;
+    int num_guesses;  // Actual number of guesses used (from server responses)
+    int max_guesses;  // Maximum guesses allowed (from server responses)
     
-    static RecoverEncryptionKeyResult success(const Bytes& key, int remaining) {
+    static RecoverEncryptionKeyResult success(const Bytes& key, int remaining, int num_guesses = 0, int max_guesses = 0) {
         RecoverEncryptionKeyResult result;
         result.encryption_key = key;
         result.remaining_guesses = remaining;
+        result.num_guesses = num_guesses;
+        result.max_guesses = max_guesses;
         return result;
     }
     
@@ -131,6 +135,8 @@ struct RecoverEncryptionKeyResult {
         RecoverEncryptionKeyResult result;
         result.error_message = error_msg;
         result.remaining_guesses = 0;
+        result.num_guesses = 0;
+        result.max_guesses = 0;
         return result;
     }
 };

@@ -187,17 +187,19 @@ int main(int argc, char* argv[]) {
         // Convert long-term secret to Bytes
         Bytes secret_bytes = utils::string_to_bytes(long_term_secret);
         
+        // Determine which server configuration to use
+        std::string effective_servers_url = servers_url;
+        if (!servers.empty()) {
+            // Use direct server list if provided
+            effective_servers_url = servers;
+        }
+        
         // Register the secret using the correct API
         // Note: For compatibility with the current API that expects device_id, we'll use app_id as device_id  
-        Bytes metadata = ocrypt::register_secret(user_id, app_id, secret_bytes, password, max_guesses, servers_url);
+        Bytes metadata = ocrypt::register_secret(user_id, app_id, secret_bytes, password, max_guesses, effective_servers_url);
         
-        // Create result JSON
-        nlohmann::json result;
-        result["success"] = true;
-        result["metadata"] = utils::base64_encode(metadata);
-        result["message"] = "Secret registered successfully";
-        
-        std::string json_output = result.dump(2); // Pretty print with 2-space indent
+        // Output raw metadata JSON directly (like other SDKs) for cross-language compatibility
+        std::string json_output = utils::bytes_to_string(metadata);
         
         // Write output
         if (output_file.empty()) {

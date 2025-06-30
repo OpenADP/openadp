@@ -695,7 +695,7 @@ impl EncryptedOpenADPClient {
                     return Err(OpenADPError::Server("Handshake not complete after message exchange".to_string()));
                 }
                 
-                println!("✅ Noise-NK handshake completed successfully");
+                eprintln!("✅ Noise-NK handshake completed successfully");
             }
             
             // Step 2: Send encrypted JSON-RPC request using the session
@@ -1069,7 +1069,7 @@ impl MultiServerClient {
             return Err(OpenADPError::Server("No live servers found".to_string()));
         }
         
-        println!("Initialization complete: {} live servers available", live_clients.len());
+        eprintln!("Initialization complete: {} live servers available", live_clients.len());
         
         Ok(Self {
             clients: live_clients,
@@ -1092,17 +1092,17 @@ impl MultiServerClient {
 
     /// Test a single server for liveness
     async fn test_single_server(server_info: ServerInfo, timeout_secs: u64) -> Option<EncryptedOpenADPClient> {
-        println!("Testing server: {}", server_info.url);
+        eprintln!("Testing server: {}", server_info.url);
         
         // Parse public key if available
         let public_key = if !server_info.public_key.is_empty() {
             match parse_server_public_key(&server_info.public_key) {
                 Ok(key) => {
-                    println!("  🔑 {}: Using Noise-NK encryption", server_info.url);
+                    eprintln!("  🔑 {}: Using Noise-NK encryption", server_info.url);
                     Some(key)
                 }
                 Err(e) => {
-                    println!("  ⚠️  {}: Invalid public key: {}", server_info.url, e);
+                    eprintln!("  ⚠️  {}: Invalid public key: {}", server_info.url, e);
                     None
                 }
             }
@@ -1119,19 +1119,19 @@ impl MultiServerClient {
         match timeout(Duration::from_secs(timeout_secs), client.echo(&test_message, false)).await {
             Ok(Ok(response)) => {
                 if response == test_message {
-                    println!("  ✅ {}: Live and responding", server_info.url);
+                    eprintln!("  ✅ {}: Live and responding", server_info.url);
                     Some(client)
                 } else {
-                    println!("  ❌ {}: Echo response mismatch", server_info.url);
+                    eprintln!("  ❌ {}: Echo response mismatch", server_info.url);
                     None
                 }
             }
             Ok(Err(e)) => {
-                println!("  ❌ {}: {}", server_info.url, e);
+                eprintln!("  ❌ {}: {}", server_info.url, e);
                 None
             }
             Err(_) => {
-                println!("  ❌ {}: Timeout", server_info.url);
+                eprintln!("  ❌ {}: Timeout", server_info.url);
                 None
             }
         }

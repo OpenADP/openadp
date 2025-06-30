@@ -32,7 +32,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  --long-term-secret string\n        Long-term secret to protect (required)\n")
 		fmt.Fprintf(os.Stderr, "  --password string\n        Password/PIN to unlock the secret (will prompt if not provided)\n")
 		fmt.Fprintf(os.Stderr, "  --max-guesses int\n        Maximum wrong PIN attempts before lockout (default 10)\n")
-		fmt.Fprintf(os.Stderr, "  --servers-url string\n        Custom URL for server registry (empty uses default)\n")
+		fmt.Fprintf(os.Stderr, "  --servers-url string\n        Custom URL for server registry (default: https://servers.openadp.org/api/servers.json)\n")
 		fmt.Fprintf(os.Stderr, "  --output string\n        File to write metadata JSON (writes to stdout if not specified)\n")
 		fmt.Fprintf(os.Stderr, "  --debug\n        Enable debug mode (deterministic operations)\n")
 		fmt.Fprintf(os.Stderr, "  --help\n        Show help message\n")
