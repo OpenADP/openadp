@@ -438,24 +438,61 @@ class ShamirSecretSharing:
         if len(shares) < 1:
             raise ValueError("Need at least one share")
         
+        if is_debug_mode_enabled():
+            debug_log("📊 PYTHON SHAMIR RECOVERY: Starting secret recovery")
+            debug_log(f"   Number of shares: {len(shares)}")
+            debug_log("   Input shares:")
+            for i, (x, y) in enumerate(shares):
+                debug_log(f"     Share {i + 1}: (x={x}, y={y})")
+                debug_log(f"     Share {i + 1} y hex: {y:064x}")
+            debug_log(f"   Using prime modulus Q: {Q:064x}")
+            debug_log("   Starting Lagrange interpolation...")
+        
         # Lagrange interpolation to find f(0)
         secret = 0
         
         for i, (xi, yi) in enumerate(shares):
+            if is_debug_mode_enabled():
+                debug_log(f"   Processing share {i + 1} (x={xi}, y={yi})")
+            
             # Compute Lagrange basis polynomial Li(0)
             numerator = 1
             denominator = 1
             
             for j, (xj, _) in enumerate(shares):
                 if i != j:
+                    old_numerator = numerator
+                    old_denominator = denominator
+                    
                     numerator = (numerator * (-xj)) % Q
                     denominator = (denominator * (xi - xj)) % Q
+                    
+                    if is_debug_mode_enabled():
+                        debug_log(f"     Multiplying numerator by (-{xj}) = {(-xj) % Q:x}")
+                        debug_log(f"     Multiplying denominator by ({xi} - {xj}) = {(xi - xj) % Q:x}")
+            
+            if is_debug_mode_enabled():
+                debug_log(f"     Final numerator: {numerator:064x}")
+                debug_log(f"     Final denominator: {denominator:064x}")
             
             # Compute Li(0) = numerator / denominator
             li_0 = (numerator * mod_inverse(denominator, Q)) % Q
             
+            if is_debug_mode_enabled():
+                debug_log(f"     Lagrange basis polynomial L{i}(0): {li_0:064x}")
+            
             # Add yi * Li(0) to result
-            secret = (secret + yi * li_0) % Q
+            term = (yi * li_0) % Q
+            secret = (secret + term) % Q
+            
+            if is_debug_mode_enabled():
+                debug_log(f"     Term {i}: y{i} * L{i}(0) = {term:064x}")
+                debug_log(f"     Running total: {secret:064x}")
+        
+        if is_debug_mode_enabled():
+            debug_log("📊 PYTHON SHAMIR RECOVERY: Completed secret recovery")
+            debug_log(f"   Final recovered secret: {secret}")
+            debug_log(f"   Final recovered secret hex: {secret:064x}")
         
         return secret
 

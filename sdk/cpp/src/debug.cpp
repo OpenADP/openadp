@@ -2,12 +2,19 @@
 #include <iostream>
 #include <iomanip>
 #include <sstream>
+#include <cstdlib>
 
 namespace openadp {
 namespace debug {
 
-// Global debug flag
-bool g_debug_mode = false;
+// Function to check environment variable
+static bool check_debug_env() {
+    const char* env_debug = std::getenv("OPENADP_DEBUG");
+    return env_debug != nullptr && std::string(env_debug) == "1";
+}
+
+// Global debug flag - initialize from environment
+bool g_debug_mode = check_debug_env();
 
 void set_debug(bool enabled) {
     g_debug_mode = enabled;

@@ -158,7 +158,7 @@ class OpenADPTestRunner:
         
         # First clean, then build all components including tools needed for tests
         success, stdout, stderr = self.run_command([
-            "make", "clean", "build", "build-server", "build-encrypt", "build-decrypt"
+            "make", "clean", "build", "build-go"
         ])
         duration = time.time() - start_time
         
@@ -489,11 +489,12 @@ class OpenADPTestRunner:
         build_dir = self.root_dir / "build"
         if not build_dir.exists():
             self.log("📁 Build directory doesn't exist, building all tools...", Colors.WARNING)
-            success, _, _ = self.run_command(["make", "build-server", "build-encrypt", "build-decrypt"])
+            success, _, _ = self.run_command(["make", "build-go"])
             return success
         
-        # Check for key executables
-        key_executables = ["openadp-server", "openadp-encrypt", "openadp-decrypt"]
+        # Check for key executables including ocrypt tools
+        key_executables = ["openadp-server", "openadp-encrypt", "openadp-decrypt", 
+                          "openadp-serverinfo", "ocrypt-register", "ocrypt-recover"]
         missing_tools = []
         
         for exe in key_executables:
@@ -503,7 +504,7 @@ class OpenADPTestRunner:
         
         if missing_tools:
             self.log(f"🔨 Missing tools: {missing_tools}, building all tools...", Colors.WARNING)
-            success, _, _ = self.run_command(["make", "build-server", "build-encrypt", "build-decrypt"])
+            success, _, _ = self.run_command(["make", "build-go"])
             return success
         
         self.log("✅ Go tools are already built", Colors.SUCCESS)

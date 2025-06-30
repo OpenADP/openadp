@@ -390,6 +390,12 @@ RecoverEncryptionKeyResult recover_encryption_key(
                 if (response.contains("si_b")) {
                     std::string si_b = response["si_b"].get<std::string>();
                     
+                    // Extract the x coordinate from the server response
+                    int x_coordinate = 1; // Default fallback
+                    if (response.contains("x")) {
+                        x_coordinate = response["x"].get<int>();
+                    }
+                    
                     // Capture guess information from server response (first successful server)
                     if (actual_num_guesses == 0 && actual_max_guesses == 0) {
                         if (response.contains("num_guesses")) {
@@ -403,9 +409,8 @@ RecoverEncryptionKeyResult recover_encryption_key(
                     remaining_guesses = response.contains("max_guesses") ? 
                         response["max_guesses"].get<int>() - (response.contains("num_guesses") ? response["num_guesses"].get<int>() : 0) : 10;
                     
-                    // Create share (server index as x, si_b as y)
-                    int server_index = static_cast<int>(shares.size() + 1);
-                    shares.emplace_back(server_index, si_b);
+                    // Create share using the actual x coordinate from server response
+                    shares.emplace_back(x_coordinate, si_b);
                     
                     if (debug::is_debug_mode_enabled()) {
                         debug::debug_log("Successfully recovered share from server " + server_info.url + 

@@ -156,11 +156,26 @@ Bytes register_with_bid(
         // Encrypt the long-term secret with deterministic nonce in debug mode
         auto aes_result = [&]() {
             if (debug::is_debug_mode_enabled()) {
-                // Use deterministic nonce in debug mode for cross-language compatibility
-                Bytes deterministic_nonce = debug::get_deterministic_random_bytes(12);
-                return crypto::aes_gcm_encrypt(long_term_secret, result.encryption_key.value(), deterministic_nonce, Bytes{});
+                Bytes deterministic_nonce = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c};
+                debug::debug_log("🔐 C++ AES-GCM WRAPPING DEBUG:");
+                debug::debug_log("   - long-term secret length: " + std::to_string(long_term_secret.size()) + " bytes");
+                debug::debug_log("   - long-term secret hex: " + crypto::bytes_to_hex(long_term_secret));
+                debug::debug_log("   - encryption key length: " + std::to_string(result.encryption_key.value().size()) + " bytes");
+                debug::debug_log("   - encryption key hex: " + crypto::bytes_to_hex(result.encryption_key.value()));
+                debug::debug_log("   - nonce length: " + std::to_string(deterministic_nonce.size()) + " bytes");
+                debug::debug_log("   - nonce hex: " + crypto::bytes_to_hex(deterministic_nonce));
+                debug::debug_log("   - AAD: empty (no additional authenticated data)");
+                
+                auto encrypt_result = crypto::aes_gcm_encrypt(long_term_secret, result.encryption_key.value(), deterministic_nonce, Bytes{});
+                
+                debug::debug_log("🔐 C++ AES-GCM WRAPPING RESULT:");
+                debug::debug_log("   - ciphertext length: " + std::to_string(encrypt_result.ciphertext.size()) + " bytes");
+                debug::debug_log("   - ciphertext hex: " + crypto::bytes_to_hex(encrypt_result.ciphertext));
+                debug::debug_log("   - tag length: " + std::to_string(encrypt_result.tag.size()) + " bytes");
+                debug::debug_log("   - tag hex: " + crypto::bytes_to_hex(encrypt_result.tag));
+                
+                return encrypt_result;
             } else {
-                // Use random nonce in production
                 return crypto::aes_gcm_encrypt(long_term_secret, result.encryption_key.value());
             }
         }();
@@ -330,8 +345,24 @@ OcryptRecoverResult recover_without_refresh(
         }
         
         // Decrypt the long-term secret
+        debug::debug_log("🔓 C++ AES-GCM UNWRAPPING DEBUG:");
+        debug::debug_log("   - encryption key length: " + std::to_string(result.encryption_key.value().size()) + " bytes");
+        debug::debug_log("   - encryption key hex: " + crypto::bytes_to_hex(result.encryption_key.value()));
+        debug::debug_log("   - nonce length: " + std::to_string(nonce.size()) + " bytes");
+        debug::debug_log("   - nonce hex: " + crypto::bytes_to_hex(nonce));
+        debug::debug_log("   - ciphertext length: " + std::to_string(ciphertext.size()) + " bytes");
+        debug::debug_log("   - ciphertext hex: " + crypto::bytes_to_hex(ciphertext));
+        debug::debug_log("   - tag length: " + std::to_string(tag.size()) + " bytes");
+        debug::debug_log("   - tag hex: " + crypto::bytes_to_hex(tag));
+        debug::debug_log("   - AAD: empty (no additional authenticated data)");
+
         try {
             Bytes decrypted = crypto::aes_gcm_decrypt(ciphertext, tag, nonce, result.encryption_key.value());
+            
+            debug::debug_log("🔓 C++ AES-GCM UNWRAPPING RESULT:");
+            debug::debug_log("   - decrypted secret length: " + std::to_string(decrypted.size()) + " bytes");
+            debug::debug_log("   - decrypted secret hex: " + crypto::bytes_to_hex(decrypted));
+            
             return OcryptRecoverResult(decrypted, result.remaining_guesses, metadata);
         } catch (const std::exception& e) {
             // Invalid PIN - show helpful message with actual remaining guesses

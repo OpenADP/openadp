@@ -37,7 +37,7 @@ TEST_APP_ID = "cross_lang_test_app"
 TEST_SECRET = "Hello, OpenADP Ocrypt 5x5 Cross-Language Test! This tests all combinations of Go/Python/JavaScript/Rust/C++ register/recover compatibility for comprehensive interoperability validation."
 
 # Server configuration for testing
-SERVER_PORTS = [8080, 8081, 8082]  # Use multiple servers for comprehensive testing
+SERVER_PORTS = [8080, 8081, 8082, 8083, 8084]  # Use multiple servers for comprehensive testing
 SERVER_MANAGER = None
 SERVERS_JSON_FILE = None
 

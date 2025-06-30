@@ -404,6 +404,177 @@ TEST_F(CryptoTest, ShamirCorruptedShares) {
     EXPECT_NE(recovered, secret_hex);
 }
 
+// Test Shamir share order independence - verifies that Lagrange interpolation
+// correctly uses x coordinates rather than array indices
+TEST_F(CryptoTest, ShamirShareOrderIndependence) {
+    std::string secret_hex = "deadbeefcafebabe1234567890abcdef";
+    int threshold = 3;
+    int num_shares = 5;
+    
+    auto shares = crypto::ShamirSecretSharing::split_secret(secret_hex, threshold, num_shares);
+    EXPECT_EQ(shares.size(), 5);
+    
+    // Verify shares have expected x coordinates (1, 2, 3, 4, 5)
+    std::set<int> expected_x_values = {1, 2, 3, 4, 5};
+    std::set<int> actual_x_values;
+    for (const auto& share : shares) {
+        actual_x_values.insert(share.x);
+    }
+    EXPECT_EQ(actual_x_values, expected_x_values);
+    
+    // Test all possible permutations of 3 shares from the 5 available
+    // This tests that regardless of order, the same secret is recovered
+    std::vector<std::vector<int>> test_combinations = {
+        {0, 1, 2},  // shares 1, 2, 3 (original order)
+        {2, 1, 0},  // shares 3, 2, 1 (reverse order)
+        {0, 2, 1},  // shares 1, 3, 2 (mixed order)
+        {1, 0, 2},  // shares 2, 1, 3 (mixed order)
+        {1, 2, 0},  // shares 2, 3, 1 (mixed order)
+        {2, 0, 1},  // shares 3, 1, 2 (mixed order)
+        {0, 1, 3},  // shares 1, 2, 4 (different shares, original order)
+        {3, 1, 0},  // shares 4, 2, 1 (different shares, mixed order)
+        {2, 3, 4},  // shares 3, 4, 5 (different shares, original order)
+        {4, 3, 2},  // shares 5, 4, 3 (different shares, reverse order)
+        {1, 3, 4},  // shares 2, 4, 5 (different shares, mixed order)
+        {4, 1, 3}   // shares 5, 2, 4 (different shares, mixed order)
+    };
+    
+    std::string reference_recovery;
+    
+    for (size_t test_idx = 0; test_idx < test_combinations.size(); test_idx++) {
+        const auto& combination = test_combinations[test_idx];
+        
+        // Create shares in this specific order
+        std::vector<Share> ordered_shares;
+        for (int idx : combination) {
+            ordered_shares.push_back(shares[idx]);
+        }
+        
+        // Recover the secret
+        std::string recovered = crypto::ShamirSecretSharing::recover_secret(ordered_shares);
+        
+        // Convert to lowercase for consistent comparison
+        std::string recovered_lower = recovered;
+        std::transform(recovered_lower.begin(), recovered_lower.end(), recovered_lower.begin(), ::tolower);
+        
+        if (test_idx == 0) {
+            // Store the first recovery as reference
+            reference_recovery = recovered_lower;
+            
+            // Verify it matches the original secret
+            std::string secret_lower = secret_hex;
+            std::transform(secret_lower.begin(), secret_lower.end(), secret_lower.begin(), ::tolower);
+            EXPECT_EQ(recovered_lower, secret_lower) << "First recovery should match original secret";
+        } else {
+            // All subsequent recoveries should match the reference
+            EXPECT_EQ(recovered_lower, reference_recovery) 
+                << "Test combination " << test_idx << " failed: shares ("
+                << shares[combination[0]].x << "," << shares[combination[1]].x << "," << shares[combination[2]].x
+                << ") gave different result than reference";
+        }
+        
+        // Debug output for failing cases (if any)
+        if (recovered_lower != reference_recovery) {
+            std::cout << "FAILURE DETAILS for combination " << test_idx << ":\n";
+            std::cout << "  Share order: ";
+            for (size_t i = 0; i < ordered_shares.size(); i++) {
+                std::cout << "(x=" << ordered_shares[i].x << ", y=" << ordered_shares[i].y.substr(0, 8) << "...) ";
+            }
+            std::cout << "\n";
+            std::cout << "  Expected: " << reference_recovery << "\n";
+            std::cout << "  Got:      " << recovered_lower << "\n";
+        }
+    }
+    
+    std::cout << "\n✅ Share order independence test passed - all " << test_combinations.size() 
+              << " permutations produced identical results!\n";
+    std::cout << "   This confirms Lagrange interpolation correctly uses x coordinates, not array indices.\n\n";
+}
+
+// Test Shamir with simulated non-sequential recovery order
+// This test uses normal shares but recovers them in different orders to simulate 
+// what happens in real cross-language scenarios where servers complete in arbitrary order
+TEST_F(CryptoTest, ShamirSimulatedNonSequentialRecovery) {
+    // This test simulates the real-world scenario where:
+    // 1. Python creates shares with x coordinates 1,2,3,4,5
+    // 2. Python registers them in parallel, servers complete in random order: 3,2,1,4,5
+    // 3. C++ recovery gets shares from servers in arbitrary order: x=4,x=2,x=3,x=1
+    // This verifies the Lagrange interpolation correctly uses x coordinates, not array indices
+    
+    std::string secret_hex = "deadbeefcafebabe12345678";
+    int threshold = 3;
+    int num_shares = 5;
+    
+    // Create shares normally (this will have x coordinates 1,2,3,4,5)
+    auto all_shares = crypto::ShamirSecretSharing::split_secret(secret_hex, threshold, num_shares);
+    EXPECT_EQ(all_shares.size(), 5);
+    
+    // Simulate the real cross-language scenario:
+    // Get shares corresponding to x=4, x=2, x=3, x=1 (the failing pattern we observed)
+    std::vector<Share> simulated_recovery_shares = {
+        all_shares[3],  // x=4 (index 3 -> x coordinate 4)
+        all_shares[1],  // x=2 (index 1 -> x coordinate 2) 
+        all_shares[2],  // x=3 (index 2 -> x coordinate 3)
+        all_shares[0]   // x=1 (index 0 -> x coordinate 1)
+    };
+    
+    // Verify we have the expected x coordinates
+    EXPECT_EQ(simulated_recovery_shares[0].x, 4);
+    EXPECT_EQ(simulated_recovery_shares[1].x, 2);
+    EXPECT_EQ(simulated_recovery_shares[2].x, 3);
+    EXPECT_EQ(simulated_recovery_shares[3].x, 1);
+    
+    // Use only threshold number of shares (3) for recovery - take the first 3
+    std::vector<Share> recovery_shares(simulated_recovery_shares.begin(), simulated_recovery_shares.begin() + threshold);
+    
+    // Recover the secret
+    std::string recovered = crypto::ShamirSecretSharing::recover_secret(recovery_shares);
+    
+    // Convert to lowercase for consistent comparison
+    std::string recovered_lower = recovered;
+    std::string secret_lower = secret_hex;
+    std::transform(recovered_lower.begin(), recovered_lower.end(), recovered_lower.begin(), ::tolower);
+    std::transform(secret_lower.begin(), secret_lower.end(), secret_lower.begin(), ::tolower);
+    
+    EXPECT_EQ(recovered_lower, secret_lower) 
+        << "Recovery with non-sequential x coordinates failed"
+        << "\n  Using shares with x coordinates: " << recovery_shares[0].x 
+        << ", " << recovery_shares[1].x << ", " << recovery_shares[2].x
+        << "\n  Expected: " << secret_lower
+        << "\n  Got:      " << recovered_lower;
+    
+    // Test additional permutations of the same shares
+    std::vector<std::vector<int>> test_orders = {
+        {0, 1, 2},  // x=4, x=2, x=3 (as received from servers)
+        {2, 1, 0},  // x=3, x=2, x=4 (reverse)
+        {1, 0, 2},  // x=2, x=4, x=3 (mixed)
+        {2, 0, 1},  // x=3, x=4, x=2 (mixed)
+        {0, 2, 1},  // x=4, x=3, x=2 (mixed) 
+        {1, 2, 0}   // x=2, x=3, x=4 (mixed)
+    };
+    
+    for (size_t test_idx = 0; test_idx < test_orders.size(); test_idx++) {
+        const auto& order = test_orders[test_idx];
+        
+        std::vector<Share> ordered_shares;
+        for (int idx : order) {
+            ordered_shares.push_back(recovery_shares[idx]);
+        }
+        
+        std::string test_recovered = crypto::ShamirSecretSharing::recover_secret(ordered_shares);
+        std::string test_recovered_lower = test_recovered;
+        std::transform(test_recovered_lower.begin(), test_recovered_lower.end(), test_recovered_lower.begin(), ::tolower);
+        
+        EXPECT_EQ(test_recovered_lower, secret_lower)
+            << "Test permutation " << test_idx << " failed with x coordinates: ("
+            << ordered_shares[0].x << ", " << ordered_shares[1].x << ", " << ordered_shares[2].x << ")";
+    }
+    
+    std::cout << "\n✅ Non-sequential recovery simulation test passed!\n";
+    std::cout << "   Tested recovery with x coordinates {4,2,3,1} in " << test_orders.size() << " different orders\n";
+    std::cout << "   All permutations produced the correct secret, confirming proper x coordinate usage.\n\n";
+}
+
 // Test SHA256 with large data
 TEST_F(CryptoTest, Sha256LargeData) {
     // Test with large input

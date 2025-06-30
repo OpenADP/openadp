@@ -120,17 +120,35 @@ def _register_with_bid(user_id: str, app_id: str, long_term_secret: bytes, pin: 
         
         # Step 4: Long-Term Secret Wrapping
         print("🔐 Wrapping long-term secret...")
+        
+        # Generate AES-GCM parameters
         if is_debug_mode_enabled():
-            # Use deterministic nonce in debug mode
-            nonce = get_deterministic_random_bytes(12)
+            # Use deterministic nonce for reproducible testing
+            nonce = bytes.fromhex("0102030405060708090a0b0c")
+            debug_log("Generated deterministic bytes (12 bytes)")
             debug_log(f"Using deterministic nonce: {nonce.hex()}")
         else:
             nonce = get_random_bytes(12)  # AES-GCM nonce (96 bits)
+        
+        debug_log(f"🔐 PYTHON AES-GCM WRAPPING DEBUG:")
+        debug_log(f"   - long-term secret length: {len(long_term_secret)} bytes")
+        debug_log(f"   - long-term secret hex: {long_term_secret.hex()}")
+        debug_log(f"   - encryption key length: {len(enc_key)} bytes") 
+        debug_log(f"   - encryption key hex: {enc_key.hex()}")
+        debug_log(f"   - nonce length: {len(nonce)} bytes")
+        debug_log(f"   - nonce hex: {nonce.hex()}")
+        debug_log(f"   - AAD: empty (no additional authenticated data)")
         
         debug_log(f"Encrypting long-term secret ({len(long_term_secret)} bytes)")
         cipher = AES.new(enc_key, AES.MODE_GCM, nonce=nonce)
         wrapped_secret, tag = cipher.encrypt_and_digest(long_term_secret)
         debug_log(f"Wrapped secret: {len(wrapped_secret)} bytes ciphertext, {len(tag)} bytes tag")
+        
+        debug_log(f"🔐 PYTHON AES-GCM WRAPPING RESULT:")
+        debug_log(f"   - ciphertext length: {len(wrapped_secret)} bytes")
+        debug_log(f"   - ciphertext hex: {wrapped_secret.hex()}")
+        debug_log(f"   - tag length: {len(tag)} bytes")
+        debug_log(f"   - tag hex: {tag.hex()}")
         
         # Step 5: Metadata Creation
         server_urls = [server_info.url for server_info in result.server_infos]
@@ -380,13 +398,30 @@ def _recover_without_refresh(metadata: bytes, pin: str, servers_url: str = "") -
         
         # Step 3: PIN Validation via Unwrapping
         print("🔐 Validating PIN by unwrapping secret...")
+        
+        # Extract AES-GCM parameters from metadata
+        nonce = base64.b64decode(wrapped_data["nonce"])
+        ciphertext = base64.b64decode(wrapped_data["ciphertext"])
+        tag = base64.b64decode(wrapped_data["tag"])
+        
+        debug_log(f"🔓 PYTHON AES-GCM UNWRAPPING DEBUG:")
+        debug_log(f"   - encryption key length: {len(enc_key)} bytes")
+        debug_log(f"   - encryption key hex: {enc_key.hex()}")
+        debug_log(f"   - nonce length: {len(nonce)} bytes")
+        debug_log(f"   - nonce hex: {nonce.hex()}")
+        debug_log(f"   - ciphertext length: {len(ciphertext)} bytes")
+        debug_log(f"   - ciphertext hex: {ciphertext.hex()}")
+        debug_log(f"   - tag length: {len(tag)} bytes")
+        debug_log(f"   - tag hex: {tag.hex()}")
+        debug_log(f"   - AAD: empty (no additional authenticated data)")
+        
+        cipher = AES.new(enc_key, AES.MODE_GCM, nonce=nonce)
         try:
-            nonce = base64.b64decode(wrapped_data["nonce"])
-            ciphertext = base64.b64decode(wrapped_data["ciphertext"])
-            tag = base64.b64decode(wrapped_data["tag"])
-            
-            cipher = AES.new(enc_key, AES.MODE_GCM, nonce=nonce)
             long_term_secret = cipher.decrypt_and_verify(ciphertext, tag)
+            
+            debug_log(f"🔓 PYTHON AES-GCM UNWRAPPING RESULT:")
+            debug_log(f"   - decrypted secret length: {len(long_term_secret)} bytes")
+            debug_log(f"   - decrypted secret hex: {long_term_secret.hex()}")
             
             print("✅ PIN validation successful - secret unwrapped")
             

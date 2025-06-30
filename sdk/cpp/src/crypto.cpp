@@ -730,6 +730,15 @@ std::string ShamirSecretSharing::recover_secret(const std::vector<Share>& shares
         throw OpenADPError("No shares provided");
     }
     
+    if (debug::is_debug_mode_enabled()) {
+        debug::debug_log("📊 C++ SHAMIR RECOVERY: Starting secret recovery");
+        debug::debug_log("   Number of shares: " + std::to_string(shares.size()));
+        debug::debug_log("   Input shares:");
+        for (size_t i = 0; i < shares.size(); i++) {
+            debug::debug_log("     Share " + std::to_string(i + 1) + ": (x=" + std::to_string(shares[i].x) + ", y=" + shares[i].y + ")");
+        }
+    }
+    
     // Check for duplicate indices
     std::set<int> seen_indices;
     for (const auto& share : shares) {
@@ -744,8 +753,17 @@ std::string ShamirSecretSharing::recover_secret(const std::vector<Share>& shares
     BN_zero(result);
     BN_CTX* ctx = BN_CTX_new();
     
+    if (debug::is_debug_mode_enabled()) {
+        debug::debug_log("   Using prime modulus Q: 1000000000000000000000000000000014DEF9DEA2F79CD65812631A5CF5D3ED");
+        debug::debug_log("   Starting Lagrange interpolation...");
+    }
+    
     // Lagrange interpolation - evaluate polynomial at x=0
     for (size_t i = 0; i < shares.size(); i++) {
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("   Processing share " + std::to_string(i + 1) + " (x=" + std::to_string(shares[i].x) + ", y=" + shares[i].y + ")");
+        }
+        
         BIGNUM* numerator = BN_new();
         BIGNUM* denominator = BN_new();
         BN_one(numerator);
@@ -759,6 +777,11 @@ std::string ShamirSecretSharing::recover_secret(const std::vector<Share>& shares
                 BN_set_word(neg_xj, shares[j].x);
                 BN_sub(neg_xj, prime, neg_xj); // neg_xj = prime - shares[j].x (mod prime)
                 BN_mod_mul(numerator, numerator, neg_xj, prime, ctx);
+                
+                if (debug::is_debug_mode_enabled()) {
+                    debug::debug_log("     Multiplying numerator by (-" + std::to_string(shares[j].x) + ") = " + bn_to_hex(neg_xj));
+                }
+                
                 BN_free(neg_xj);
                 
                 // Denominator: multiply by (shares[i].x - shares[j].x)
@@ -778,6 +801,11 @@ std::string ShamirSecretSharing::recover_secret(const std::vector<Share>& shares
                 }
                 
                 BN_mod_mul(denominator, denominator, diff, prime, ctx);
+                
+                if (debug::is_debug_mode_enabled()) {
+                    debug::debug_log("     Multiplying denominator by (" + std::to_string(shares[i].x) + " - " + std::to_string(shares[j].x) + ") = " + bn_to_hex(diff));
+                }
+                
                 BN_free(xi);
                 BN_free(xj);
                 BN_free(diff);
@@ -785,6 +813,11 @@ std::string ShamirSecretSharing::recover_secret(const std::vector<Share>& shares
         }
         
         // Compute Lagrange coefficient: numerator / denominator mod prime
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("     Final numerator: " + bn_to_hex(numerator));
+            debug::debug_log("     Final denominator: " + bn_to_hex(denominator));
+        }
+        
         BIGNUM* inv = BN_new();
         if (BN_mod_inverse(inv, denominator, prime, ctx) == NULL) {
             // Denominator is zero, which shouldn't happen with distinct x values
@@ -800,12 +833,24 @@ std::string ShamirSecretSharing::recover_secret(const std::vector<Share>& shares
         BIGNUM* lagrange = BN_new();
         BN_mod_mul(lagrange, numerator, inv, prime, ctx);
         
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("     Lagrange basis polynomial L" + std::to_string(i) + "(0): " + bn_to_hex(lagrange));
+        }
+        
         // Multiply by the y-value of this share
         BIGNUM* y = hex_to_bn(shares[i].y);
         BN_mod_mul(lagrange, lagrange, y, prime, ctx);
         
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("     Term " + std::to_string(i) + ": y" + std::to_string(i) + " * L" + std::to_string(i) + "(0) = " + bn_to_hex(lagrange));
+        }
+        
         // Add to result
         BN_mod_add(result, result, lagrange, prime, ctx);
+        
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("     Running total: " + bn_to_hex(result));
+        }
         
         BN_free(numerator);
         BN_free(denominator);
@@ -815,6 +860,11 @@ std::string ShamirSecretSharing::recover_secret(const std::vector<Share>& shares
     }
     
     std::string secret_hex = bn_to_hex(result);
+    
+    if (debug::is_debug_mode_enabled()) {
+        debug::debug_log("📊 C++ SHAMIR RECOVERY: Completed secret recovery");
+        debug::debug_log("   Final recovered secret: " + secret_hex);
+    }
     
     BN_free(result);
     BN_free(prime);

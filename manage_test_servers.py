@@ -62,10 +62,12 @@ class TestServerManager:
         # Check if server binary exists
         server_binary = "build/openadp-server"
         if not os.path.exists(server_binary):
-            server_binary = "cmd/openadp-server/openadp-server"
+            server_binary = "../../build/openadp-server"
             if not os.path.exists(server_binary):
-                log(f"❌ Server binary not found at {server_binary}")
-                return False
+                server_binary = "cmd/openadp-server/openadp-server"
+                if not os.path.exists(server_binary):
+                    log(f"❌ Server binary not found at {server_binary}")
+                    return False
         
         cmd = [
             server_binary,
@@ -145,8 +147,10 @@ class TestServerManager:
         # Check if serverinfo binary exists
         serverinfo_binary = "build/openadp-serverinfo"
         if not os.path.exists(serverinfo_binary):
-            log(f"❌ openadp-serverinfo binary not found at {serverinfo_binary}")
-            return None
+            serverinfo_binary = "../../build/openadp-serverinfo"
+            if not os.path.exists(serverinfo_binary):
+                log(f"❌ openadp-serverinfo binary not found at {serverinfo_binary}")
+                return None
         
         try:
             cmd = [serverinfo_binary, "-server", server_url, "-format", "json"]

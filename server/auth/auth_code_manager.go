@@ -16,6 +16,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -34,7 +35,16 @@ func NewAuthCodeManager() *AuthCodeManager {
 // GenerateAuthCode generates a new 128-bit authentication code.
 //
 // Returns a 32-character hex string representing 128 bits of entropy.
+// In debug mode (OPENADP_DEBUG=1), returns a deterministic value for consistency with other SDKs.
 func (m *AuthCodeManager) GenerateAuthCode() (string, error) {
+	// Check if debug mode is enabled
+	if os.Getenv("OPENADP_DEBUG") == "1" {
+		// Use the same deterministic base auth code as Python, JavaScript, and C++
+		// This ensures consistent behavior across all SDKs in debug mode
+		deterministicCode := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+		return deterministicCode, nil
+	}
+
 	// Generate 16 random bytes (128 bits)
 	randomBytes := make([]byte, 16)
 	_, err := rand.Read(randomBytes)
