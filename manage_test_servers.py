@@ -72,7 +72,6 @@ class TestServerManager:
             "-port", str(port),
             "-db", temp_db,
             "-auth", "true" if auth_enabled else "false",
-            "--debug"  # Enable debug mode for deterministic ephemeral keys
         ]
         
         try:
