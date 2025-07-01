@@ -9,7 +9,7 @@ use aes_gcm::{Aes256Gcm, Key, Nonce, KeyInit};
 use rand::RngCore;
 use std::collections::HashMap;
 
-const VERSION: &str = "0.1.2";
+const VERSION: &str = "0.1.3";
 const NONCE_SIZE: usize = 12; // AES-GCM nonce size
 
 // Metadata represents the metadata stored with encrypted files

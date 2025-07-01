@@ -23,7 +23,7 @@ from openadp.keygen import generate_encryption_key, Identity
 from openadp.client import get_servers, get_fallback_server_info, ServerInfo, OpenADPClient
 from openadp.debug import set_debug_mode, debug_log
 
-VERSION = "0.1.2"
+VERSION = "0.1.3"
 NONCE_SIZE = 12  # AES-GCM nonce size
 
 

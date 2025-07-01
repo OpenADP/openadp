@@ -625,7 +625,7 @@ def recover_and_reregister(old_metadata: bytes, pin: str, servers_url: str = "")
 
 
 # Module metadata
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 __author__ = "OpenADP Team"
 __description__ = "Drop-in replacement for password hashing functions using distributed cryptography"
 

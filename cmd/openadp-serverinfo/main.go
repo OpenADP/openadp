@@ -10,7 +10,7 @@ import (
 	"github.com/openadp/openadp/sdk/go/client"
 )
 
-const version = "0.1.2"
+const version = "0.1.3"
 
 func main() {
 	var (

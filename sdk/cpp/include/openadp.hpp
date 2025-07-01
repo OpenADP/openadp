@@ -17,7 +17,7 @@
 namespace openadp {
 
 // Version information
-constexpr const char* VERSION = "0.1.2";
+constexpr const char* VERSION = "0.1.3";
 
 // Convenience functions for common operations
 

@@ -15,7 +15,7 @@ import { recoverEncryptionKey, Identity } from './src/keygen.js';
 import { getServers, getFallbackServerInfo, ServerInfo, OpenADPClient } from './src/client.js';
 import os from 'os';
 
-const VERSION = "0.1.2";
+const VERSION = "0.1.3";
 const NONCE_SIZE = 12; // AES-GCM nonce size
 
 /**

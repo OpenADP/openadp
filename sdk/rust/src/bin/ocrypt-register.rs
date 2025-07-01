@@ -7,7 +7,7 @@ use std::process;
 #[derive(Parser)]
 #[command(name = "ocrypt-register")]
 #[command(about = "Register a long-term secret using Ocrypt distributed cryptography")]
-#[command(version = "0.1.2")]
+#[command(version = "0.1.3")]
 struct Args {
     /// Unique identifier for the user (required)
     #[arg(long)]
