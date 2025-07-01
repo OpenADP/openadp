@@ -19,9 +19,4 @@
 
 # Other
 
-* Make all encrypt/decrypt tools add UID, BID, and DID to encryption metadata.
-* Fix Ghost Notes  app, which seems quite unreliable, not due to Ocrypta.
-* Redo test coverage exercise
 * Ghithub Actions work to run tests before commits.
-* Remaining guesses is always displayed as 10
-* Test using up last guess
