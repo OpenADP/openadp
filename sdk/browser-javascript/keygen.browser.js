@@ -11,16 +11,38 @@
  * 4. Derive encryption keys using cryptographic functions
  */
 
-import crypto from 'crypto';
-import { Buffer } from 'buffer';
-import os from 'os';
-import path from 'path';
+// Browser-compatible crypto
+function randomBytes(size) {
+    const bytes = new Uint8Array(size);
+    crypto.getRandomValues(bytes);
+    return bytes;
+}
+
+// Browser-compatible Buffer alternatives
+function stringToUtf8Bytes(str) {
+    return new TextEncoder().encode(str);
+}
+
+function bytesToHex(bytes) {
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function bytesToBase64(bytes) {
+    const binary = Array.from(bytes).map(b => String.fromCharCode(b)).join('');
+    return btoa(binary);
+}
+
+function base64ToBytes(base64) {
+    const binary = atob(base64);
+    return new Uint8Array(binary.split('').map(c => c.charCodeAt(0)));
+}
+
 import {
     H, deriveEncKey, pointMul, pointCompress, pointDecompress,
     ShamirSecretSharing, recoverPointSecret, PointShare, Point2D, Point4D,
     expand, unexpand, Q, modInverse, sha256Hash, logPoint
 } from './crypto.js';
-import { OpenADPClient, EncryptedOpenADPClient, ServerInfo } from './client.js';
+import { OpenADPClient, EncryptedOpenADPClient, ServerInfo } from './client.browser.js';
 import * as debug from './debug.js';
 
 /**
@@ -92,13 +114,12 @@ export function generateAuthCodes(serverUrls, fixedSeed = null) {
     let baseAuthCode;
     if (fixedSeed) {
         // For testing: use a fixed seed to generate deterministic auth codes
-        const seedHash = sha256Hash(Buffer.from(fixedSeed, 'utf8'));
-        baseAuthCode = Buffer.from(seedHash).toString('hex');
+        const seedHash = sha256Hash(stringToUtf8Bytes(fixedSeed));
+        baseAuthCode = bytesToHex(seedHash);
     } else {
         // Production: use cryptographically secure random bytes
-        const randomBytes = new Uint8Array(32);
-        crypto.getRandomValues(randomBytes);
-        baseAuthCode = Buffer.from(randomBytes).toString('hex');
+        const randomBytesArray = randomBytes(32);
+        baseAuthCode = bytesToHex(randomBytesArray);
     }
     
     
@@ -108,8 +129,8 @@ export function generateAuthCodes(serverUrls, fixedSeed = null) {
     for (const serverUrl of serverUrls) {
         // Derive server-specific code using SHA256 (same as Go/Python implementation)
         const combined = `${baseAuthCode}:${serverUrl}`;
-        const hashBytes = sha256Hash(Buffer.from(combined, 'utf8'));
-        const serverCode = Buffer.from(hashBytes).toString('hex');
+        const hashBytes = sha256Hash(stringToUtf8Bytes(combined));
+        const serverCode = bytesToHex(hashBytes);
         serverAuthCodes[serverUrl] = serverCode;
     }
     
@@ -174,7 +195,7 @@ export async function generateEncryptionKey(
                 let publicKey = null;
                 if (serverInfoResponse.noiseNkPublicKey) {
                     try {
-                        publicKey = new Uint8Array(Buffer.from(serverInfoResponse.noiseNkPublicKey, 'base64'));
+                        publicKey = base64ToBytes(serverInfoResponse.noiseNkPublicKey);
                     } catch (error) {
                         console.warn(`Invalid public key from server ${serverInfo.url}: ${error.message}`);
                         publicKey = null;
@@ -213,8 +234,8 @@ export async function generateEncryptionKey(
             for (const serverUrl of liveServerUrls) {
                 // Derive server-specific code using SHA256 (same as Go/Python implementation)
                 const combined = `${deterministicBaseAuthCode}:${serverUrl}`;
-                const hashBytes = sha256Hash(Buffer.from(combined, 'utf8'));
-                const serverCode = Buffer.from(hashBytes).toString('hex');
+                const hashBytes = sha256Hash(stringToUtf8Bytes(combined));
+                const serverCode = bytesToHex(hashBytes);
                 serverAuthCodes[serverUrl] = serverCode;
             }
             authCodes = new AuthCodes(deterministicBaseAuthCode, serverAuthCodes, identity.uid);
@@ -239,11 +260,10 @@ export async function generateEncryptionKey(
             // SECURITY FIX: Use random secret for Shamir secret sharing, not deterministic
             // Generate random secret from 0 to Q-1
             // Note: secret can be 0 - this is valid for Shamir secret sharing
-            const randomBytes = new Uint8Array(32);
-            crypto.getRandomValues(randomBytes);
+            const randomBytesArray = randomBytes(32);
             let secretBig = BigInt(0);
-            for (let i = 0; i < randomBytes.length; i++) {
-                secretBig = (secretBig << BigInt(8)) | BigInt(randomBytes[i]);
+            for (let i = 0; i < randomBytesArray.length; i++) {
+                secretBig = (secretBig << BigInt(8)) | BigInt(randomBytesArray[i]);
             }
             secret = secretBig % Q;
             console.log(`OpenADP: Generated random secret for encryption key derivation`);
@@ -266,7 +286,7 @@ export async function generateEncryptionKey(
         }
         
         const hCompressed = pointCompress(hPoint);
-        const hBase64 = Buffer.from(hCompressed).toString('base64');
+        const hBase64 = bytesToBase64(hCompressed);
         
         // Step 10: Register shares with servers (encrypted communication)
         console.log(`OpenADP: Registering ${shares.length} shares with servers (threshold: ${threshold})...`);
@@ -293,7 +313,7 @@ export async function generateEncryptionKey(
             }
             
             // Encode as base64
-            const yString = Buffer.from(yBytes).toString('base64');
+            const yString = bytesToBase64(yBytes);
             
             // Debug: Show what we're sending
             // Convert BigInt to hex string properly (big-endian)
@@ -421,9 +441,9 @@ export async function recoverEncryptionKey(
                 try {
                     if (serverInfo.publicKey.startsWith("ed25519:")) {
                         const keyB64 = serverInfo.publicKey.substring(8);
-                        publicKey = new Uint8Array(Buffer.from(keyB64, 'base64'));
+                        publicKey = new Uint8Array(base64ToBytes(keyB64));
                     } else {
-                        publicKey = new Uint8Array(Buffer.from(serverInfo.publicKey, 'base64'));
+                        publicKey = new Uint8Array(base64ToBytes(serverInfo.publicKey));
                     }
                 } catch (error) {
                     console.warn(`Invalid public key for server ${serverInfo.url}: ${error.message}`);
@@ -458,11 +478,10 @@ export async function recoverEncryptionKey(
         const uPointAffine = unexpand(uPoint);
         
         // Generate random r for blinding (0 < r < Q)
-        const randomBytes = new Uint8Array(32);
-        crypto.getRandomValues(randomBytes);
+        const randomBytesArray = randomBytes(32);
         let r = 0n;
         for (let i = 0; i < 32; i++) {
-            r = (r << 8n) | BigInt(randomBytes[i]);
+            r = (r << 8n) | BigInt(randomBytesArray[i]);
         }
         r = r % Q;
         if (r === 0n) {
@@ -475,7 +494,7 @@ export async function recoverEncryptionKey(
         const bPoint = pointMul(r, uPoint);
         const bPointAffine = unexpand(bPoint);
         const bCompressed = pointCompress(bPoint);
-        const bBase64 = Buffer.from(bCompressed).toString('base64');
+        const bBase64 = bytesToBase64(bCompressed);
         
 
         
@@ -578,7 +597,7 @@ export async function recoverEncryptionKey(
                     
                     // Convert si_b back to point and then to share
                     try {
-                        const siBBytes = Buffer.from(result.si_b, 'base64');
+                        const siBBytes = base64ToBytes(result.si_b);
                         const siBPoint = pointDecompress(siBBytes);
                         const siBPoint2D = new Point2D(siBPoint.x, siBPoint.y);
                         
@@ -653,7 +672,7 @@ async function fetchRemainingGuessesForServers(identity, serverInfos) {
                     if (keyStr.startsWith("ed25519:")) {
                         keyStr = keyStr.substring(8);
                     }
-                    publicKey = Buffer.from(keyStr, 'base64');
+                    publicKey = base64ToBytes(keyStr);
                 } catch (e) {
                     console.warn(`Warning: Invalid public key for server ${serverInfo.url}:`, e);
                 }

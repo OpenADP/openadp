@@ -12,18 +12,21 @@ export default {
   },
   plugins: [
     nodePolyfills({
-      include: ['crypto', 'buffer', 'util', 'stream', 'process']
+      include: ['crypto', 'buffer', 'util', 'stream', 'process', 'os', 'path']
     }),
     resolve({
       browser: true,
       exportConditions: ['browser'],
       preferBuiltins: false,
       alias: {
-        crypto: 'crypto-browserify'
+        'crypto': 'crypto-browserify',
+        'buffer': 'buffer',
+        'os': 'os-browserify/browser',
+        'path': 'path-browserify'
       }
     }),
     commonjs(),
     json()
   ],
-  external: []
+  external: ['@noble/hashes/sha256', '@noble/hashes/hkdf']
 }; 

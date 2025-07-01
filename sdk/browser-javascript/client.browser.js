@@ -9,7 +9,7 @@
  * - MultiServerClient: High-level client managing multiple servers
  */
 
-import { NoiseNK, generateStaticKeyPair } from './noise-nk.js';
+import { NoiseNK, generateStaticKeyPair } from './noise-nk.browser.js';
 import * as debug from './debug.js';
 
 // Error codes matching Python implementation
@@ -579,7 +579,7 @@ export class EncryptedOpenADPClient {
             // Serialize and encrypt the method call
             const methodCallJson = JSON.stringify(methodCall);
             const methodCallBytes = new TextEncoder().encode(methodCallJson);
-            const encryptedCall = this.noise.encrypt(methodCallBytes);
+            const encryptedCall = await this.noise.encrypt(methodCallBytes);
 
             // Send encrypted_call request (Round 2)
             const encryptedRequest = {
@@ -630,7 +630,7 @@ export class EncryptedOpenADPClient {
             // Decrypt the response
             const encryptedDataB64 = encryptedResponse.result.data;
             const encryptedDataBytes = new Uint8Array(atob(encryptedDataB64).split('').map(c => c.charCodeAt(0)));
-            const decryptedBytes = this.noise.decrypt(encryptedDataBytes);
+            const decryptedBytes = await this.noise.decrypt(encryptedDataBytes);
             const decryptedJson = new TextDecoder().decode(decryptedBytes);
             const responseData = JSON.parse(decryptedJson);
 
@@ -682,7 +682,7 @@ export class EncryptedOpenADPClient {
         this.noise.initializeInitiator(this.serverPublicKey);
 
         // Step 3: Create first handshake message
-        const handshakeMsg1 = this.noise.writeMessage(new Uint8Array(0)); // Empty payload
+        const handshakeMsg1 = await this.noise.writeMessage(new Uint8Array(0)); // Empty payload
 
         // Step 4: Send noise_handshake request (Round 1)
         const handshakeRequest = {
@@ -735,7 +735,7 @@ export class EncryptedOpenADPClient {
         const handshakeMsg2 = new Uint8Array(atob(handshakeMsgB64).split('').map(c => c.charCodeAt(0)));
         
         // Complete handshake
-        this.noise.readMessage(handshakeMsg2);
+        await this.noise.readMessage(handshakeMsg2);
 
         if (!this.noise.handshakeComplete) {
             throw new OpenADPError(

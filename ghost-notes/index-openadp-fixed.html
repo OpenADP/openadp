@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>👻🔐 OpenADP Ghost Notes</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#1a1a1a">
+    <meta name="description" content="Session-based secure note taking app with OpenADP distributed cryptography - your notes vanish when you leave">
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- iOS PWA Support -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="OpenADP Ghost Notes">
+    
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="login-screen" class="screen active">
+        <div class="ghost-container">
+            <div class="ghost-logo">👻🔐</div>
+            <h1>OpenADP Ghost Notes</h1>
+            <p class="tagline">Distributed cryptography protects your notes</p>
+            
+            <div class="openadp-status">
+                <div class="openadp-indicator">
+                    <span class="status-dot"></span>
+                    <span>Protected by OpenADP Distributed Secret Sharing</span>
+                </div>
+                <div class="security-level">
+                    🛡️ Military-grade threshold cryptography
+                </div>
+            </div>
+            
+            <div class="pin-entry">
+                <input type="password" id="pin-input" placeholder="Enter your PIN" maxlength="20">
+                <div id="attempts-remaining" class="attempts-remaining">10 attempts remaining</div>
+                <div id="error-message" class="error-message"></div>
+            </div>
+            
+            <button id="unlock-btn" class="unlock-btn">🔓 Unlock Notes</button>
+            
+            <div class="setup-options">
+                <button id="setup-btn" class="setup-btn">⚙️ First Time Setup</button>
+            </div>
+            
+            <div class="openadp-info">
+                <details>
+                    <summary>🔍 How OpenADP Protects Your PIN</summary>
+                    <div class="info-content">
+                        <p><strong>Traditional Problem:</strong> A 4-digit PIN can be brute-forced in seconds</p>
+                        <p><strong>OpenADP Solution:</strong> Your PIN is protected by distributed secret sharing across multiple servers</p>
+                        <ul>
+                            <li>🌐 Secret split across multiple independent servers</li>
+                            <li>🎯 Requires majority of servers to recover (threshold cryptography)</li>
+                            <li>🛡️ Attackers must compromise multiple servers simultaneously</li>
+                            <li>⚡ No single point of failure</li>
+                        </ul>
+                        <p><em>Even a simple PIN becomes cryptographically strong!</em></p>
+                    </div>
+                </details>
+            </div>
+        </div>
+    </div>
+
+    <!-- Setup Screen -->
+    <div id="setup-screen" class="screen">
+        <div class="setup-container">
+            <h2>🔐 Setup OpenADP Ghost Notes</h2>
+            <p>Create your secure PIN with distributed cryptography protection</p>
+            
+            <div class="openadp-setup-info">
+                <div class="security-feature">
+                    <span class="feature-icon">🌐</span>
+                    <div>
+                        <strong>Distributed Secret Sharing</strong>
+                        <p>Your PIN will be protected across multiple OpenADP servers</p>
+                    </div>
+                </div>
+                <div class="security-feature">
+                    <span class="feature-icon">🎯</span>
+                    <div>
+                        <strong>Threshold Cryptography</strong>
+                        <p>Requires majority of servers to recover your encryption key</p>
+                    </div>
+                </div>
+                <div class="security-feature">
+                    <span class="feature-icon">🛡️</span>
+                    <div>
+                        <strong>Brute-Force Resistant</strong>
+                        <p>Even simple PINs become cryptographically strong with OpenADP</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="setup-form">
+                <div class="form-group">
+                    <label for="setup-pin">Create PIN:</label>
+                    <input type="password" id="setup-pin" placeholder="Enter a PIN (4+ characters)">
+                    <small>With OpenADP, even a simple PIN is secure!</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="confirm-pin">Confirm PIN:</label>
+                    <input type="password" id="confirm-pin" placeholder="Confirm your PIN">
+                </div>
+                
+                <div class="form-group">
+                    <label for="max-guesses">Max Failed Attempts:</label>
+                    <select id="max-guesses">
+                        <option value="5">5 attempts</option>
+                        <option value="10" selected>10 attempts</option>
+                        <option value="15">15 attempts</option>
+                        <option value="20">20 attempts</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="auto-lock">Auto-lock after:</label>
+                    <select id="auto-lock">
+                        <option value="60">1 minute</option>
+                        <option value="300" selected>5 minutes</option>
+                        <option value="600">10 minutes</option>
+                        <option value="1800">30 minutes</option>
+                    </select>
+                </div>
+                
+                <button id="create-vault-btn" class="create-btn">🛡️ Create OpenADP Vault</button>
+                <button id="cancel-setup-btn" class="cancel-btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App Screen -->
+    <div id="app-screen" class="screen">
+        <header class="app-header">
+            <h1>👻🔐 OpenADP Ghost Notes</h1>
+            <div class="session-info">
+                <div class="openadp-status-mini">
+                    <span class="status-dot active"></span>
+                    <span>OpenADP Protected</span>
+                </div>
+                <div id="lock-timer" class="lock-timer">Auto-lock in 5:00</div>
+                <button id="lock-now-btn" class="lock-now-btn">🔒 Lock Now</button>
+            </div>
+        </header>
+        
+        <main class="app-main">
+            <aside class="notes-sidebar">
+                <div class="sidebar-header">
+                    <h2>Notes</h2>
+                    <button id="new-note-btn" class="new-note-btn">➕</button>
+                </div>
+                <div id="notes-list" class="notes-list">
+                    <!-- Notes list will be populated here -->
+                </div>
+            </aside>
+            
+            <section class="note-editor-container">
+                <div id="welcome-message" class="welcome-message">
+                    <div class="welcome-icon">📝🔐</div>
+                    <h3>Welcome to OpenADP Ghost Notes</h3>
+                    <p>Create your first note or select an existing one from the sidebar.</p>
+                    <p><strong>Your notes are protected by distributed cryptography!</strong></p>
+                    <div class="security-badges">
+                        <span class="badge">🌐 Distributed</span>
+                        <span class="badge">🎯 Threshold</span>
+                        <span class="badge">🛡️ Secure</span>
+                        <span class="badge">👻 Ghost</span>
+                    </div>
+                </div>
+                
+                <div id="note-editor" class="note-editor" style="display: none;">
+                    <div class="editor-header">
+                        <input type="text" id="note-title" class="note-title" placeholder="Note title...">
+                        <div class="editor-actions">
+                            <button id="save-note-btn" class="save-btn">💾 Save</button>
+                            <button id="delete-note-btn" class="delete-btn">🗑️ Delete</button>
+                        </div>
+                    </div>
+                    <textarea id="note-content" class="note-content" placeholder="Start writing your secret thoughts...
+
+Your notes are protected by OpenADP distributed cryptography:
+• Split across multiple servers
+• Threshold recovery required  
+• Brute-force resistant
+• No single point of failure
+
+Write freely knowing your secrets are truly secure! 🚀"></textarea>
+                    <div class="note-metadata">
+                        <span id="note-created">Created: --</span>
+                        <span id="note-modified">Modified: --</span>
+                        <span class="security-indicator">🔐 OpenADP Protected</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Session Warning Modal -->
+    <div id="session-warning" class="modal">
+        <div class="modal-content">
+            <h3>⏰ Session About to Expire</h3>
+            <p>Your OpenADP Ghost Notes session will auto-lock in <span id="warning-countdown">30</span> seconds for security.</p>
+            <div class="modal-actions">
+                <button id="extend-session-btn" class="extend-btn">⏱️ Extend Session</button>
+                <button id="lock-immediately-btn" class="lock-btn">🔒 Lock Now</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Connecting to OpenADP...</div>
+            <div class="loading-details">
+                <div class="server-status">
+                    📡 Contacting distributed servers...<br>
+                    🔐 Generating cryptographic shares...<br>
+                    🛡️ Establishing secure session...
+                </div>
+            </div>        
+        </div>
+    </div>
+
+    <!-- OpenADP-specific styles -->
+    <style>
+        .openadp-status {
+            margin: 1rem 0;
+            padding: 1rem;
+            background: linear-gradient(135deg, rgba(74, 144, 226, 0.1), rgba(74, 144, 226, 0.05));
+            border: 1px solid rgba(74, 144, 226, 0.3);
+            border-radius: 8px;
+        }
+
+        .openadp-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-success);
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.active {
+            background: #00ff88;
+        }
+
+        .security-level {
+            font-size: 0.9rem;
+            color: var(--accent-ghost);
+        }
+
+        .openadp-info {
+            margin-top: 1rem;
+        }
+
+        .openadp-info details {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 0.5rem;
+        }
+
+        .openadp-info summary {
+            cursor: pointer;
+            padding: 0.5rem;
+            font-weight: bold;
+            color: var(--accent-ghost);
+        }
+
+        .info-content {
+            padding: 1rem;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        .info-content ul {
+            margin: 0.5rem 0;
+            padding-left: 1.5rem;
+        }
+
+        .openadp-setup-info {
+            margin: 1rem 0;
+        }
+
+        .security-feature {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+        }
+
+        .feature-icon {
+            font-size: 1.5rem;
+        }
+
+        .security-feature strong {
+            color: var(--accent-ghost);
+        }
+
+        .security-feature p {
+            margin: 0.25rem 0 0 0;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .openadp-status-mini {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .security-badges {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            background: var(--accent-ghost);
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .security-indicator {
+            color: var(--accent-success);
+            font-weight: bold;
+        }
+
+        .loading-details {
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .server-status {
+            font-family: monospace;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .form-group small {
+            display: block;
+            margin-top: 0.25rem;
+            color: var(--accent-ghost);
+            font-size: 0.8rem;
+        }
+    </style>
+
+    <!-- Import the real OpenADP Browser SDK -->
+    <script type="module">
+        import { register, recover, OcryptError } from '../sdk/browser-javascript/ocrypt.js';
+        
+        class OpenADPGhostNotes {
+            constructor() {
+                this.currentScreen = 'login';
+                this.sessionKey = null;
+                this.decryptedNotes = new Map();
+                this.sessionActive = false;
+                this.currentNoteId = null;
+                this.autoLockTimer = null;
+                this.sessionWarningTimer = null;
+                this.settings = this.loadSettings();
+                this.openadpMetadata = null; // Real OpenADP metadata
+                
+                this.init();
+            }
+
+            async init() {
+                console.log('👻🔐 Initializing OpenADP Ghost Notes...');
+                
+                // Check if app is already set up
+                const isSetup = this.checkIfSetup();
+                
+                if (!isSetup) {
+                    this.showScreen('setup');
+                } else {
+                    this.showScreen('login');
+                    this.updateAttemptsDisplay();
+                }
+                
+                this.setupEventListeners();
+                this.setupPWA();
+                
+                console.log('👻🔐 OpenADP Ghost Notes ready!');
+                console.log('🌐 Using REAL distributed secret sharing across multiple servers');
+                console.log('🛡️ Your PIN is now protected by threshold cryptography');
+            }
+
+            checkIfSetup() {
+                const metadata = localStorage.getItem('openadp_ghost_metadata');
+                return metadata !== null;
+            }
+
+            loadSettings() {
+                const defaultSettings = {
+                    maxGuesses: 10,
+                    autoLockTimeout: 300000, // 5 minutes
+                    sessionWarningTime: 30000, // 30 seconds
+                    userID: null,
+                    remaining: 10
+                };
+                
+                const saved = localStorage.getItem('openadp_ghost_settings');
+                return saved ? { ...defaultSettings, ...JSON.parse(saved) } : defaultSettings;
+            }
+
+            saveSettings() {
+                localStorage.setItem('openadp_ghost_settings', JSON.stringify(this.settings));
+            }
+
+            showScreen(screenName) {
+                document.querySelectorAll('.screen').forEach(screen => {
+                    screen.classList.remove('active');
+                });
+                
+                const targetScreen = document.getElementById(`${screenName}-screen`);
+                if (targetScreen) {
+                    targetScreen.classList.add('active');
+                    this.currentScreen = screenName;
+                }
+            }
+
+            setupEventListeners() {
+                // Login screen
+                document.getElementById('unlock-btn').addEventListener('click', () => this.handleUnlock());
+                document.getElementById('pin-input').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.handleUnlock();
+                });
+                document.getElementById('setup-btn').addEventListener('click', () => this.showScreen('setup'));
+                
+                // Setup screen
+                document.getElementById('create-vault-btn').addEventListener('click', () => this.handleSetup());
+                document.getElementById('cancel-setup-btn').addEventListener('click', () => this.showScreen('login'));
+                
+                // App screen
+                document.getElementById('lock-now-btn').addEventListener('click', () => this.endSession());
+                document.getElementById('new-note-btn').addEventListener('click', () => this.createNewNote());
+                document.getElementById('save-note-btn').addEventListener('click', () => this.saveCurrentNote());
+                document.getElementById('delete-note-btn').addEventListener('click', () => this.deleteCurrentNote());
+                
+                // Session warning modal
+                document.getElementById('extend-session-btn')?.addEventListener('click', () => this.extendSession());
+                document.getElementById('lock-immediately-btn')?.addEventListener('click', () => this.endSession());
+                
+                // Auto-save on content change
+                document.getElementById('note-title').addEventListener('input', () => this.autoSaveNote());
+                document.getElementById('note-content').addEventListener('input', () => this.autoSaveNote());
+            }
+
+            async handleSetup() {
+                const pin = document.getElementById('setup-pin').value;
+                const confirmPin = document.getElementById('confirm-pin').value;
+                const maxGuesses = parseInt(document.getElementById('max-guesses').value);
+                const autoLockTimeout = parseInt(document.getElementById('auto-lock').value) * 1000;
+                
+                if (!pin || pin.length < 4) {
+                    this.showError('PIN must be at least 4 characters');
+                    return;
+                }
+                
+                if (pin !== confirmPin) {
+                    this.showError('PINs do not match');
+                    return;
+                }
+                
+                try {
+                    this.showLoading('Setting up OpenADP distributed vault...');
+                    
+                    // Generate a unique user ID for this installation
+                    const userID = this.generateUserID();
+                    const appID = 'ghost-notes';
+                    
+                    console.log('🔐 Setting up REAL OpenADP vault...');
+                    console.log(`   PIN: ${pin} (low entropy)`);
+                    console.log(`   User ID: ${userID}`);
+                    console.log(`   App ID: ${appID}`);
+                    console.log(`   Max Guesses: ${maxGuesses}`);
+                    
+                    // Generate a master secret to encrypt/decrypt notes
+                    const masterSecret = new Uint8Array(32);
+                    crypto.getRandomValues(masterSecret);
+                    
+                    // Use REAL OpenADP to protect this master secret with the PIN
+                    const metadata = await register(userID, appID, masterSecret, pin, maxGuesses);
+                    
+                    console.log('✅ OpenADP vault created successfully!');
+                    console.log(`   Metadata size: ${metadata.length} bytes`);
+                    
+                    // Store the metadata and settings
+                    localStorage.setItem('openadp_ghost_metadata', Array.from(metadata).join(','));
+                    
+                    this.settings.maxGuesses = maxGuesses;
+                    this.settings.autoLockTimeout = autoLockTimeout;
+                    this.settings.userID = userID;
+                    this.settings.remaining = maxGuesses;
+                    this.saveSettings();
+                    
+                    // Create welcome note
+                    this.sessionKey = masterSecret;
+                    await this.createWelcomeNote();
+                    
+                    this.hideLoading();
+                    this.showScreen('login');
+                    
+                    this.showTemporaryMessage(`✅ OpenADP vault created! Your PIN is now protected by distributed cryptography.`);
+                    
+                } catch (error) {
+                    this.hideLoading();
+                    console.error('OpenADP setup error:', error);
+                    if (error instanceof OcryptError) {
+                        this.showError(`OpenADP Error: ${error.message}`);
+                    } else {
+                        this.showError('Failed to create OpenADP vault: ' + error.message);
+                    }
+                }
+            }
+
+            async handleUnlock() {
+                const pin = document.getElementById('pin-input').value;
+                
+                if (!pin) {
+                    this.showError('Please enter your PIN');
+                    return;
+                }
+                
+                try {
+                    this.showLoading('Connecting to OpenADP network...');
+                    
+                    // Get stored metadata
+                    const metadataStr = localStorage.getItem('openadp_ghost_metadata');
+                    if (!metadataStr) {
+                        throw new Error('No OpenADP vault found. Please set up first.');
+                    }
+                    
+                    const metadata = new Uint8Array(metadataStr.split(',').map(x => parseInt(x)));
+                    
+                    console.log('🔐 Recovering master secret from OpenADP network...');
+                    
+                    // Use REAL OpenADP to recover the master secret
+                    const { secret, remaining, updatedMetadata } = await recover(metadata, pin);
+                    
+                    console.log('✅ OpenADP recovery successful!');
+                    console.log(`   Remaining attempts: ${remaining}`);
+                    
+                    // Update metadata if it was refreshed
+                    if (updatedMetadata !== metadata) {
+                        localStorage.setItem('openadp_ghost_metadata', Array.from(updatedMetadata).join(','));
+                        console.log('📝 OpenADP metadata refreshed automatically');
+                    }
+                    
+                    // Update remaining attempts
+                    this.settings.remaining = remaining;
+                    this.saveSettings();
+                    
+                    // Start session with recovered key
+                    this.sessionKey = secret;
+                    await this.startSession();
+                    
+                    this.hideLoading();
+                    
+                } catch (error) {
+                    this.hideLoading();
+                    console.error('OpenADP unlock error:', error);
+                    
+                    if (error instanceof OcryptError) {
+                        if (error.message.includes('attempts')) {
+                            // Parse remaining attempts from error if possible
+                            this.settings.remaining = Math.max(0, this.settings.remaining - 1);
+                            this.saveSettings();
+                            this.updateAttemptsDisplay();
+                        }
+                        this.showError(`OpenADP Error: ${error.message}`);
+                    } else {
+                        this.showError('Failed to unlock: ' + error.message);
+                    }
+                    
+                    // Clear PIN input
+                    document.getElementById('pin-input').value = '';
+                }
+            }
+
+            async startSession() {
+                this.sessionActive = true;
+                await this.loadDecryptedNotes();
+                this.showScreen('app');
+                this.startAutoLockTimer();
+                console.log('👻🔐 OpenADP Ghost Notes session started');
+            }
+
+            async endSession() {
+                this.sessionActive = false;
+                this.sessionKey = null;
+                this.decryptedNotes.clear();
+                this.currentNoteId = null;
+                
+                if (this.autoLockTimer) {
+                    clearTimeout(this.autoLockTimer);
+                    this.autoLockTimer = null;
+                }
+                
+                if (this.sessionWarningTimer) {
+                    clearTimeout(this.sessionWarningTimer);
+                    this.sessionWarningTimer = null;
+                }
+                
+                this.clearNotesUI();
+                this.showScreen('login');
+                
+                // Clear PIN input
+                document.getElementById('pin-input').value = '';
+                
+                console.log('👻🔐 OpenADP Ghost Notes session ended');
+            }
+
+            startAutoLockTimer() {
+                if (this.autoLockTimer) {
+                    clearTimeout(this.autoLockTimer);
+                }
+                
+                if (this.sessionWarningTimer) {
+                    clearTimeout(this.sessionWarningTimer);
+                }
+                
+                // Set warning timer
+                this.sessionWarningTimer = setTimeout(() => {
+                    this.showSessionWarning();
+                }, this.settings.autoLockTimeout - this.settings.sessionWarningTime);
+                
+                // Set auto-lock timer
+                this.autoLockTimer = setTimeout(() => {
+                    this.endSession();
+                }, this.settings.autoLockTimeout);
+                
+                // Update UI timer
+                this.updateLockTimer();
+            }
+
+            updateLockTimer() {
+                const timerElement = document.getElementById('lock-timer');
+                if (!timerElement || !this.sessionActive) return;
+                
+                const remaining = this.settings.autoLockTimeout / 1000;
+                const minutes = Math.floor(remaining / 60);
+                const seconds = remaining % 60;
+                timerElement.textContent = `Auto-lock in ${minutes}:${seconds.toString().padStart(2, '0')}`;
+            }
+
+            showSessionWarning() {
+                const modal = document.getElementById('session-warning');
+                if (modal) {
+                    modal.style.display = 'flex';
+                }
+            }
+
+            extendSession() {
+                this.hideSessionWarning();
+                this.startAutoLockTimer();
+            }
+
+            hideSessionWarning() {
+                const modal = document.getElementById('session-warning');
+                if (modal) {
+                    modal.style.display = 'none';
+                }
+            }
+
+            async loadDecryptedNotes() {
+                // Load encrypted notes from localStorage
+                const encryptedNotes = localStorage.getItem('openadp_ghost_notes');
+                if (!encryptedNotes) {
+                    return;
+                }
+                
+                try {
+                    const decrypted = await this.decryptData(encryptedNotes, this.sessionKey);
+                    const notesData = JSON.parse(new TextDecoder().decode(decrypted));
+                    
+                    this.decryptedNotes.clear();
+                    for (const [id, note] of Object.entries(notesData)) {
+                        this.decryptedNotes.set(id, note);
+                    }
+                    
+                    this.updateNotesListUI();
+                    
+                } catch (error) {
+                    console.error('Failed to decrypt notes:', error);
+                    this.showError('Failed to decrypt notes. They may have been corrupted.');
+                }
+            }
+
+            async saveEncryptedNotes() {
+                if (!this.sessionKey) return;
+                
+                try {
+                    const notesData = Object.fromEntries(this.decryptedNotes);
+                    const jsonData = JSON.stringify(notesData);
+                    const encrypted = await this.encryptData(jsonData, this.sessionKey);
+                    
+                    localStorage.setItem('openadp_ghost_notes', encrypted);
+                    
+                } catch (error) {
+                    console.error('Failed to encrypt notes:', error);
+                    this.showError('Failed to save notes securely.');
+                }
+            }
+
+            async encryptData(text, key) {
+                const encoder = new TextEncoder();
+                const data = encoder.encode(text);
+                
+                const iv = new Uint8Array(12);
+                crypto.getRandomValues(iv);
+                
+                const cryptoKey = await crypto.subtle.importKey(
+                    'raw',
+                    key,
+                    { name: 'AES-GCM', length: 256 },
+                    false,
+                    ['encrypt']
+                );
+                
+                const encrypted = await crypto.subtle.encrypt(
+                    { name: 'AES-GCM', iv: iv },
+                    cryptoKey,
+                    data
+                );
+                
+                // Combine IV and encrypted data
+                const combined = new Uint8Array(iv.length + encrypted.byteLength);
+                combined.set(iv);
+                combined.set(new Uint8Array(encrypted), iv.length);
+                
+                // Return as base64
+                return btoa(String.fromCharCode(...combined));
+            }
+
+            async decryptData(encryptedData, key) {
+                const combined = new Uint8Array(atob(encryptedData).split('').map(c => c.charCodeAt(0)));
+                
+                const iv = combined.slice(0, 12);
+                const encrypted = combined.slice(12);
+                
+                const cryptoKey = await crypto.subtle.importKey(
+                    'raw',
+                    key,
+                    { name: 'AES-GCM', length: 256 },
+                    false,
+                    ['decrypt']
+                );
+                
+                const decrypted = await crypto.subtle.decrypt(
+                    { name: 'AES-GCM', iv: iv },
+                    cryptoKey,
+                    encrypted
+                );
+                
+                return new Uint8Array(decrypted);
+            }
+
+            async createWelcomeNote() {
+                const welcomeNote = {
+                    id: 'welcome',
+                    title: '👻 Welcome to OpenADP Ghost Notes',
+                    content: `Welcome to OpenADP Ghost Notes! 🎉
+
+Your notes are now protected by distributed cryptography:
+
+🔐 **How it works:**
+• Your PIN is protected by OpenADP distributed secret sharing
+• Master encryption key is split across multiple servers
+• Requires majority of servers to recover your key
+• Even simple PINs become cryptographically strong
+
+🛡️ **Security Features:**
+• No single point of failure
+• Brute-force resistant
+• Automatic attempt limiting
+• Session-based security (notes vanish when locked)
+
+📝 **Getting Started:**
+• Click the ➕ button to create new notes
+• All notes are encrypted with your OpenADP-protected key
+• Notes are automatically saved as you type
+• Lock anytime with the 🔒 button
+
+🚀 **Pro Tips:**
+• Use the auto-lock feature for additional security
+• Your PIN can be simple - OpenADP makes it strong
+• Notes only exist in memory during your session
+• Perfect for sensitive information that needs to disappear
+
+Start writing your secrets - they're truly secure with OpenADP! ✨`,
+                    created: new Date().toISOString(),
+                    modified: new Date().toISOString()
+                };
+                
+                this.decryptedNotes.set('welcome', welcomeNote);
+                await this.saveEncryptedNotes();
+            }
+
+            createNewNote() {
+                const id = Date.now().toString();
+                const newNote = {
+                    id: id,
+                    title: 'New Note',
+                    content: '',
+                    created: new Date().toISOString(),
+                    modified: new Date().toISOString()
+                };
+                
+                this.decryptedNotes.set(id, newNote);
+                this.selectNote(id);
+                this.updateNotesListUI();
+                
+                // Focus on title input
+                setTimeout(() => {
+                    document.getElementById('note-title').focus();
+                    document.getElementById('note-title').select();
+                }, 100);
+            }
+
+            selectNote(noteId) {
+                const note = this.decryptedNotes.get(noteId);
+                if (!note) return;
+                
+                this.currentNoteId = noteId;
+                
+                document.getElementById('note-title').value = note.title;
+                document.getElementById('note-content').value = note.content;
+                document.getElementById('note-created').textContent = `Created: ${new Date(note.created).toLocaleString()}`;
+                document.getElementById('note-modified').textContent = `Modified: ${new Date(note.modified).toLocaleString()}`;
+                
+                document.getElementById('welcome-message').style.display = 'none';
+                document.getElementById('note-editor').style.display = 'block';
+                
+                // Update sidebar selection
+                document.querySelectorAll('.note-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                document.querySelector(`[data-note-id="${noteId}"]`)?.classList.add('active');
+            }
+
+            async saveCurrentNote() {
+                if (!this.currentNoteId) return;
+                
+                const note = this.decryptedNotes.get(this.currentNoteId);
+                if (!note) return;
+                
+                note.title = document.getElementById('note-title').value || 'Untitled';
+                note.content = document.getElementById('note-content').value;
+                note.modified = new Date().toISOString();
+                
+                this.decryptedNotes.set(this.currentNoteId, note);
+                await this.saveEncryptedNotes();
+                this.updateNotesListUI();
+                
+                // Update modified time in UI
+                document.getElementById('note-modified').textContent = `Modified: ${new Date(note.modified).toLocaleString()}`;
+                
+                this.showTemporaryMessage('💾 Note saved securely with OpenADP protection!');
+            }
+
+            autoSaveNote() {
+                if (!this.currentNoteId) return;
+                
+                // Debounced auto-save
+                if (this.autoSaveTimer) {
+                    clearTimeout(this.autoSaveTimer);
+                }
+                
+                this.autoSaveTimer = setTimeout(() => {
+                    this.saveCurrentNote();
+                }, 2000); // Auto-save after 2 seconds of inactivity
+            }
+
+            async deleteCurrentNote() {
+                if (!this.currentNoteId) return;
+                
+                if (confirm('Are you sure you want to delete this note? This action cannot be undone.')) {
+                    this.decryptedNotes.delete(this.currentNoteId);
+                    await this.saveEncryptedNotes();
+                    
+                    this.currentNoteId = null;
+                    document.getElementById('welcome-message').style.display = 'block';
+                    document.getElementById('note-editor').style.display = 'none';
+                    
+                    this.updateNotesListUI();
+                    this.showTemporaryMessage('🗑️ Note deleted securely');
+                }
+            }
+
+            updateNotesListUI() {
+                const notesList = document.getElementById('notes-list');
+                if (!notesList) return;
+                
+                notesList.innerHTML = '';
+                
+                // Sort notes by modified date
+                const sortedNotes = Array.from(this.decryptedNotes.values())
+                    .sort((a, b) => new Date(b.modified) - new Date(a.modified));
+                
+                for (const note of sortedNotes) {
+                    const noteItem = document.createElement('div');
+                    noteItem.className = 'note-item';
+                    noteItem.dataset.noteId = note.id;
+                    
+                    const preview = note.content.substring(0, 100) + (note.content.length > 100 ? '...' : '');
+                    const modifiedDate = new Date(note.modified).toLocaleDateString();
+                    
+                    noteItem.innerHTML = `
+                        <div class="note-title">${note.title}</div>
+                        <div class="note-preview">${preview}</div>
+                        <div class="note-date">${modifiedDate}</div>
+                        <div class="note-security">🔐 OpenADP</div>
+                    `;
+                    
+                    noteItem.addEventListener('click', () => this.selectNote(note.id));
+                    notesList.appendChild(noteItem);
+                }
+                
+                if (this.currentNoteId) {
+                    document.querySelector(`[data-note-id="${this.currentNoteId}"]`)?.classList.add('active');
+                }
+            }
+
+            clearNotesUI() {
+                document.getElementById('notes-list').innerHTML = '';
+                document.getElementById('welcome-message').style.display = 'block';
+                document.getElementById('note-editor').style.display = 'none';
+                document.getElementById('note-title').value = '';
+                document.getElementById('note-content').value = '';
+            }
+
+            updateAttemptsDisplay() {
+                const attemptsElement = document.getElementById('attempts-remaining');
+                if (attemptsElement) {
+                    attemptsElement.textContent = `${this.settings.remaining} attempts remaining`;
+                    
+                    if (this.settings.remaining <= 3) {
+                        attemptsElement.style.color = 'var(--accent-error)';
+                    } else if (this.settings.remaining <= 5) {
+                        attemptsElement.style.color = 'var(--accent-warning)';
+                    }
+                }
+            }
+
+            generateUserID() {
+                return 'ghost-' + crypto.randomUUID();
+            }
+
+            showLoading(message) {
+                const overlay = document.getElementById('loading-overlay');
+                const text = overlay.querySelector('.loading-text');
+                if (overlay && text) {
+                    text.textContent = message;
+                    overlay.style.display = 'flex';
+                }
+            }
+
+            hideLoading() {
+                const overlay = document.getElementById('loading-overlay');
+                if (overlay) {
+                    overlay.style.display = 'none';
+                }
+            }
+
+            showError(message) {
+                const errorElement = document.getElementById('error-message');
+                if (errorElement) {
+                    errorElement.textContent = message;
+                    errorElement.style.display = 'block';
+                    
+                    setTimeout(() => {
+                        errorElement.style.display = 'none';
+                    }, 5000);
+                }
+            }
+
+            showTemporaryMessage(message) {
+                const toast = document.createElement('div');
+                toast.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: var(--accent-success);
+                    color: white;
+                    padding: 0.8rem 1.2rem;
+                    border-radius: 8px;
+                    z-index: 3000;
+                    animation: slideIn 0.3s ease;
+                `;
+                toast.textContent = message;
+                
+                document.body.appendChild(toast);
+                
+                setTimeout(() => {
+                    toast.remove();
+                }, 3000);
+            }
+
+            setupPWA() {
+                console.log('📱 OpenADP Ghost Notes PWA ready');
+            }
+        }
+
+        // Initialize the app
+        document.addEventListener('DOMContentLoaded', () => {
+            window.openadpGhostNotes = new OpenADPGhostNotes();
+        });
+    </script>
+
+    <script>
+        // Register service worker for PWA functionality
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(registration => {
+                        console.log('👻🔐 OpenADP Service Worker registered:', registration);
+                    })
+                    .catch(error => {
+                        console.log('❌ Service Worker registration failed:', error);
+                    });
+            });
+        }
+    </script>
+</body>
+</html> 

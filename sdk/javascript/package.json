@@ -1,6 +1,6 @@
 {
   "name": "@openadp/ocrypt",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Ocrypt - Nation-state resistant password hashing using OpenADP distributed cryptography",
   "main": "src/index.js",
   "type": "module",
@@ -36,8 +36,11 @@
   "dependencies": {
     "@noble/curves": "^1.2.0",
     "@noble/hashes": "^1.3.3",
+    "buffer": "^6.0.3",
     "commander": "^14.0.0",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "os-browserify": "^0.3.0",
+    "path-browserify": "^1.0.1"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^28.0.6",

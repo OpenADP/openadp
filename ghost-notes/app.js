@@ -143,32 +143,47 @@ class GhostNotesApp {
     }
 
     async handleSetup() {
+        console.log('🔧 handleSetup() called');
         const pin = document.getElementById('setup-pin').value;
         const confirmPin = document.getElementById('confirm-pin').value;
         const maxGuesses = parseInt(document.getElementById('max-guesses').value);
         const autoLockTimeout = parseInt(document.getElementById('auto-lock').value) * 1000;
         
+        console.log('📝 Setup parameters:', { 
+            pinLength: pin ? pin.length : 0, 
+            pinsMatch: pin === confirmPin, 
+            maxGuesses, 
+            autoLockTimeout 
+        });
+        
         if (!pin || pin.length < 4) {
+            console.log('❌ PIN validation failed: too short');
             this.showError('PIN must be at least 4 characters');
             return;
         }
         
         if (pin !== confirmPin) {
+            console.log('❌ PIN validation failed: mismatch');
             this.showError('PINs do not match');
             return;
         }
         
         try {
+            console.log('🚀 Starting setup process...');
             this.showLoading('Setting up your secure vault with OpenADP...');
             
             // Generate a unique user ID for this installation
             const userID = this.generateUserID();
+            console.log('👤 Generated user ID:', userID);
             
             // Generate a long-term secret for encryption
             const longTermSecret = crypto.getRandomValues(new Uint8Array(32));
+            console.log('🔑 Generated long-term secret (length):', longTermSecret.length);
             
             // Use ocrypt to protect the long-term secret with the PIN
-            console.log('🔐 Protecting long-term secret with OpenADP distributed cryptography...');
+            console.log('🔐 Calling register() with OpenADP distributed cryptography...');
+            console.log('📡 About to contact OpenADP servers...');
+            
             const ocryptMetadata = await register(
                 userID,                    // user ID
                 'ghost-notes',             // app ID
@@ -177,36 +192,53 @@ class GhostNotesApp {
                 maxGuesses                 // max guess attempts
             );
             
+            console.log('✅ register() completed successfully');
+            console.log('📦 Metadata length:', ocryptMetadata.length);
+            
             // Update settings
+            console.log('⚙️  Updating settings...');
             this.settings.maxGuesses = maxGuesses;
             this.settings.autoLockTimeout = autoLockTimeout;
             this.settings.userID = userID;
             this.settings.currentGuesses = 0;
             
             this.saveSettings();
+            console.log('💾 Settings saved');
             
             // Store the ocrypt metadata
+            console.log('💾 Storing ocrypt metadata...');
             localStorage.setItem('ghost_notes_ocrypt_metadata', 
                 uint8ArrayToBase64(ocryptMetadata));
             
             // Derive session key from the long-term secret
+            console.log('🔑 Deriving session key...');
             this.sessionKey = await this.deriveSessionKeyFromSecret(longTermSecret);
             
             // Create verification data
+            console.log('🔐 Creating verification data...');
             await this.createVerificationData(this.sessionKey);
             
             // Mark as set up
+            console.log('✅ Marking as set up...');
             localStorage.setItem('ghost_notes_setup', 'true');
             
             // Create welcome note
+            console.log('📝 Creating welcome note...');
             await this.createWelcomeNote();
             await this.saveEncryptedNotes();
             
+            console.log('🎉 Setup completed successfully!');
             this.hideLoading();
             this.showScreen('login');
             this.showTemporaryMessage('Vault created successfully with OpenADP protection!');
             
         } catch (error) {
+            console.error('💥 Setup failed with error:', error);
+            console.error('💥 Error details:', {
+                message: error.message,
+                stack: error.stack,
+                name: error.name
+            });
             this.hideLoading();
             this.showError('Failed to create vault: ' + error.message);
         }
@@ -689,10 +721,24 @@ Start writing your secret thoughts! They're protected by the future of cryptogra
     }
 
     showError(message) {
-        document.getElementById('error-message').textContent = message;
-        setTimeout(() => {
-            document.getElementById('error-message').textContent = '';
-        }, 5000);
+        // Show error on current screen
+        const loginError = document.getElementById('error-message');
+        const setupError = document.getElementById('setup-error-message');
+        
+        if (this.currentScreen === 'setup' && setupError) {
+            setupError.textContent = message;
+            setTimeout(() => {
+                setupError.textContent = '';
+            }, 5000);
+        } else if (loginError) {
+            loginError.textContent = message;
+            setTimeout(() => {
+                loginError.textContent = '';
+            }, 5000);
+        }
+        
+        // Also log to console for debugging
+        console.error('Ghost Notes Error:', message);
     }
 
     showTemporaryMessage(message) {

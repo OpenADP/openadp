@@ -160,37 +160,35 @@
                     <h4>🌐 Multi-Language Support</h4>
                     <p><strong>Consistent API across all languages!</strong> All OpenADP SDKs provide the same simple 2-function interface:</p>
                     <ul style="margin: 10px 0; padding-left: 20px;">
-                        <li><strong>Python:</strong> <code>pip install openadp==0.1.2</code></li>
-                        <li><strong>JavaScript Node.js:</strong> <code>npm install @openadp/ocrypt@0.1.2</code></li>
-                        <li><strong>JavaScript Browser:</strong> <code>npm install @openadp/browser-sdk@0.1.2</code></li>
-                        <li><strong>Rust:</strong> <code>cargo add openadp-ocrypt@0.1.2</code></li>
+                        <li><strong>Python:</strong> <code>pip install openadp==0.1.3</code></li>
+                        <li><strong>JavaScript Node.js:</strong> <code>npm install @openadp/ocrypt@0.1.3</code></li>
+                        <li><strong>JavaScript Browser:</strong> <code>npm install @openadp/browser-sdk@0.1.3</code></li>
+                        <li><strong>Go:</strong> <code>go get github.com/openadp/openadp/sdk/go@latest</code></li>
+                        <li><strong>Rust:</strong> <code>cargo add openadp-ocrypt@0.1.3</code></li>
                         <li><strong>C++:</strong> Install from source (OpenSSL, libcurl, CMake required)</li>
                     </ul>
                     <p>All SDKs use the same <code>register()</code> and <code>recover()</code> functions with identical parameters!</p>
                 </div>
                 
                 <div class="language-tabs">
-                    <button class="tab-button active" onclick="showTab('javascript')">JavaScript</button>
+                    <button class="tab-button active" onclick="showTab('javascript')">Node.js</button>
+                    <button class="tab-button" onclick="showTab('browser')">Browser</button>
                     <button class="tab-button" onclick="showTab('python')">Python</button>
                     <button class="tab-button" onclick="showTab('go')">Go</button>
                     <button class="tab-button" onclick="showTab('rust')">Rust</button>
                     <button class="tab-button" onclick="showTab('cpp')">C++</button>
                 </div>
 
-                <!-- JavaScript Tab -->
+                <!-- JavaScript Node.js Tab -->
                 <div id="javascript" class="tab-content active">
                     <div class="integration-step">
                         <span class="step-number">1</span>
-                        <h3>Install OpenADP Browser JavaScript SDK</h3>
+                        <h3>Install OpenADP Node.js SDK</h3>
                         <p>Install the OpenADP JavaScript package directly from NPM:</p>
-                        <div class="code-block">npm install @openadp/browser-sdk@0.1.2</div>
+                        <div class="code-block">npm install @openadp/ocrypt@0.1.3</div>
                         <div class="success-box">
                             <h4>🚀 Professional NPM Package!</h4>
-                            <p>The OpenADP JavaScript SDK is now available as a professional NPM package (v0.1.2). Works in browsers with modern ES6 module support!</p>
-                        </div>
-                        <div class="warning-box">
-                            <h4>⚠️ HTTP Server Required</h4>
-                            <p>ES6 modules require an HTTP server. Never open HTML files directly (file:// protocol). Use a development server like <code>python3 -m http.server 8000</code> or similar.</p>
+                            <p>The OpenADP Node.js SDK is now available as a professional NPM package (v0.1.3). Full async/await support with ES6 modules!</p>
                         </div>
                     </div>
 
@@ -203,18 +201,20 @@
                     <div class="integration-step">
                         <span class="step-number">2</span>
                         <h3>Import Ocrypt</h3>
-                        <div class="code-block">// ES6 Module Import
-import { register, recover } from '@openadp/browser-sdk';
+                        <div class="code-block">// ES6 Module Import (Node.js 18+)
+import { register, recover } from '@openadp/ocrypt';
 
-// Or via CDN
-import { register, recover } from 'https://unpkg.com/@openadp/browser-sdk@0.1.2/ocrypt.js';</div>
+// Or CommonJS
+const { register, recover } = require('@openadp/ocrypt');</div>
                     </div>
 
                     <div class="integration-step">
                         <span class="step-number">3</span>
                         <h3>Register User Data</h3>
                         <p>When a user creates an account or wants to back up sensitive data:</p>
-                        <div class="code-block">async function backupUserData(userID, sensitiveData, userPIN) {
+                        <div class="code-block">import fs from 'fs/promises';
+
+async function backupUserData(userID, sensitiveData, userPIN) {
     try {
         // Convert sensitive data to bytes
         const dataBytes = new TextEncoder().encode(JSON.stringify(sensitiveData));
@@ -225,12 +225,11 @@ import { register, recover } from 'https://unpkg.com/@openadp/browser-sdk@0.1.2/
             'my-app',         // Your application name
             dataBytes,        // The sensitive data to protect
             userPIN,          // User's PIN/password
-            'current',        // Backup version
-            3                 // Maximum wrong PIN attempts
+            10                // Maximum wrong PIN attempts (default: 10)
         );
         
         // Store metadata locally - this is safe to store anywhere
-        localStorage.setItem(`backup_${userID}`, JSON.stringify(metadata));
+        await fs.writeFile(`backup_${userID}.bin`, metadata);
         
         console.log('✅ User data backed up successfully!');
         return metadata;
@@ -247,21 +246,23 @@ import { register, recover } from 'https://unpkg.com/@openadp/browser-sdk@0.1.2/
                         <p>When a user needs to restore their data:</p>
                         <div class="code-block">async function restoreUserData(userID, userPIN) {
     try {
-        // Get metadata from local storage
-        const metadataStr = localStorage.getItem(`backup_${userID}`);
-        if (!metadataStr) {
-            throw new Error('No backup found for this user');
-        }
-        
-        const metadata = JSON.parse(metadataStr);
+        // Get metadata from file
+        const metadata = await fs.readFile(`backup_${userID}.bin`);
         
         // Recover data from OpenADP network
-        const recoveredBytes = await recover(metadata, userPIN);
+        const { secret: recoveredBytes, remaining, updatedMetadata } = await recover(metadata, userPIN);
+        
+        // Update metadata if backup was refreshed
+        if (updatedMetadata !== metadata) {
+            await fs.writeFile(`backup_${userID}.bin`, updatedMetadata);
+            console.log('📝 Backup refreshed automatically');
+        }
         
         // Convert back to original data
         const recoveredData = JSON.parse(new TextDecoder().decode(recoveredBytes));
         
         console.log('✅ User data recovered successfully!');
+        console.log(`🔢 Remaining attempts: ${remaining}`);
         return recoveredData;
     } catch (error) {
         console.error('❌ Recovery failed:', error.message);
@@ -331,23 +332,179 @@ console.log('Recovered note:', noteContent);</div>
                     </div>
                 </div>
 
-                <!-- Python Tab -->
-                <div id="python" class="tab-content">
+                <!-- Browser JavaScript Tab -->
+                <div id="browser" class="tab-content">
                     <div class="integration-step">
                         <span class="step-number">1</span>
-                        <h3>Install OpenADP Python Package</h3>
-                        <p>Install the OpenADP Python package directly from PyPI:</p>
-                        <div class="code-block">pip install openadp==0.1.2</div>
+                        <h3>Install OpenADP Browser SDK</h3>
+                        <p>Install the OpenADP Browser JavaScript package directly from NPM:</p>
+                        <div class="code-block">npm install @openadp/browser-sdk@0.1.3</div>
                         <div class="success-box">
-                            <h4>🎉 Easy Installation!</h4>
-                            <p>The OpenADP Python package (v0.1.2) is now available on PyPI. No need to clone repositories or build from source!</p>
+                            <h4>🌐 Browser-Compatible!</h4>
+                            <p>The OpenADP Browser SDK works in modern browsers with ES6 module support and WebCrypto API!</p>
+                        </div>
+                        <div class="warning-box">
+                            <h4>⚠️ HTTP Server Required</h4>
+                            <p>ES6 modules require an HTTP server. Never open HTML files directly (file:// protocol). Use a development server like <code>python3 -m http.server 8000</code> or similar.</p>
                         </div>
                     </div>
 
                     <div class="integration-step">
                         <span class="step-number">2</span>
                         <h3>Import Ocrypt</h3>
-                        <div class="code-block">from openadp.ocrypt import register, recover
+                        <div class="code-block">// ES6 Module Import
+import { register, recover } from '@openadp/browser-sdk';
+
+// Or via CDN
+import { register, recover } from 'https://unpkg.com/@openadp/browser-sdk@0.1.3/ocrypt.js';</div>
+                    </div>
+
+                    <div class="integration-step">
+                        <span class="step-number">3</span>
+                        <h3>Register User Data</h3>
+                        <p>When a user creates an account or wants to back up sensitive data:</p>
+                        <div class="code-block">async function backupUserData(userID, sensitiveData, userPIN) {
+    try {
+        // Convert sensitive data to bytes
+        const dataBytes = new TextEncoder().encode(JSON.stringify(sensitiveData));
+        
+        // Register with OpenADP - this distributes the encryption key
+        const metadata = await register(
+            userID,           // Unique user identifier
+            'my-app',         // Your application name
+            dataBytes,        // The sensitive data to protect
+            userPIN,          // User's PIN/password
+            10                // Maximum wrong PIN attempts (default: 10)
+        );
+        
+        // Store metadata locally - this is safe to store anywhere
+        localStorage.setItem(`backup_${userID}`, Array.from(metadata).join(','));
+        
+        console.log('✅ User data backed up successfully!');
+        return metadata;
+    } catch (error) {
+        console.error('❌ Backup failed:', error.message);
+        throw error;
+    }
+}</div>
+                    </div>
+
+                    <div class="integration-step">
+                        <span class="step-number">4</span>
+                        <h3>Recover User Data</h3>
+                        <p>When a user needs to restore their data:</p>
+                        <div class="code-block">async function restoreUserData(userID, userPIN) {
+    try {
+        // Get metadata from local storage
+        const metadataStr = localStorage.getItem(`backup_${userID}`);
+        if (!metadataStr) {
+            throw new Error('No backup found for this user');
+        }
+        
+        // Convert back to Uint8Array
+        const metadata = new Uint8Array(metadataStr.split(',').map(Number));
+        
+        // Recover data from OpenADP network
+        const { secret: recoveredBytes, remaining, updatedMetadata } = await recover(metadata, userPIN);
+        
+        // Update metadata if backup was refreshed
+        if (updatedMetadata && updatedMetadata !== metadata) {
+            localStorage.setItem(`backup_${userID}`, Array.from(updatedMetadata).join(','));
+            console.log('📝 Backup refreshed automatically');
+        }
+        
+        // Convert back to original data
+        const recoveredData = JSON.parse(new TextDecoder().decode(recoveredBytes));
+        
+        console.log('✅ User data recovered successfully!');
+        console.log(`🔢 Remaining attempts: ${remaining}`);
+        return recoveredData;
+    } catch (error) {
+        console.error('❌ Recovery failed:', error.message);
+        throw error;
+    }
+}</div>
+                    </div>
+
+                    <div class="integration-step">
+                        <span class="step-number">5</span>
+                        <h3>Complete Example</h3>
+                        <p>Here's a complete working example for a secure notes app:</p>
+                        <div class="code-block">// Example: Secure Notes App
+class SecureNotesApp {
+    constructor() {
+        this.userID = 'user123';
+    }
+    
+    async saveNote(noteText, userPIN) {
+        const noteData = {
+            content: noteText,
+            timestamp: new Date().toISOString(),
+            version: '1.0'
+        };
+        
+        try {
+            const metadata = await register(
+                this.userID,
+                'secure-notes',
+                new TextEncoder().encode(JSON.stringify(noteData)),
+                userPIN,
+                3
+            );
+            
+            // Store metadata - safe to store anywhere
+            localStorage.setItem('note_metadata', Array.from(metadata).join(','));
+            alert('✅ Note saved securely!');
+        } catch (error) {
+            alert('❌ Failed to save note: ' + error.message);
+        }
+    }
+    
+    async loadNote(userPIN) {
+        try {
+            const metadataStr = localStorage.getItem('note_metadata');
+            const metadata = new Uint8Array(metadataStr.split(',').map(Number));
+            
+            const { secret: recoveredBytes } = await recover(metadata, userPIN);
+            const noteData = JSON.parse(new TextDecoder().decode(recoveredBytes));
+            
+            return noteData.content;
+        } catch (error) {
+            alert('❌ Failed to load note: ' + error.message);
+            return null;
+        }
+    }
+}
+
+// Usage
+const app = new SecureNotesApp();
+
+// Save a note
+await app.saveNote('My secret note content', '3344');
+
+// Load the note
+const noteContent = await app.loadNote('3344');
+console.log('Recovered note:', noteContent);</div>
+                    </div>
+                </div>
+
+                <!-- Python Tab -->
+                <div id="python" class="tab-content">
+                    <div class="integration-step">
+                        <span class="step-number">1</span>
+                        <h3>Install OpenADP Python Package</h3>
+                        <p>Install the OpenADP Python package directly from PyPI:</p>
+                        <div class="code-block">pip install openadp==0.1.3</div>
+                        <div class="success-box">
+                            <h4>🎉 Easy Installation!</h4>
+                            <p>The OpenADP Python package (v0.1.3) is now available on PyPI. No need to clone repositories or build from source!</p>
+                        </div>
+                    </div>
+
+                    <div class="integration-step">
+                        <span class="step-number">2</span>
+                        <h3>Import Ocrypt</h3>
+                        <div class="code-block">from openadp import ocrypt_register as register, ocrypt_recover as recover
 import json
 from datetime import datetime</div>
                     </div>
@@ -484,10 +641,10 @@ print('Restored wallet:', restored_data)</div>
                         <span class="step-number">1</span>
                         <h3>Install OpenADP Go Package</h3>
                         <p>Add the OpenADP Go module to your project:</p>
-                        <div class="code-block">go get github.com/openadp/ocrypt@v0.1.2</div>
+                        <div class="code-block">go get github.com/openadp/openadp/sdk/go@latest</div>
                         <div class="success-box">
-                            <h4>🚀 Published Go Module!</h4>
-                            <p>The OpenADP Go package (v0.1.2) is now available as a standalone module. Simple 2-function API for easy integration!</p>
+                            <h4>🚀 Integrated Go Module!</h4>
+                            <p>The OpenADP Go SDK is now integrated into the main repository. Simple 2-function API for easy integration!</p>
                         </div>
                     </div>
 
@@ -499,9 +656,10 @@ print('Restored wallet:', restored_data)</div>
 import (
     "encoding/json"
     "fmt"
+    "io/ioutil"
     "log"
     
-    "github.com/openadp/ocrypt"
+    "github.com/openadp/openadp/sdk/go/ocrypt"
 )</div>
                     </div>
 
@@ -518,29 +676,24 @@ import (
     // Register with OpenADP
     metadata, err := ocrypt.Register(
         userID,      // User ID
-        "my-app",    // Application name
-        dataBytes,   // Sensitive data
-        userPIN,     // User PIN
-        "current",   // Version
-        3,           // Max wrong attempts
+        "my-app",    // Application ID
+        dataBytes,   // Long-term secret to protect
+        userPIN,     // User's PIN
+        10,          // Max wrong attempts
+        "",          // Servers URL (empty = default)
     )
     if err != nil {
         return nil, fmt.Errorf("registration failed: %v", err)
     }
     
     // Store metadata (safe to store anywhere)
-    metadataBytes, err := json.Marshal(metadata)
-    if err != nil {
-        return nil, fmt.Errorf("failed to marshal metadata: %v", err)
-    }
-    
-    err = ioutil.WriteFile(fmt.Sprintf("backup_%s.json", userID), metadataBytes, 0644)
+    err = ioutil.WriteFile(fmt.Sprintf("backup_%s.bin", userID), metadata, 0644)
     if err != nil {
         return nil, fmt.Errorf("failed to save metadata: %v", err)
     }
     
     fmt.Println("✅ User data backed up successfully!")
-    return metadataBytes, nil
+    return metadata, nil
 }</div>
                     </div>
 
@@ -549,21 +702,25 @@ import (
                         <h3>Recover User Data</h3>
                         <div class="code-block">func restoreUserData(userID string, userPIN string) (interface{}, error) {
     // Load metadata
-    metadataBytes, err := ioutil.ReadFile(fmt.Sprintf("backup_%s.json", userID))
+    metadataBytes, err := ioutil.ReadFile(fmt.Sprintf("backup_%s.bin", userID))
     if err != nil {
         return nil, fmt.Errorf("failed to load metadata: %v", err)
     }
     
-    var metadata map[string]interface{}
-    err = json.Unmarshal(metadataBytes, &metadata)
-    if err != nil {
-        return nil, fmt.Errorf("failed to unmarshal metadata: %v", err)
-    }
-    
     // Recover data from OpenADP network
-    recoveredBytes, err := ocrypt.Recover(metadata, userPIN)
+    recoveredBytes, remaining, updatedMetadata, err := ocrypt.Recover(metadataBytes, userPIN, "")
     if err != nil {
         return nil, fmt.Errorf("recovery failed: %v", err)
+    }
+    
+    // Update metadata if backup was refreshed
+    if string(updatedMetadata) != string(metadataBytes) {
+        err = ioutil.WriteFile(fmt.Sprintf("backup_%s.bin", userID), updatedMetadata, 0644)
+        if err != nil {
+            fmt.Printf("⚠️ Failed to update metadata: %v\n", err)
+        } else {
+            fmt.Println("📝 Backup refreshed automatically")
+        }
     }
     
     // Convert back to original data
@@ -574,6 +731,7 @@ import (
     }
     
     fmt.Println("✅ User data recovered successfully!")
+    fmt.Printf("🔢 Remaining attempts: %d\n", remaining)
     return recoveredData, nil
 }</div>
                     </div>
@@ -681,11 +839,11 @@ func main() {
                         <p>Add the OpenADP Rust crate to your project:</p>
                         <div class="code-block"># Add to Cargo.toml
 [dependencies]
-openadp-ocrypt = "0.1.2"
+openadp-ocrypt = "0.1.3"
 tokio = { version = "1.0", features = ["full"] }</div>
                         <div class="success-box">
                             <h4>🦀 Published Rust Crate!</h4>
-                            <p>The OpenADP Rust crate (v0.1.2) is available on crates.io with full async/await support and cross-language compatibility!</p>
+                            <p>The OpenADP Rust crate (v0.1.3) is available on crates.io with full async/await support and cross-language compatibility!</p>
                         </div>
                     </div>
 

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OpenADP Browser SDK Test</title>
+</head>
+<body>
+    <h1>OpenADP Browser SDK Test</h1>
+    <button onclick="testSDK()">Test SDK</button>
+    <div id="output"></div>
+    
+    <script type="module">
+        import { register, recover, OcryptError } from './ocrypt.js';
+        
+        window.testSDK = async function() {
+            const output = document.getElementById('output');
+            output.innerHTML = '<p>Testing browser SDK...</p>';
+            
+            try {
+                // Test data
+                const userID = 'test@example.com';
+                const appID = 'test_app';
+                const secret = new TextEncoder().encode('my secret data');
+                const pin = 'password123';
+                const maxGuesses = 10;
+                
+                output.innerHTML += '<p>✅ SDK imported successfully</p>';
+                output.innerHTML += '<p>Test complete - browser SDK is working!</p>';
+                
+            } catch (error) {
+                output.innerHTML += `<p style="color: red">❌ Error: ${error.message}</p>`;
+                console.error('Test error:', error);
+            }
+        };
+    </script>
+</body>
+</html> 

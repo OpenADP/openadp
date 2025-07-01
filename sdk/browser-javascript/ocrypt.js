@@ -1,35 +1,60 @@
 /**
  * Ocrypt - Nation-state resistant password hashing using OpenADP distributed cryptography
- * Browser-compatible version using WebCrypto API
  * 
- * This library provides a simple interface that replaces traditional password hashing
- * functions like bcrypt, scrypt, Argon2, and PBKDF2 with distributed threshold cryptography.
+ * This module provides a simple 3-function API for distributed password hashing
+ * using OpenADP's Oblivious Pseudo Random Function (OPRF) cryptography.
  * 
- * Instead of storing password hashes locally, secrets are protected using a network of
- * independent OpenADP servers that implement threshold cryptography protocols.
+ * This package replaces traditional password hashing functions like bcrypt, scrypt,
+ * Argon2, and PBKDF2 with distributed threshold cryptography that is resistant to
+ * nation-state attacks and provides automatic backup refresh.
  * 
- * @example Basic usage:
- * // Register (protect a secret)
- * const metadata = await register('user123', 'myapp', longTermSecret, 'password123', 10);
+ * Key Features:
+ * - Nation-state resistant security through distributed servers
+ * - Built-in guess limiting across all servers
+ * - Automatic backup refresh with crash safety
+ * - Two-phase commit for reliable backup updates
+ * - Generic secret protection (not just passwords)
  * 
- * // Recover (retrieve the secret)
+ * @example
+ * import { register, recover, recoverAndReregister } from '@openadp/ocrypt';
+ * 
+ * // Register a secret
+ * const metadata = await register('alice@example.com', 'my_app', secret, 'password123', 10);
+ * 
+ * // Later, recover the secret with backup refresh
  * const { secret: recoveredSecret, remaining, updatedMetadata } = await recover(metadata, 'password123');
+ * 
+ * // Or recover and get completely fresh metadata 
+ * const { secret, newMetadata } = await recoverAndReregister(metadata, 'password123');
  */
 
 import { sha256 } from '@noble/hashes/sha256';
 
-// Import browser-compatible OpenADP components
-import { generateEncryptionKey, recoverEncryptionKey, Identity } from './keygen.js';
-import { getServers, getFallbackServerInfo } from './client.js';
-
-/**
- * Browser-compatible random bytes generation
- */
+// Browser-compatible random bytes
 function randomBytes(size) {
     const bytes = new Uint8Array(size);
     crypto.getRandomValues(bytes);
     return bytes;
 }
+
+// Browser-compatible helper functions
+function bytesToHex(bytes) {
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function bytesToBase64(bytes) {
+    const binary = Array.from(bytes).map(b => String.fromCharCode(b)).join('');
+    return btoa(binary);
+}
+
+function base64ToBytes(base64) {
+    const binary = atob(base64);
+    return new Uint8Array(binary.split('').map(c => c.charCodeAt(0)));
+}
+
+// Import browser-compatible OpenADP components  
+import { generateEncryptionKey, recoverEncryptionKey, Identity } from './keygen.browser.js';
+import { getServers, getFallbackServerInfo } from './client.browser.js';
 
 /**
  * Custom error class for Ocrypt operations
@@ -50,21 +75,21 @@ export class OcryptError extends Error {
  * 
  * @param {string} userID - Unique identifier for the user (e.g., email, username)
  * @param {string} appID - Application identifier to namespace secrets per app
- * @param {Uint8Array} longTermSecret - User-provided secret to protect (any byte sequence)
+ * @param {Uint8Array|Buffer} longTermSecret - User-provided secret to protect (any byte sequence)
  * @param {string} pin - Password/PIN that will unlock the secret
  * @param {number} [maxGuesses=10] - Maximum wrong PIN attempts before lockout
  * @returns {Promise<Uint8Array>} metadata - Opaque blob to store alongside user record
  * @throws {OcryptError} Any error that occurred during registration
  */
-export async function register(userID, appID, longTermSecret, pin, maxGuesses = 10) {
-    return await registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, 'even');
+export async function register(userID, appID, longTermSecret, pin, maxGuesses = 10, serversUrl = "") {
+    return await registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, 'even', serversUrl);
 }
 
 /**
  * Internal implementation that allows specifying backup ID
  * @private
  */
-async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, backupID) {
+async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, backupID, serversUrl = "") {
     // Input validation
     if (!userID || typeof userID !== 'string') {
         throw new OcryptError('user_id must be a non-empty string', 'INVALID_INPUT');
@@ -89,17 +114,27 @@ async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, b
     // Step 1: Discover OpenADP servers using REAL server discovery
     console.log('🌐 Discovering OpenADP servers...');
     let serverInfos;
+    
+    // Use provided serversUrl or default to production registry
+    const registryUrl = serversUrl || "https://servers.openadp.org/api/servers.json";
+    
     try {
-        serverInfos = await getServers("https://servers.openadp.org/api/servers.json");
+        serverInfos = await getServers(registryUrl);
         if (!serverInfos || serverInfos.length === 0) {
             throw new Error("No servers returned from registry");
         }
         console.log(`   ✅ Successfully fetched ${serverInfos.length} servers from registry`);
     } catch (error) {
         console.log(`   ⚠️  Failed to fetch from registry: ${error.message}`);
-        console.log('   🔄 Falling back to hardcoded servers...');
-        serverInfos = getFallbackServerInfo();
-        console.log(`   Fallback servers: ${serverInfos.length}`);
+        // Only fall back to production servers if we weren't given a specific registry
+        if (serversUrl) {
+            // If user specified a specific registry and it failed, don't fall back
+            throw new OcryptError(`Failed to fetch servers from specified registry ${serversUrl}: ${error.message}`, 'REGISTRY_FAILED');
+        } else {
+            console.log('   🔄 Falling back to hardcoded servers...');
+            serverInfos = getFallbackServerInfo();
+            console.log(`   Fallback servers: ${serverInfos.length}`);
+        }
     }
     
     if (!serverInfos || serverInfos.length === 0) {
@@ -109,7 +144,7 @@ async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, b
     // Random server selection for load balancing (max 15 servers for performance)
     if (serverInfos.length > 15) {
         serverInfos = serverInfos.sort(() => 0.5 - Math.random()).slice(0, 15);
-        console.log(`   🎲 Randomly selected 15 servers for load balancing`);
+        console.log(`    Randomly selected 15 servers for load balancing`);
     }
 
     // Step 2: Generate encryption key using REAL OpenADP protocol
@@ -136,7 +171,9 @@ async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, b
             throw new Error(result.error);
         }
 
-        console.log(`✅ Generated encryption key with ${result.serverUrls.length} servers`);
+        // Extract server URLs from serverInfos
+        const serverUrls = result.serverInfos.map(serverInfo => serverInfo.url);
+        console.log(`✅ Generated encryption key with ${serverUrls.length} servers`);
 
         // Step 3: Wrap the long-term secret with AES-256-GCM using WebCrypto API
         console.log('🔐 Wrapping long-term secret...');
@@ -145,7 +182,7 @@ async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, b
         // Step 4: Create metadata
         const metadata = {
             // Standard openadp-encrypt metadata
-            servers: result.serverUrls,
+            servers: serverUrls,
             threshold: result.threshold,
             version: '1.0',
             auth_code: result.authCodes.baseAuthCode,
@@ -162,7 +199,7 @@ async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, b
         const metadataBytes = new TextEncoder().encode(JSON.stringify(metadata));
 
         console.log(`📦 Created metadata (${metadataBytes.length} bytes)`);
-        console.log(`🎯 Threshold: ${result.threshold}-of-${result.serverUrls.length} recovery`);
+        console.log(`🎯 Threshold: ${result.threshold}-of-${serverUrls.length} recovery`);
 
         return metadataBytes;
     } catch (error) {
@@ -178,12 +215,12 @@ async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, b
  * 2. Attempts to refresh backup with opposite backup ID
  * 3. Returns updated metadata if refresh succeeds, original if it fails
  * 
- * @param {Uint8Array} metadataBytes - Metadata blob from register()
+ * @param {Uint8Array|Buffer} metadataBytes - Metadata blob from register()
  * @param {string} pin - Password/PIN to unlock the secret
  * @returns {Promise<{secret: Uint8Array, remaining: number, updatedMetadata: Uint8Array}>}
  * @throws {OcryptError} Any error that occurred during recovery
  */
-export async function recover(metadataBytes, pin) {
+export async function recover(metadataBytes, pin, serversUrl = "") {
     // Input validation
     if (!metadataBytes || metadataBytes.length === 0) {
         throw new OcryptError('metadata cannot be empty', 'INVALID_INPUT');
@@ -194,7 +231,7 @@ export async function recover(metadataBytes, pin) {
 
     // Step 1: Recover with existing backup
     console.log('📋 Step 1: Recovering with existing backup...');
-    const { secret, remaining } = await recoverWithoutRefresh(metadataBytes, pin);
+    const { secret, remaining } = await recoverWithoutRefresh(metadataBytes, pin, serversUrl);
 
     // Step 2: Attempt backup refresh using two-phase commit
     let updatedMetadata;
@@ -215,7 +252,8 @@ export async function recover(metadataBytes, pin) {
             secret, 
             pin, 
             metadata.max_guesses, 
-            newBackupID
+            newBackupID,
+            serversUrl
         );
         
         console.log(`✅ Backup refresh successful: ${metadata.backup_id} → ${newBackupID}`);
@@ -223,153 +261,164 @@ export async function recover(metadataBytes, pin) {
     } catch (error) {
         console.log(`⚠️  Backup refresh failed: ${error.message}`);
         console.log('✅ Recovery still successful with existing backup');
-        updatedMetadata = metadataBytes;
+        updatedMetadata = metadataBytes; // Use original metadata
     }
 
-    return {
-        secret,
-        remaining,
-        updatedMetadata
-    };
+    return { secret, remaining, updatedMetadata };
 }
 
 /**
- * Internal recovery without backup refresh
+ * Recovers a secret without attempting backup refresh
  * @private
  */
-async function recoverWithoutRefresh(metadataBytes, pin) {
+async function recoverWithoutRefresh(metadataBytes, pin, serversUrl = "") {
     // Parse metadata
-    const metadataStr = new TextDecoder().decode(metadataBytes);
-    const metadata = JSON.parse(metadataStr);
+    let metadata;
+    try {
+        const metadataStr = new TextDecoder().decode(metadataBytes);
+        metadata = JSON.parse(metadataStr);
+    } catch (error) {
+        throw new OcryptError(`Invalid metadata format: ${error.message}`, 'INVALID_METADATA');
+    }
 
-    console.log(`🔓 Recovering secret for user: ${metadata.user_id}`);
-    console.log(`📱 Application: ${metadata.app_id}`);
-    console.log(`🔄 Backup ID: ${metadata.backup_id}`);
+    console.log(`🔍 Recovering secret for user: ${metadata.user_id}, app: ${metadata.app_id}, bid: ${metadata.backup_id}`);
 
+    // Get server information using REAL server discovery
+    console.log('🌐 Getting server information from registry...');
+    let allServers;
+    
+    // Use provided serversUrl or default to production registry
+    const registryUrl = serversUrl || "https://servers.openadp.org/api/servers.json";
+    
+    try {
+        allServers = await getServers(registryUrl);
+    } catch (error) {
+        console.log(`   ⚠️  Failed to fetch from registry: ${error.message}`);
+        // Only fall back to production servers if we weren't given a specific registry
+        if (serversUrl) {
+            // If user specified a specific registry and it failed, don't fall back
+            throw new OcryptError(`Failed to fetch servers from specified registry ${serversUrl}: ${error.message}`, 'REGISTRY_FAILED');
+        } else {
+            allServers = getFallbackServerInfo();
+        }
+    }
+
+    // Match servers from metadata with registry
+    const serverInfos = [];
+    for (const serverURL of metadata.servers) {
+        const serverInfo = allServers.find(s => s.url === serverURL);
+        if (serverInfo) {
+            serverInfos.push(serverInfo);
+            console.log(`   ✅ ${serverURL} - matched in registry`);
+        }
+    }
+
+    if (serverInfos.length === 0) {
+        throw new OcryptError('No servers from metadata found in registry', 'SERVERS_NOT_FOUND');
+    }
+
+    // Recover encryption key from OpenADP using REAL protocol
+    console.log('🔑 Recovering encryption key from OpenADP servers...');
+    
     // Create Identity from metadata
     const identity = new Identity(
         metadata.user_id,   // UID = userID
         metadata.app_id,    // DID = appID
         metadata.backup_id  // BID = backupID
     );
+    
+    // Reconstruct auth codes
+    const authCodes = {
+        baseAuthCode: metadata.auth_code,
+        serverAuthCodes: {},
+        userID: metadata.user_id
+    };
 
+    // Generate server-specific auth codes
+    for (const serverURL of metadata.servers) {
+        const combined = `${metadata.auth_code}:${serverURL}`;
+        const hash = sha256(new TextEncoder().encode(combined));
+        authCodes.serverAuthCodes[serverURL] = bytesToHex(hash);
+    }
+    
     try {
-        // Step 1: Convert server URLs back to ServerInfo objects
-        console.log('🌐 Getting server information for recovery...');
-        let allServers;
-        try {
-            allServers = await getServers("https://servers.openadp.org/api/servers.json");
-        } catch (error) {
-            console.log(`   ⚠️  Failed to fetch from registry: ${error.message}`);
-            allServers = getFallbackServerInfo();
-        }
-
-        // Match stored server URLs with registry to get public keys
-        const serverInfos = [];
-        for (const serverURL of metadata.servers) {
-            const serverInfo = allServers.find(s => s.url === serverURL);
-            if (serverInfo) {
-                serverInfos.push(serverInfo);
-                console.log(`   ✅ ${serverURL} - matched in registry`);
-            } else {
-                // Create ServerInfo without public key if not found in registry
-                serverInfos.push({ url: serverURL, publicKey: "", country: "Unknown" });
-                console.log(`   ⚠️  ${serverURL} - not found in registry, using without encryption`);
-            }
-        }
-
-        if (serverInfos.length === 0) {
-            throw new Error('No servers from metadata could be resolved');
-        }
-
-        // Step 2: Reconstruct AuthCodes object from base auth code
-        const authCodes = {
-            baseAuthCode: metadata.auth_code,
-            serverAuthCodes: {},
-            userID: metadata.user_id
-        };
-
-        // Generate server-specific auth codes (same logic as during registration)
-        for (const serverURL of metadata.servers) {
-            const combined = `${metadata.auth_code}:${serverURL}`;
-            const encoder = new TextEncoder();
-            const data = encoder.encode(combined);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-            const hashArray = new Uint8Array(hashBuffer);
-            const hashHex = Array.from(hashArray).map(b => b.toString(16).padStart(2, '0')).join('');
-            authCodes.serverAuthCodes[serverURL] = hashHex;
-        }
-
-        // Step 3: Recover encryption key using REAL OpenADP protocol
-        console.log('🔑 Recovering encryption key from OpenADP servers...');
         const result = await recoverEncryptionKey(
-            identity,
-            pin,
-            serverInfos,
-            metadata.threshold,
+            identity, 
+            pin, 
+            serverInfos, 
+            metadata.threshold, 
             authCodes
         );
-
+        
         if (result.error) {
             throw new Error(result.error);
         }
+        
+        console.log('✅ Successfully recovered encryption key');
 
-        console.log(`✅ Recovered encryption key (${result.remaining} attempts remaining)`);
+        // Unwrap the long-term secret using WebCrypto API
+        console.log('🔐 Validating PIN by unwrapping secret...');
+        const secret = await unwrapSecret(metadata.wrapped_long_term_secret, result.encryptionKey, result.maxGuesses, result.numGuesses);
+        
+        console.log('✅ PIN validation successful - secret unwrapped');
 
-        // Step 2: Unwrap the long-term secret
-        console.log('🔓 Unwrapping long-term secret...');
-        const longTermSecret = await unwrapSecret(metadata.wrapped_long_term_secret, result.encryptionKey);
-
-        console.log(`🎉 Successfully recovered ${longTermSecret.length}-byte secret`);
-
-        return {
-            secret: longTermSecret,
-            remaining: result.remaining
-        };
+        return { secret, remaining: 0 }; // Success = 0 remaining guesses in this implementation
     } catch (error) {
-        throw new OcryptError(`OpenADP recovery failed: ${error.message}`, 'OPENADP_FAILED');
+        throw new OcryptError(`OpenADP recovery failed: ${error.message}`, 'OPENADP_RECOVERY_FAILED');
     }
 }
 
 /**
- * Internal registration with commit (for backup refresh)
+ * Implements two-phase commit for backup refresh
  * @private
  */
-async function registerWithCommitInternal(userID, appID, longTermSecret, pin, maxGuesses, newBackupID) {
-    try {
-        return await registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, newBackupID);
-    } catch (error) {
-        throw new OcryptError(`Backup refresh failed: ${error.message}`, 'REFRESH_FAILED');
-    }
+async function registerWithCommitInternal(userID, appID, longTermSecret, pin, maxGuesses, newBackupID, serversUrl = "") {
+    // Phase 1: PREPARE - Register new backup
+    console.log('📋 Phase 1: PREPARE - Registering new backup...');
+    const newMetadata = await registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, newBackupID, serversUrl);
+    console.log('✅ Phase 1 complete: New backup registered');
+
+    // Phase 2: COMMIT - Verify new backup works
+    console.log('📋 Phase 2: COMMIT - Verifying new backup...');
+    await recoverWithoutRefresh(newMetadata, pin, serversUrl);
+    console.log('✅ Phase 2 complete: New backup verified and committed');
+
+    return newMetadata;
 }
 
 /**
- * Generate next backup ID for rotation
+ * Generates the next backup ID using smart strategies
  * @private
  */
 function generateNextBackupID(currentBackupID) {
-    // Simple alternating pattern for backup rotation
-    const backupIDs = ['even', 'odd'];
-    const currentIndex = backupIDs.indexOf(currentBackupID);
-    
-    if (currentIndex === -1) {
-        // Unknown backup ID, default to 'even'
-        return 'even';
+    switch (currentBackupID) {
+        case 'even':
+            return 'odd';
+        case 'odd':
+            return 'even';
+        default:
+            // For version numbers like v1, v2, etc.
+            if (currentBackupID.startsWith('v') && currentBackupID.length > 1) {
+                const versionStr = currentBackupID.slice(1);
+                const version = parseInt(versionStr, 10);
+                if (version > 0) {
+                    return `v${version + 1}`;
+                }
+            }
+            
+            // Fallback: append timestamp
+            const timestamp = Math.floor(Date.now() / 1000);
+            return `${currentBackupID}_v${timestamp}`;
     }
-    
-    // Return the opposite backup ID
-    return backupIDs[1 - currentIndex];
 }
 
 /**
- * Wrap a secret using AES-256-GCM with WebCrypto API
+ * Encrypts a secret using AES-256-GCM with WebCrypto API
  * @private
  */
 async function wrapSecret(secret, key) {
-    const iv = randomBytes(12); // 96-bit IV for GCM
-    
     try {
-        // Import key for WebCrypto
+        // Convert key to WebCrypto format
         const cryptoKey = await crypto.subtle.importKey(
             'raw',
             key,
@@ -378,38 +427,39 @@ async function wrapSecret(secret, key) {
             ['encrypt']
         );
 
-        // Encrypt using WebCrypto AES-GCM
+        // Generate random nonce
+        const nonce = crypto.getRandomValues(new Uint8Array(12));
+
+        // Encrypt with AES-GCM
         const encrypted = await crypto.subtle.encrypt(
-            {
-                name: 'AES-GCM',
-                iv: iv
-            },
+            { name: 'AES-GCM', iv: nonce },
             cryptoKey,
             secret
         );
 
-        // Combine IV + encrypted data
-        const wrapped = new Uint8Array(iv.length + encrypted.byteLength);
-        wrapped.set(iv);
-        wrapped.set(new Uint8Array(encrypted), iv.length);
+        // Split ciphertext and tag (WebCrypto appends tag)
+        const encryptedArray = new Uint8Array(encrypted);
+        const tagSize = 16; // AES-GCM tag is always 16 bytes
+        const ciphertext = encryptedArray.slice(0, -tagSize);
+        const tag = encryptedArray.slice(-tagSize);
 
-        return Array.from(wrapped); // Convert to regular array for JSON serialization
+        return {
+            nonce: bytesToBase64(nonce),
+            ciphertext: bytesToBase64(ciphertext),
+            tag: bytesToBase64(tag)
+        };
     } catch (error) {
-        throw new Error(`Secret wrapping failed: ${error.message}`);
+        throw new OcryptError(`Secret wrapping failed: ${error.message}`, 'WRAPPING_FAILED');
     }
 }
 
 /**
- * Unwrap a secret using AES-256-GCM with WebCrypto API
+ * Decrypts a secret using AES-256-GCM with WebCrypto API
  * @private
  */
-async function unwrapSecret(wrapped, key) {
-    const wrappedBytes = new Uint8Array(wrapped);
-    const iv = wrappedBytes.slice(0, 12);
-    const encrypted = wrappedBytes.slice(12);
-    
+async function unwrapSecret(wrapped, key, maxGuesses = 10, numGuesses = 0) {
     try {
-        // Import key for WebCrypto
+        // Convert key to WebCrypto format
         const cryptoKey = await crypto.subtle.importKey(
             'raw',
             key,
@@ -418,18 +468,91 @@ async function unwrapSecret(wrapped, key) {
             ['decrypt']
         );
 
-        // Decrypt using WebCrypto AES-GCM
+        const nonce = base64ToBytes(wrapped.nonce);
+        const ciphertext = base64ToBytes(wrapped.ciphertext);
+        const tag = base64ToBytes(wrapped.tag);
+
+        // Reconstruct full encrypted data (ciphertext + tag)
+        const encryptedData = new Uint8Array(ciphertext.length + tag.length);
+        encryptedData.set(ciphertext);
+        encryptedData.set(tag, ciphertext.length);
+
+        // Decrypt with AES-GCM
         const decrypted = await crypto.subtle.decrypt(
-            {
-                name: 'AES-GCM',
-                iv: iv
-            },
+            { name: 'AES-GCM', iv: nonce },
             cryptoKey,
-            encrypted
+            encryptedData
         );
 
         return new Uint8Array(decrypted);
     } catch (error) {
-        throw new Error(`Secret unwrapping failed: ${error.message}`);
+        // Invalid PIN - show helpful message with actual remaining guesses
+        if (maxGuesses > 0 && numGuesses > 0) {
+            const remaining = maxGuesses - numGuesses;
+            if (remaining > 0) {
+                console.error(`❌ Invalid PIN! You have ${remaining} guesses remaining.`);
+            } else {
+                console.error('❌ Invalid PIN! No more guesses remaining - account may be locked.');
+            }
+        } else {
+            console.error('❌ Invalid PIN! Check your password and try again.');
+        }
+        throw new OcryptError(`Invalid PIN or corrupted data: ${error.message}`, 'INVALID_PIN');
     }
+}
+
+/**
+ * Recovers a secret and reregisters with completely fresh metadata.
+ * 
+ * This function provides a clean separation between recovery and registration:
+ * 1. Recovers the long-term secret using existing metadata
+ * 2. Performs a completely fresh registration with new cryptographic material
+ * 
+ * @param {Uint8Array|Buffer} metadataBytes - Metadata blob from register()
+ * @param {string} pin - Password/PIN to unlock the secret
+ * @param {string} [serversUrl] - Custom URL for server registry (optional)
+ * @returns {Promise<{secret: Uint8Array, newMetadata: Uint8Array}>}
+ * @throws {OcryptError} Any error that occurred during recovery or registration
+ */
+export async function recoverAndReregister(metadataBytes, pin, serversUrl = "") {
+    // Input validation
+    if (!metadataBytes || metadataBytes.length === 0) {
+        throw new OcryptError('metadata cannot be empty', 'INVALID_INPUT');
+    }
+    if (!pin || typeof pin !== 'string') {
+        throw new OcryptError('pin must be a non-empty string', 'INVALID_INPUT');
+    }
+
+    console.log('🔄 Starting recovery and re-registration...');
+
+    // Step 1: Recover with existing backup (without refresh)
+    console.log('📋 Step 1: Recovering with existing metadata...');
+    const { secret, remaining } = await recoverWithoutRefresh(metadataBytes, pin, serversUrl);
+    
+    // Parse original metadata to get registration parameters
+    const metadataText = new TextDecoder().decode(metadataBytes);
+    const metadata = JSON.parse(metadataText);
+    
+    // Extract original registration parameters
+    const userID = metadata.user_id;
+    const appID = metadata.app_id;
+    const maxGuesses = metadata.max_guesses || 10;
+
+    console.log(`   ✅ Secret recovered successfully (${remaining} guesses remaining)`);
+    console.log(`   🔑 User: ${userID}, App: ${appID}`);
+
+    // Step 2: Completely fresh registration with new cryptographic material
+    console.log('📋 Step 2: Fresh registration with new cryptographic material...');
+    
+    // Generate next backup ID to ensure alternation (critical for prepare/commit safety)
+    const oldBackupID = metadata.backup_id || 'even';
+    const newBackupID = generateNextBackupID(oldBackupID);
+    console.log(`🔄 Backup ID alternation: ${oldBackupID} → ${newBackupID}`);
+    
+    const newMetadata = await registerWithBID(userID, appID, secret, pin, maxGuesses, newBackupID, serversUrl);
+
+    console.log('✅ Recovery and re-registration complete!');
+    console.log('   📝 New metadata contains completely fresh cryptographic material');
+    
+    return { secret, newMetadata };
 } 
