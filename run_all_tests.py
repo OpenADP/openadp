@@ -219,19 +219,42 @@ class OpenADPTestRunner:
             return TestResult("Go Integration Tests", False, duration, stdout, stderr)
     
     def test_python_sdk_setup(self) -> TestResult:
-        """Test Python SDK setup and dependencies"""
+        """Test Python SDK setup and dependencies - automatically setup if needed"""
         start_time = time.time()
         self.log("🐍 Testing Python SDK setup...", Colors.INFO)
         
-        # Check if venv exists and is activated
+        # Check if venv exists
         venv_path = self.root_dir / "venv"
         if not venv_path.exists():
-            return TestResult("Python SDK Setup", False, 0, "", "Virtual environment not found")
+            self.log("📦 Virtual environment not found, creating...", Colors.INFO)
+            
+            # Create virtual environment
+            success, stdout, stderr = self.run_command(["python3", "-m", "venv", "venv"])
+            if not success:
+                duration = time.time() - start_time
+                return TestResult("Python SDK Setup", False, duration, stdout, f"Failed to create venv: {stderr}")
+            
+            # Install Python dependencies
+            self.log("📦 Installing Python dependencies...", Colors.INFO)
+            success, stdout, stderr = self.run_command([
+                "bash", "-c", "source venv/bin/activate && pip install -r sdk/python/requirements.txt"
+            ])
+            if not success:
+                duration = time.time() - start_time
+                return TestResult("Python SDK Setup", False, duration, stdout, f"Failed to install dependencies: {stderr}")
+            
+            # Install OpenADP SDK in development mode
+            self.log("📦 Installing OpenADP SDK in development mode...", Colors.INFO)
+            success, stdout, stderr = self.run_command([
+                "bash", "-c", "source venv/bin/activate && cd sdk/python && pip install -e ."
+            ])
+            if not success:
+                duration = time.time() - start_time
+                return TestResult("Python SDK Setup", False, duration, stdout, f"Failed to install OpenADP SDK: {stderr}")
         
         # Test import of openadp module
         success, stdout, stderr = self.run_command([
-            "python", "-c", 
-            "import sys; sys.path.insert(0, 'sdk/python'); import openadp; print('OpenADP Python SDK imported successfully')"
+            "bash", "-c", "source venv/bin/activate && python -c 'import openadp; print(\"OpenADP Python SDK imported successfully\")'"
         ])
         
         duration = time.time() - start_time
@@ -250,7 +273,7 @@ class OpenADPTestRunner:
         
         python_test_dir = self.root_dir / "sdk" / "python" / "tests"
         success, stdout, stderr = self.run_command([
-            "python", "-m", "pytest", ".", "-v", "--tb=short"
+            "bash", "-c", "source ../../../venv/bin/activate && python -m pytest . -v --tb=short"
         ], cwd=python_test_dir)
         
         duration = time.time() - start_time
@@ -272,9 +295,13 @@ class OpenADPTestRunner:
             test_content = "Test content for Python tools"
             test_file.write_text(test_content)
             
-            # Test version flags
-            success1, _, _ = self.run_command(["python", "sdk/python/openadp-encrypt.py", "--version"])
-            success2, _, _ = self.run_command(["python", "sdk/python/openadp-decrypt.py", "--version"])
+            # Test version flags using virtual environment
+            success1, _, _ = self.run_command([
+                "bash", "-c", "source venv/bin/activate && python sdk/python/openadp-encrypt.py --version"
+            ])
+            success2, _, _ = self.run_command([
+                "bash", "-c", "source venv/bin/activate && python sdk/python/openadp-decrypt.py --version"
+            ])
             
             duration = time.time() - start_time
             
