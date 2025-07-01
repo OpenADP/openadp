@@ -219,38 +219,16 @@ class OpenADPTestRunner:
             return TestResult("Go Integration Tests", False, duration, stdout, stderr)
     
     def test_python_sdk_setup(self) -> TestResult:
-        """Test Python SDK setup and dependencies - automatically setup if needed"""
+        """Test Python SDK setup and dependencies"""
         start_time = time.time()
         self.log("🐍 Testing Python SDK setup...", Colors.INFO)
         
         # Check if venv exists
         venv_path = self.root_dir / "venv"
         if not venv_path.exists():
-            self.log("📦 Virtual environment not found, creating...", Colors.INFO)
-            
-            # Create virtual environment
-            success, stdout, stderr = self.run_command(["python3", "-m", "venv", "venv"])
-            if not success:
-                duration = time.time() - start_time
-                return TestResult("Python SDK Setup", False, duration, stdout, f"Failed to create venv: {stderr}")
-            
-            # Install Python dependencies
-            self.log("📦 Installing Python dependencies...", Colors.INFO)
-            success, stdout, stderr = self.run_command([
-                "bash", "-c", "source venv/bin/activate && pip install -r sdk/python/requirements.txt"
-            ])
-            if not success:
-                duration = time.time() - start_time
-                return TestResult("Python SDK Setup", False, duration, stdout, f"Failed to install dependencies: {stderr}")
-            
-            # Install OpenADP SDK in development mode
-            self.log("📦 Installing OpenADP SDK in development mode...", Colors.INFO)
-            success, stdout, stderr = self.run_command([
-                "bash", "-c", "source venv/bin/activate && cd sdk/python && pip install -e ."
-            ])
-            if not success:
-                duration = time.time() - start_time
-                return TestResult("Python SDK Setup", False, duration, stdout, f"Failed to install OpenADP SDK: {stderr}")
+            duration = time.time() - start_time
+            return TestResult("Python SDK Setup", False, duration, "", 
+                            "Virtual environment not found. Please run 'scripts/setup_env.sh' first.")
         
         # Test import of openadp module
         success, stdout, stderr = self.run_command([
