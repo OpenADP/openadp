@@ -2,7 +2,7 @@
 
 **Session-based secure note taking with distributed cryptography protection**
 
-Ghost Notes is a privacy-focused note-taking application that leverages OpenADP's distributed threshold cryptography to provide military-grade security for your personal notes. Your notes are protected by the same technology that secures nation-state communications.
+Ghost Notes is a privacy-focused note-taking application that leverages OpenADP's distributed threshold cryptography to provide strong security for your personal notes. Your notes are protected by the same technology that secures nation-state communications.
 
 ## 🚨 Why OpenADP Over Traditional Security?
 

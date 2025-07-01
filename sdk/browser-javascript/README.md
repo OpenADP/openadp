@@ -48,10 +48,10 @@ console.log('Recovered:', recoveredData);
 ## Files
 
 - `ocrypt.js` - Main API (register/recover functions)
-- `client.js` - OpenADP network client
-- `keygen.js` - Key generation and recovery
-- `crypto.js` - Cryptographic primitives
-- `noise-nk.js` - Noise protocol implementation
+- `client.browser.js` - OpenADP network client
+- `keygen.browser.js` - Key generation and recovery
+- `crypto.browser.js` - Cryptographic primitives
+- `noise-nk.browser.js` - Noise protocol implementation
 
 ## Differences from Node.js SDK
 

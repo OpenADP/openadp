@@ -14,7 +14,7 @@
 // Browser-compatible crypto
 function randomBytes(size) {
     const bytes = new Uint8Array(size);
-    crypto.getRandomValues(bytes);
+    crypto.browser.getRandomValues(bytes);
     return bytes;
 }
 
@@ -41,7 +41,7 @@ import {
     H, deriveEncKey, pointMul, pointCompress, pointDecompress,
     ShamirSecretSharing, recoverPointSecret, PointShare, Point2D, Point4D,
     expand, unexpand, Q, modInverse, sha256Hash, logPoint
-} from './crypto.js';
+} from './crypto.browser.js';
 import { OpenADPClient, EncryptedOpenADPClient, ServerInfo } from './client.browser.js';
 import * as debug from './debug.js';
 
@@ -148,12 +148,24 @@ export async function generateEncryptionKey(
     expiration = 0,
     serverInfos = null
 ) {
+    // Debug: Check what we received
+    console.log('🔍 DEBUG - generateEncryptionKey received:', {
+        identity: identity,
+        identity_type: typeof identity,
+        identity_constructor: identity?.constructor?.name,
+        identity_uid: identity?.uid,
+        identity_did: identity?.did,
+        identity_bid: identity?.bid,
+        password: password ? `${password.length} chars` : 'null/undefined'
+    });
+    
     // Input validation
     if (!identity) {
         return new GenerateEncryptionKeyResult(null, "Identity cannot be null");
     }
     
     if (!identity.uid) {
+        console.log('🔍 DEBUG - identity.uid is:', identity.uid, 'type:', typeof identity.uid);
         return new GenerateEncryptionKeyResult(null, "UID cannot be empty");
     }
     
