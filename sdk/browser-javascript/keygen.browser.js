@@ -14,7 +14,7 @@
 // Browser-compatible crypto
 function randomBytes(size) {
     const bytes = new Uint8Array(size);
-    crypto.browser.getRandomValues(bytes);
+    crypto.getRandomValues(bytes);
     return bytes;
 }
 

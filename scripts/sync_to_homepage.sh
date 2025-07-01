@@ -43,8 +43,6 @@ cp "$SOURCE_DIR/ghost-notes/manifest.json" "$HOMEPAGE_DIR/ghost-notes/"
 cp "$SOURCE_DIR/ghost-notes/sw.js" "$HOMEPAGE_DIR/ghost-notes/"
 cp "$SOURCE_DIR/ghost-notes/test.html" "$HOMEPAGE_DIR/ghost-notes/"
 cp "$SOURCE_DIR/ghost-notes/test-openadp.html" "$HOMEPAGE_DIR/ghost-notes/"
-cp "$SOURCE_DIR/ghost-notes/debug.html" "$HOMEPAGE_DIR/ghost-notes/"
-cp "$SOURCE_DIR/ghost-notes/debug-openadp.html" "$HOMEPAGE_DIR/ghost-notes/"
 cp "$SOURCE_DIR/ghost-notes/openadp-demo.html" "$HOMEPAGE_DIR/ghost-notes/"
 cp "$SOURCE_DIR/ghost-notes/README.md" "$HOMEPAGE_DIR/ghost-notes/"
 
@@ -94,8 +92,6 @@ cat > "$HOMEPAGE_DIR/files" << EOF
 ./ghost-notes/manifest.json
 ./ghost-notes/README-OpenADP.md
 ./ghost-notes/README-Simple.md
-./ghost-notes/debug.html
-./ghost-notes/debug-openadp.html
 ./ghost-notes/styles.css
 ./ghost-notes/README.md
 ./sdk/browser-javascript/ocrypt.js
