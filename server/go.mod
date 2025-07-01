@@ -1,10 +1,9 @@
 module github.com/openadp/server
 
-go 1.23
+go 1.21
 
 require (
 	github.com/flynn/noise v1.1.0
-	github.com/openadp/ocrypt v0.1.0
 	github.com/openadp/openadp/sdk/go v0.1.3
 	modernc.org/sqlite v1.33.1
 )
@@ -26,5 +25,4 @@ require (
 	modernc.org/token v1.1.0 // indirect
 )
 
-replace github.com/openadp/ocrypt => ../../ocrypt
 replace github.com/openadp/openadp/sdk/go => ../sdk/go

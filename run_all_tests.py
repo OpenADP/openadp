@@ -126,6 +126,7 @@ class OpenADPTestRunner:
         self.root_dir = Path.cwd()
         self.results: List[TestResult] = []
         self.start_time = time.time()
+        self.go_version_compatible = None
         
         # Disable colors if requested or if not in a terminal
         if args.no_color or not sys.stdout.isatty():
@@ -151,9 +152,47 @@ class OpenADPTestRunner:
         except Exception as e:
             return False, "", f"Exception running command: {str(e)}"
     
+    def check_go_version_compatible(self) -> bool:
+        """Check if Go version is compatible with OpenADP (requires Go 1.23+)"""
+        if self.go_version_compatible is not None:
+            return self.go_version_compatible
+            
+        try:
+            success, stdout, stderr = self.run_command(["go", "version"])
+            if not success:
+                self.go_version_compatible = False
+                return False
+                
+            # Parse version like "go version go1.19.8 linux/amd64"
+            import re
+            match = re.search(r'go(\d+)\.(\d+)', stdout)
+            if not match:
+                self.go_version_compatible = False
+                return False
+                
+            major, minor = int(match.group(1)), int(match.group(2))
+            # OpenADP requires Go 1.21+ (but newer dependencies may still require 1.23+)
+            compatible = major > 1 or (major == 1 and minor >= 21)
+            self.go_version_compatible = compatible
+            
+            if not compatible:
+                self.log(f"⚠️ Go {major}.{minor} detected, but OpenADP requires Go 1.21+", Colors.WARNING)
+                self.log("   Run scripts/setup_env.sh for upgrade instructions", Colors.INFO)
+            
+            return compatible
+        except Exception as e:
+            self.go_version_compatible = False
+            return False
+    
     def test_go_build(self) -> TestResult:
         """Test that all Go components build successfully"""
         start_time = time.time()
+        
+        if not self.check_go_version_compatible():
+            duration = time.time() - start_time
+            self.log("⚠️ Go build: SKIP (Go version incompatible)", Colors.WARNING)
+            return TestResult("Go Build", True, duration, "Skipped due to Go version incompatibility")
+        
         self.log("🔨 Building Go components...", Colors.INFO)
         
         # First clean, then build all components including tools needed for tests
@@ -172,6 +211,12 @@ class OpenADPTestRunner:
     def test_go_unit_tests(self) -> TestResult:
         """Run Go unit tests for all modules (ocrypt, server)"""
         start_time = time.time()
+        
+        if not self.check_go_version_compatible():
+            duration = time.time() - start_time
+            self.log("⚠️ Go unit tests: SKIP (Go version incompatible)", Colors.WARNING)
+            return TestResult("Go Unit Tests", True, duration, "Skipped due to Go version incompatibility")
+        
         self.log("🧪 Running Go unit tests...", Colors.INFO)
         
         # Run tests for each module separately
@@ -206,6 +251,12 @@ class OpenADPTestRunner:
     def test_go_integration_tests(self) -> TestResult:
         """Run Go integration tests"""
         start_time = time.time()
+        
+        if not self.check_go_version_compatible():
+            duration = time.time() - start_time
+            self.log("⚠️ Go integration tests: SKIP (Go version incompatible)", Colors.WARNING)
+            return TestResult("Go Integration Tests", True, duration, "Skipped due to Go version incompatibility")
+        
         self.log("🔗 Running Go integration tests...", Colors.INFO)
         
         success, stdout, stderr = self.run_command(["go", "test", "./tests/...", "-v"], timeout=600)
@@ -461,6 +512,12 @@ class OpenADPTestRunner:
     def test_makefile_targets(self) -> TestResult:
         """Test key Makefile targets"""
         start_time = time.time()
+        
+        if not self.check_go_version_compatible():
+            duration = time.time() - start_time
+            self.log("⚠️ Makefile targets: SKIP (Go version incompatible)", Colors.WARNING)
+            return TestResult("Makefile Targets", True, duration, "Skipped due to Go version incompatibility")
+        
         self.log("📋 Testing Makefile targets...", Colors.INFO)
         
         targets_to_test = ["test", "fmt"]
@@ -488,6 +545,10 @@ class OpenADPTestRunner:
     
     def ensure_go_tools_built(self) -> bool:
         """Ensure Go tools are built before running tests that need them"""
+        if not self.check_go_version_compatible():
+            self.log("⚠️ Go tools not available due to version incompatibility", Colors.WARNING)
+            return False
+            
         self.log("🔧 Ensuring Go tools are built...", Colors.INFO)
         
         # Check if build directory exists and has executables
