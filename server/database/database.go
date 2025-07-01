@@ -309,22 +309,6 @@ func (d *Database) ListBackups(uid string) ([]BackupInfo, error) {
 	return backups, nil
 }
 
-// VerifyAuthCodeForUser verifies that an auth code is valid for a specific user
-// by checking if any backup exists for that user with that auth code
-func (d *Database) VerifyAuthCodeForUser(uid, authCode string) (bool, error) {
-	var count int
-	err := d.db.QueryRow(
-		"SELECT COUNT(*) FROM shares WHERE UID = ? AND auth_code = ?",
-		uid, authCode,
-	).Scan(&count)
-
-	if err != nil {
-		return false, fmt.Errorf("failed to verify auth code: %v", err)
-	}
-
-	return count > 0, nil
-}
-
 // GetServerConfig retrieves a configuration value from the server_config table
 func (d *Database) GetServerConfig(key string) ([]byte, error) {
 	var value []byte
@@ -390,23 +374,4 @@ func ValidateExpiration(expiration int64) error {
 	}
 
 	return nil
-}
-
-// GetUIDFromAuthCode retrieves the UID associated with an auth code
-// by finding any backup that uses that auth code
-func (d *Database) GetUIDFromAuthCode(authCode string) (string, error) {
-	var uid string
-	err := d.db.QueryRow(
-		"SELECT UID FROM shares WHERE auth_code = ? LIMIT 1",
-		authCode,
-	).Scan(&uid)
-
-	if err == sql.ErrNoRows {
-		return "", fmt.Errorf("auth code not found")
-	}
-	if err != nil {
-		return "", fmt.Errorf("failed to get UID from auth code: %v", err)
-	}
-
-	return uid, nil
 }
