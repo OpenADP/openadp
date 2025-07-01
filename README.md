@@ -45,14 +45,17 @@ user data while offering a compromise where lives can be saved.
 
 The simplest way to use OpenADP is through the **Ocrypt** library - a drop-in replacement for traditional password hashing functions (bcrypt, scrypt, Argon2, PBKDF2) that provides distributed threshold cryptography.
 
-**🔗 Ocrypt is now available as a separate library:**
-- **Go**: `github.com/OpenADP/ocrypt` - [Repository](https://github.com/OpenADP/ocrypt)
-- **Python**: `github.com/OpenADP/ocrypt-python` (coming soon)
-- **JavaScript**: `github.com/OpenADP/ocrypt-js` (coming soon)
+**🔗 Ocrypt is available in all supported SDK languages:**
+- **Go**: `github.com/OpenADP/openadp/sdk/go/ocrypt`
+- **Python**: `github.com/OpenADP/openadp/sdk/python/openadp/ocrypt`
+- **JavaScript (Node.js)**: `github.com/OpenADP/openadp/sdk/javascript/src/ocrypt`
+- **JavaScript (Browser)**: `github.com/OpenADP/openadp/sdk/browser-javascript/ocrypt`
+- **C++**: `github.com/OpenADP/openadp/sdk/cpp/include/openadp/ocrypt.hpp`
+- **Rust**: `github.com/OpenADP/openadp/sdk/rust/src/ocrypt.rs`
 
 **Simple 2-function API:**
-* `ocrypt.Register(user_id, app_id, long_term_secret, pin, max_guesses)` → metadata
-* `ocrypt.Recover(metadata, pin)` → (long_term_secret, remaining_guesses, updated_metadata)
+* `ocrypt.register(user_id, app_id, long_term_secret, pin, max_guesses=10, servers_url="")` → metadata
+* `ocrypt.recover(metadata, pin, servers_url="")` → (long_term_secret, remaining_guesses, updated_metadata)
 
 **Key Features:**
 - **User-controlled secrets**: You provide the `longTermSecret` (e.g., ed25519 private key)
@@ -61,19 +64,90 @@ The simplest way to use OpenADP is through the **Ocrypt** library - a drop-in re
 - **Drop-in replacement**: Minimal changes to existing authentication code
 - **Nation-state resistant**: No single point of failure
 
-**Example Use Case - Go:**
+**Example Use Cases:**
+
+**Go:**
 ```go
-import "github.com/OpenADP/ocrypt/ocrypt"
+import "github.com/OpenADP/openadp/sdk/go/ocrypt"
 
 // Protect private key with user's PIN
-metadata, err := ocrypt.Register("user@example.com", "vault", privateKey, userPIN, 10)
+metadata, err := ocrypt.Register("user@example.com", "vault", privateKey, userPIN, 10, "")
 
 // Later: recover private key to decrypt vault
-privateKey, remaining, updatedMetadata, err := ocrypt.Recover(metadata, userPIN)
+privateKey, remaining, updatedMetadata, err := ocrypt.Recover(metadata, userPIN, "")
 // Store updatedMetadata for future recoveries
 ```
 
-See the [Ocrypt documentation](https://github.com/OpenADP/ocrypt) for installation instructions and detailed usage examples.
+**Python:**
+```python
+from openadp import ocrypt
+
+# Protect private key with user's PIN
+metadata = ocrypt.register("user@example.com", "vault", private_key, user_pin, 10)
+
+# Later: recover private key to decrypt vault
+private_key, remaining, updated_metadata = ocrypt.recover(metadata, user_pin)
+```
+
+**JavaScript:**
+```javascript
+import { register, recover } from './sdk/javascript/src/ocrypt.js';
+
+// Protect private key with user's PIN
+const metadata = await register("user@example.com", "vault", privateKey, userPin, 10);
+
+// Later: recover private key to decrypt vault
+const { secret: privateKey, remaining, updatedMetadata } = await recover(metadata, userPin);
+```
+
+See the [OpenADP SDK documentation](https://github.com/OpenADP/openadp) for installation instructions and detailed usage examples.
+
+### SDK Installation
+
+To use the Ocrypt APIs in your projects:
+
+**Go:**
+```bash
+go get github.com/OpenADP/openadp/sdk/go@latest
+```
+
+**Python:**
+```bash
+# Clone the repository and install the Python SDK
+git clone https://github.com/OpenADP/openadp.git
+cd openadp/sdk/python
+pip install -e .
+```
+
+**JavaScript (Node.js):**
+```bash
+# Clone the repository and use the JavaScript SDK
+git clone https://github.com/OpenADP/openadp.git
+cd openadp/sdk/javascript
+npm install
+```
+
+**Browser JavaScript:**
+```html
+<!-- Use the browser-compatible version -->
+<script type="module" src="./sdk/browser-javascript/ocrypt.js"></script>
+```
+
+**C++:**
+```bash
+# Clone the repository and build with CMake
+git clone https://github.com/OpenADP/openadp.git
+cd openadp/sdk/cpp
+mkdir build && cd build
+cmake .. && make
+```
+
+**Rust:**
+```toml
+# Add to your Cargo.toml (local dependency for now)
+[dependencies]
+openadp-ocrypt = { path = "./openadp/sdk/rust" }
+```
 
 ### Prerequisites
 
@@ -88,7 +162,7 @@ Before working with OpenADP, ensure you have the following installed:
 
 1. **Clone the repository:**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/OpenADP/openadp.git
    cd openadp
    ```
 
@@ -455,13 +529,30 @@ server.start()
 server.stop()
 ```
 
-## Documentation
+## 📚 Documentation
 
-For additional technical documentation, see the [`docs/`](docs/) directory:
+OpenADP now features **comprehensive, consolidated documentation** in the [`docs/`](docs/) directory:
 
-- **[Client Cleanup Plan](docs/CLIENT_CLEANUP_PLAN.md)** - Comprehensive plan for preparing multi-language client implementations
-- **[Client Interfaces](pkg/client/interfaces.go)** - Standardized interfaces for cross-language compatibility
-- **[Documentation Index](docs/README.md)** - Complete documentation overview
+### Core Guides
+- **[🚀 Getting Started](docs/GETTING_STARTED.md)** - Complete guide from installation to production integration
+- **[🛠️ SDK Guide](docs/SDK_GUIDE.md)** - Unified documentation for all 6+ language SDKs
+- **[📖 API Reference](docs/API_REFERENCE.md)** - Detailed technical reference for all functions
+- **[🔒 Security Model](docs/SECURITY_MODEL.md)** - Threat model, audit results, and compliance
+
+### Technical Documentation
+- **[📋 Documentation Index](docs/README.md)** - Complete documentation overview
+- **[🏗️ Project Overview](docs/PROJECT-OVERVIEW.md)** - Architecture and design decisions
+- **[🌐 Server API](docs/SERVER_API.md)** - Server implementation details
+- **[🔐 Cryptographic Design](docs/ocrypt_design.md)** - Mathematical foundations
+
+### Demo Application
+- **[👻 Ghost Notes](ghost-notes/README.md)** - Complete OpenADP-enabled web app demo
+
+### Quick Access
+- **New to OpenADP?** → Start with [Getting Started](docs/GETTING_STARTED.md)
+- **Integrating into your app?** → See [SDK Guide](docs/SDK_GUIDE.md)
+- **Need API details?** → Check [API Reference](docs/API_REFERENCE.md)
+- **Security questions?** → Read [Security Model](docs/SECURITY_MODEL.md)
 
 ### Development Status
 - ✅ **Security Review**: Complete - no critical vulnerabilities found

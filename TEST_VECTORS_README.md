@@ -130,10 +130,9 @@ Standardized test inputs for verifying consistency across all SDK implementation
 
 ## Files
 
-- **`openadp_test_vectors.json`**: Complete test vector data (13KB, 381 lines)
-- **`verify_test_vectors.py`**: Python verification script
+- **`test_vectors.json`**: Complete test vector data (25KB, 588 lines)
 - **`sdk/cpp/generate_test_vectors.cpp`**: C++ test vector generator
-- **`test_vectors.json`**: Original manual test vector template
+- **`sdk/cpp/build/test_vectors.json`**: Generated test vectors from C++ build
 
 ## Usage
 
@@ -146,41 +145,28 @@ cmake --build build --target generate_test_vectors
 ./build/generate_test_vectors
 ```
 
-This creates `openadp_test_vectors.json` with concrete values from the working C++ implementation.
+This creates `test_vectors.json` with concrete values from the working C++ implementation.
 
 ### Verifying Test Vectors
 
 ```bash
-# Verify against Python implementation
-python verify_test_vectors.py --verbose
+# Verify test vectors exist and are properly formatted
+python3 -c "import json; print('Test vectors loaded successfully:', len(json.load(open('test_vectors.json'))))"
 
-# Test specific SDK (when implemented)
-python verify_test_vectors.py --sdk javascript --verbose
-python verify_test_vectors.py --sdk rust --verbose  
-python verify_test_vectors.py --sdk cpp --verbose
+# Individual SDK testing (when implemented)
+cd sdk/cpp && cmake --build build && ./build/generate_test_vectors
+cd sdk/javascript && npm test
+cd sdk/rust && cargo test
 ```
 
-**Current Results:**
-```
-🧪 OpenADP Test Vector Verification
-========================================
-🔍 Verifying SHA256 vectors...
-📊 SHA256: 5/5 vectors passed (100.0%)
-
-🔍 Verifying prefixed function vectors...  
-📊 Prefixed: 4/4 vectors passed (100.0%)
-
-🔍 Verifying AES-GCM vector format...
-📊 AES-GCM format: 4/4 vectors passed (100.0%)
-
-🔍 Verifying cross-language compatibility...
-📊 Cross-language: ✅
-
-🎯 Overall Results:
-====================
-✅ All test vectors passed!
-🌟 Cross-language compatibility verified
-```
+**Test Vector Content:**
+- SHA256 hash vectors (multiple test cases)
+- AES-GCM encryption vectors (4 test cases)  
+- Ed25519 hash-to-point vectors (5 test cases)
+- Shamir secret sharing vectors (3 test cases)
+- Cross-language compatibility test cases
+- HKDF key derivation vectors (3 test cases)
+- Prefixed function vectors (4 test cases)
 
 ## Implementation Status
 
@@ -221,8 +207,8 @@ cd sdk/javascript && npm test
 # Test Rust against Python server
 cd sdk/rust && cargo test
 
-# Verify all test vectors
-python verify_test_vectors.py --sdk [cpp|python|javascript|rust] --verbose
+# Verify test vectors are accessible
+python3 -c "import json; tv = json.load(open('test_vectors.json')); print(f'Loaded {len(tv)} test vector categories')"
 ```
 
 ## Technical Details

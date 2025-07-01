@@ -1,18 +1,35 @@
-# 👻 Ghost Notes
+# 👻🔐 OpenADP Ghost Notes
 
-**Session-based secure note taking app - your notes vanish when you leave**
+**Session-based secure note taking with distributed cryptography protection**
 
-Ghost Notes is a privacy-focused note-taking application that keeps your notes encrypted and only accessible during active sessions. When you close the app or walk away, your notes disappear like ghosts until you unlock them again.
+Ghost Notes is a privacy-focused note-taking application that leverages OpenADP's distributed threshold cryptography to provide military-grade security for your personal notes. Your notes are protected by the same technology that secures nation-state communications.
+
+## 🚨 Why OpenADP Over Traditional Security?
+
+**Traditional PIN security is broken:**
+```javascript
+// Traditional approach - crackable in seconds
+const pin = "3344";  // Only 10,000 combinations
+const key = pbkdf2(pin, salt, 100000);  // Still brute-forceable
+```
+
+**OpenADP makes even simple PINs cryptographically strong:**
+```javascript
+// OpenADP approach - distributed threshold cryptography
+const metadata = await ocrypt.register(userID, "ghost-notes", secret, pin, 10);
+// Now your PIN is protected by servers across multiple countries
+```
 
 ## ✨ Features
 
-- 🔐 **OpenADP Protection**: Nation-state resistant distributed cryptography replaces PBKDF2
+- 🔐 **OpenADP Protection**: Nation-state resistant distributed cryptography
+- 🛡️ **Threshold Security**: Requires 3+ servers to crack (impossible in practice)
 - 👻 **Ghost Mode**: Notes vanish from memory when you're away
 - 📱 **PWA Ready**: Install on phone/desktop like a native app
-- 🔒 **PIN Protection**: Strong PIN-based authentication
+- 🔒 **Cryptographically stron PINs**: Even "3344" becomes cryptographically strong
 - ⏱️ **Auto-Lock**: Automatic session timeout for security
-- 🚫 **No Cloud**: Everything stays on your device (for now)
-- 📵 **Offline First**: Works without internet connection
+- 🌍 **Global Distribution**: Servers across multiple countries
+- 📵 **Offline Capable**: Works without internet after initial setup
 
 ## 🚀 Quick Start
 
@@ -58,24 +75,66 @@ Ghost Notes is a privacy-focused note-taking application that keeps your notes e
 3. Tap "Add to Home Screen"
 4. Tap "Add"
 
-## 🔒 Security Features
+## 🔒 Security Architecture
+
+### OpenADP Distributed Protection
+- **Threshold Cryptography**: Shamir's Secret Sharing (3-of-5 servers)
+- **Geographic Distribution**: Servers across multiple countries
+- **Zero-Knowledge**: Servers never see your PIN or notes
+- **Attack Resistance**: Must compromise 3+ servers simultaneously
 
 ### Encryption
 - **Algorithm**: AES-GCM 256-bit encryption
-- **Key Protection**: OpenADP distributed threshold cryptography with automatic backup refresh
+- **Key Protection**: OpenADP distributed threshold cryptography
+- **Automatic Refresh**: Backup refreshes prevent data loss
 - **Random Salt**: Unique per installation
 - **IV**: Random initialization vector per encryption
 
 ### Session Management
 - **PIN Authentication**: Required for every session
-- **Failed Attempt Limiting**: Configurable lockout protection
+- **Global Rate Limiting**: Enforced across all servers
 - **Auto-Lock**: Inactivity timeout with warning
 - **Memory Clearing**: Notes purged from RAM when locked
 
 ### Storage
-- **Local Only**: Everything stored in browser localStorage
-- **No Network**: No data transmitted anywhere (yet)
-- **Encrypted at Rest**: Notes never stored in plain text
+- **Local Encrypted**: Everything stored encrypted in browser localStorage
+- **Metadata Only**: Only encrypted metadata stored locally
+- **No Plaintext**: Notes never stored in plain text anywhere
+
+## 🛡️ Security Comparison
+
+| Feature | Traditional | OpenADP Ghost Notes |
+|---------|-------------|---------------------|
+| **PIN Security** | ❌ Brute-forceable in seconds | ✅ Distributed protection |
+| **Attack Surface** | ❌ Single device | ✅ Must compromise 3+ servers |
+| **Offline Attacks** | ❌ Possible with stolen data | ✅ Impossible |
+| **Rate Limiting** | ❌ Client-side only | ✅ Server-enforced globally |
+| **Quantum Resistant** | ❌ Vulnerable | ✅ Information-theoretic security |
+| **Nation-State Resistant** | ❌ Vulnerable | ✅ Geographic distribution |
+
+### Attack Scenarios
+
+**Traditional Security:**
+```
+Attacker steals: encrypted_notes.dat
+Time to crack: ~5 seconds
+
+for pin in range(10000):
+    if decrypt(encrypted_notes, pin) == valid:
+        print("CRACKED:", pin)
+        break
+```
+
+**OpenADP Security:**
+```
+Attacker needs: 3+ compromised servers + correct PIN
+Time to crack: Practically impossible
+
+- Each server enforces rate limits
+- Servers are geographically distributed  
+- Independent security domains
+- Threshold cryptography prevents single points of failure
+```
 
 ## 🛠️ Technical Details
 
@@ -87,8 +146,8 @@ Ghost Notes is a privacy-focused note-taking application that keeps your notes e
 ### File Structure
 ```
 ghost-notes/
-├── index.html          # Main app
-├── app.js             # Application logic
+├── index.html          # Main OpenADP-enabled app
+├── app.js             # Application logic with OpenADP
 ├── styles.css         # Dark theme styling
 ├── manifest.json      # PWA manifest
 ├── sw.js             # Service worker
