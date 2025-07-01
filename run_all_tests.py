@@ -318,9 +318,9 @@ class OpenADPTestRunner:
         start_time = time.time()
         self.log("🔄 Running cross-language compatibility tests...", Colors.INFO)
         
-        # Use our existing cross-language test
+        # Use our existing cross-language test with virtual environment
         success, stdout, stderr = self.run_command([
-            "python", "tests/cross-language/test_cross_language_encrypt_decrypt.py"
+            "bash", "-c", "source venv/bin/activate && python tests/cross-language/test_cross_language_encrypt_decrypt.py"
         ], timeout=300)
         
         duration = time.time() - start_time
@@ -355,9 +355,9 @@ class OpenADPTestRunner:
             return TestResult("16x16 Cross-Language Matrix", False, duration, 
                             "", "Rust tools not available")
         
-        # Use the enhanced 16x16 test
+        # Use the enhanced 16x16 test with virtual environment
         success, stdout, stderr = self.run_command([
-            "python", "tests/cross-language/test_cross_language_encrypt_decrypt_16x16.py"
+            "bash", "-c", "source venv/bin/activate && python tests/cross-language/test_cross_language_encrypt_decrypt_16x16.py"
         ], timeout=600)  # Longer timeout for comprehensive test
         
         duration = time.time() - start_time
@@ -784,8 +784,10 @@ class OpenADPTestRunner:
         for test_file in test_files:
             self.log(f"🧪 Running {test_file.name}...", Colors.INFO)
             
-            # Run the test with a generous timeout for cross-language tests
-            success, stdout, stderr = self.run_command(["python3", str(test_file)], timeout=1200)
+            # Run the test with a generous timeout for cross-language tests using virtual environment
+            success, stdout, stderr = self.run_command([
+                "bash", "-c", f"source venv/bin/activate && python {test_file}"
+            ], timeout=1200)
             
             test_name = test_file.stem.replace("test_", "").replace("_", " ").title()
             
