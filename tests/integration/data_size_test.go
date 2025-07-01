@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openadp/ocrypt/client"
-	"github.com/openadp/ocrypt/common"
+	"github.com/openadp/openadp/sdk/go/client"
+	"github.com/openadp/openadp/sdk/go/common"
 )
 
 // Test cases for different Y value sizes

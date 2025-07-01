@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/openadp/ocrypt/ocrypt"
+	"github.com/openadp/openadp/sdk/go/ocrypt"
 )
 
 func main() {
@@ -74,7 +74,7 @@ func demoBasicUsage() error {
 
 	// Step 1: Register secret
 	fmt.Println("📋 Step 1: Register secret with OpenADP...")
-	metadata, err := ocrypt.Register(userID, appID, secret, pin, 10)
+	metadata, err := ocrypt.Register(userID, appID, secret, pin, 10, "")
 	if err != nil {
 		fmt.Printf("❌ Registration failed: %v\n", err)
 		fmt.Println("   This is expected if OpenADP servers are not accessible")
@@ -90,7 +90,7 @@ func demoBasicUsage() error {
 
 	// Step 2: Recover secret
 	fmt.Println("📋 Step 2: Recover secret using PIN...")
-	recoveredSecret, remaining, updatedMetadata, err := ocrypt.Recover(metadata, pin)
+	recoveredSecret, remaining, updatedMetadata, err := ocrypt.Recover(metadata, pin, "")
 	if err != nil {
 		return fmt.Errorf("recovery failed: %v", err)
 	}
@@ -104,7 +104,7 @@ func demoBasicUsage() error {
 
 	// Step 3: Test wrong PIN
 	fmt.Println("📋 Step 3: Test wrong PIN...")
-	_, _, _, err = ocrypt.Recover(metadata, "wrong_pin")
+	_, _, _, err = ocrypt.Recover(metadata, "wrong_pin", "")
 	if err != nil {
 		fmt.Printf("✅ Wrong PIN correctly rejected: %v\n", err)
 	} else {
@@ -140,7 +140,7 @@ func demoAPITokenStorage() error {
 	for tokenName, tokenValue := range tokens {
 		fmt.Printf("📋 Protecting %s...\n", tokenName)
 
-		metadata, err := ocrypt.Register(userID, tokenName, []byte(tokenValue), pin, 3)
+		metadata, err := ocrypt.Register(userID, tokenName, []byte(tokenValue), pin, 3, "")
 		if err != nil {
 			fmt.Printf("   ❌ Failed: %v\n", err)
 			fmt.Println("   This is expected if OpenADP servers are not accessible")
@@ -165,7 +165,7 @@ func demoAPITokenStorage() error {
 	// Recover tokens
 	fmt.Println("📋 Recovering tokens...")
 	for tokenName, metadata := range protectedTokens {
-		recoveredTokenBytes, _, _, err := ocrypt.Recover(metadata, pin)
+		recoveredTokenBytes, _, _, err := ocrypt.Recover(metadata, pin, "")
 		if err != nil {
 			fmt.Printf("   ❌ %s: Recovery failed: %v\n", tokenName, err)
 			continue
@@ -208,7 +208,7 @@ func demoDatabaseEncryption() error {
 	pin := "db_master_pin_2024"
 
 	fmt.Println("📋 Step 1: Protect database key with Ocrypt...")
-	metadata, err := ocrypt.Register(userID, appID, dbEncryptionKey, pin, 10)
+	metadata, err := ocrypt.Register(userID, appID, dbEncryptionKey, pin, 10, "")
 	if err != nil {
 		fmt.Printf("❌ Protection failed: %v\n", err)
 		fmt.Println("   This is expected if OpenADP servers are not accessible")
@@ -222,7 +222,7 @@ func demoDatabaseEncryption() error {
 
 	// Simulate database startup - recover the key
 	fmt.Println("📋 Step 2: Database startup - recover encryption key...")
-	recoveredKey, _, _, err := ocrypt.Recover(metadata, pin)
+	recoveredKey, _, _, err := ocrypt.Recover(metadata, pin, "")
 	if err != nil {
 		return fmt.Errorf("key recovery failed: %v", err)
 	}
@@ -296,7 +296,7 @@ func demoMigrationFromBcrypt() error {
 		// Use a demo password (in practice, this would be done during user login)
 		userPassword := "user_password_123"
 
-		metadata, err := ocrypt.Register(email, "user_authentication", userSecret, userPassword, 5)
+		metadata, err := ocrypt.Register(email, "user_authentication", userSecret, userPassword, 5, "")
 		if err != nil {
 			fmt.Printf("   ❌ Failed: %v\n", err)
 			fmt.Println("   This is expected if OpenADP servers are not accessible")
@@ -325,7 +325,7 @@ func demoMigrationFromBcrypt() error {
 
 		// Test with correct password
 		userPassword := "user_password_123"
-		secret, remaining, _, err := ocrypt.Recover(metadata, userPassword)
+		secret, remaining, _, err := ocrypt.Recover(metadata, userPassword, "")
 		if err != nil {
 			fmt.Printf("❌ Authentication failed: %v\n", err)
 			continue

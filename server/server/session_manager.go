@@ -19,7 +19,7 @@ import (
 	"sync"
 
 	"github.com/flynn/noise"
-	openadpNoise "github.com/openadp/ocrypt/common"
+	openadpNoise "github.com/openadp/openadp/sdk/go/common"
 )
 
 // Global debug mode flag

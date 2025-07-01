@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openadp/ocrypt/client"
-	"github.com/openadp/ocrypt/common"
+	"github.com/openadp/openadp/sdk/go/client"
+	"github.com/openadp/openadp/sdk/go/common"
 )
 
 func TestSecretSharingBasic(t *testing.T) {

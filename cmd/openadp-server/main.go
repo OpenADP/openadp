@@ -16,7 +16,7 @@ import (
 	"github.com/flynn/noise"
 	"github.com/gorilla/mux"
 
-	"github.com/openadp/ocrypt/common"
+	"github.com/openadp/openadp/sdk/go/common"
 	"github.com/openadp/server/database"
 	"github.com/openadp/server/server"
 )

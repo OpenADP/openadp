@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	crypto "github.com/openadp/ocrypt/common"
+	crypto "github.com/openadp/openadp/sdk/go/common"
 	"github.com/openadp/server/database"
 )
 

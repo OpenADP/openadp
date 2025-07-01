@@ -7,7 +7,7 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/openadp/ocrypt/ocrypt"
+	"github.com/openadp/openadp/sdk/go/ocrypt"
 	"golang.org/x/term"
 )
 

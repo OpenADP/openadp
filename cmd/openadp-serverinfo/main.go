@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/openadp/ocrypt/client"
+	"github.com/openadp/openadp/sdk/go/client"
 )
 
 const version = "0.1.2"

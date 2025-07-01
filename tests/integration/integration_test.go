@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openadp/ocrypt/client"
+	"github.com/openadp/openadp/sdk/go/client"
 	"github.com/openadp/server/auth"
 )
 

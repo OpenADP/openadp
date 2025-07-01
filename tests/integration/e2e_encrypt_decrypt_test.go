@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openadp/ocrypt/client"
+	"github.com/openadp/openadp/sdk/go/client"
 )
 
 type E2ETestSuite struct {

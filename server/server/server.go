@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/openadp/ocrypt/common"
+	"github.com/openadp/openadp/sdk/go/common"
 	"github.com/openadp/server/database"
 )
 

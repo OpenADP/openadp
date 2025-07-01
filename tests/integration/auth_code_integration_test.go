@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openadp/ocrypt/common"
+	"github.com/openadp/openadp/sdk/go/common"
 	"github.com/openadp/server/auth"
 	"github.com/openadp/server/database"
 	"github.com/openadp/server/server"

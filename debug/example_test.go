@@ -5,8 +5,8 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/openadp/ocrypt/client"
-	"github.com/openadp/ocrypt/common"
+	"github.com/openadp/openadp/sdk/go/client"
+	"github.com/openadp/openadp/sdk/go/common"
 )
 
 func TestDebugModeExample(t *testing.T) {

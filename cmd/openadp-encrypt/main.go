@@ -15,7 +15,7 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/openadp/ocrypt/client"
+	"github.com/openadp/openadp/sdk/go/client"
 )
 
 const (
