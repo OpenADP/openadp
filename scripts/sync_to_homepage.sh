@@ -28,6 +28,7 @@ cp "$SOURCE_DIR/styles.css" "$HOMEPAGE_DIR/"
 cp "$SOURCE_DIR/script.js" "$HOMEPAGE_DIR/"
 cp "$SOURCE_DIR/developer-quickstart.html" "$HOMEPAGE_DIR/"
 cp "$SOURCE_DIR/quickstart-raspberry-pi.html" "$HOMEPAGE_DIR/"
+cp "$SOURCE_DIR/SETUP.md" "$HOMEPAGE_DIR/"
 cp "$SOURCE_DIR/LICENSE" "$HOMEPAGE_DIR/"
 
 # Copy Ghost Notes application files
@@ -37,23 +38,27 @@ cp "$SOURCE_DIR/ghost-notes/openadp-app.js" "$HOMEPAGE_DIR/ghost-notes/"
 cp "$SOURCE_DIR/ghost-notes/openadp-ghost.js" "$HOMEPAGE_DIR/ghost-notes/"
 cp "$SOURCE_DIR/ghost-notes/index.html" "$HOMEPAGE_DIR/ghost-notes/"
 cp "$SOURCE_DIR/ghost-notes/index-openadp.html" "$HOMEPAGE_DIR/ghost-notes/"
+cp "$SOURCE_DIR/ghost-notes/index-openadp-fixed.html" "$HOMEPAGE_DIR/ghost-notes/"
+cp "$SOURCE_DIR/ghost-notes/index-openadp-simple.html" "$HOMEPAGE_DIR/ghost-notes/"
 cp "$SOURCE_DIR/ghost-notes/styles.css" "$HOMEPAGE_DIR/ghost-notes/"
 cp "$SOURCE_DIR/ghost-notes/manifest.json" "$HOMEPAGE_DIR/ghost-notes/"
 cp "$SOURCE_DIR/ghost-notes/sw.js" "$HOMEPAGE_DIR/ghost-notes/"
 cp "$SOURCE_DIR/ghost-notes/test.html" "$HOMEPAGE_DIR/ghost-notes/"
+cp "$SOURCE_DIR/ghost-notes/test-openadp.html" "$HOMEPAGE_DIR/ghost-notes/"
 cp "$SOURCE_DIR/ghost-notes/debug.html" "$HOMEPAGE_DIR/ghost-notes/"
 cp "$SOURCE_DIR/ghost-notes/debug-openadp.html" "$HOMEPAGE_DIR/ghost-notes/"
 cp "$SOURCE_DIR/ghost-notes/openadp-demo.html" "$HOMEPAGE_DIR/ghost-notes/"
 cp "$SOURCE_DIR/ghost-notes/README.md" "$HOMEPAGE_DIR/ghost-notes/"
 cp "$SOURCE_DIR/ghost-notes/README-OpenADP.md" "$HOMEPAGE_DIR/ghost-notes/"
+cp "$SOURCE_DIR/ghost-notes/README-Simple.md" "$HOMEPAGE_DIR/ghost-notes/"
 
 # Copy Browser SDK files (the key improvement!)
 echo "🔧 Copying Browser SDK files..."
-cp "$SOURCE_DIR/sdk/browser-javascript/ocrypt.js" "$HOMEPAGE_DIR/sdk/browser-javascript/"
-cp "$SOURCE_DIR/sdk/browser-javascript/client.js" "$HOMEPAGE_DIR/sdk/browser-javascript/"
-cp "$SOURCE_DIR/sdk/browser-javascript/keygen.js" "$HOMEPAGE_DIR/sdk/browser-javascript/"
-cp "$SOURCE_DIR/sdk/browser-javascript/crypto.js" "$HOMEPAGE_DIR/sdk/browser-javascript/"
-cp "$SOURCE_DIR/sdk/browser-javascript/noise-nk.js" "$HOMEPAGE_DIR/sdk/browser-javascript/"
+cp "$SOURCE_DIR/sdk/browser-javascript/ocrypt.browser.js" "$HOMEPAGE_DIR/sdk/browser-javascript/ocrypt.js"
+cp "$SOURCE_DIR/sdk/browser-javascript/client.browser.js" "$HOMEPAGE_DIR/sdk/browser-javascript/client.js"
+cp "$SOURCE_DIR/sdk/browser-javascript/keygen.browser.js" "$HOMEPAGE_DIR/sdk/browser-javascript/keygen.js"
+cp "$SOURCE_DIR/sdk/browser-javascript/crypto.browser.js" "$HOMEPAGE_DIR/sdk/browser-javascript/crypto.js"
+cp "$SOURCE_DIR/sdk/browser-javascript/noise-nk.browser.js" "$HOMEPAGE_DIR/sdk/browser-javascript/noise-nk.js"
 cp "$SOURCE_DIR/sdk/browser-javascript/package.json" "$HOMEPAGE_DIR/sdk/browser-javascript/"
 cp "$SOURCE_DIR/sdk/browser-javascript/README.md" "$HOMEPAGE_DIR/sdk/browser-javascript/"
 
@@ -69,21 +74,26 @@ rm -f "$HOMEPAGE_DIR/ghost-notes/noise-nk.js"
 echo "📝 Updating files list..."
 cat > "$HOMEPAGE_DIR/files" << EOF
 ./LICENSE
+./SETUP.md
 ./index.html
 ./developer-quickstart.html
 ./quickstart-raspberry-pi.html
 ./styles.css
 ./script.js
 ./ghost-notes/test.html
+./ghost-notes/test-openadp.html
 ./ghost-notes/openadp-app.js
 ./ghost-notes/openadp-ghost.js
 ./ghost-notes/sw.js
 ./ghost-notes/app.js
 ./ghost-notes/openadp-demo.html
 ./ghost-notes/index.html
-./ghost-notes/manifest.json
 ./ghost-notes/index-openadp.html
+./ghost-notes/index-openadp-fixed.html
+./ghost-notes/index-openadp-simple.html
+./ghost-notes/manifest.json
 ./ghost-notes/README-OpenADP.md
+./ghost-notes/README-Simple.md
 ./ghost-notes/debug.html
 ./ghost-notes/debug-openadp.html
 ./ghost-notes/styles.css
@@ -110,6 +120,9 @@ echo "🎯 Key improvements:"
 echo "   • Ghost Notes now imports from ../sdk/browser-javascript/"
 echo "   • No duplicate SDK files in ghost-notes/"
 echo "   • Proper separation of concerns"
+echo "   • Browser-compatible .browser.js files used for homepage"
+echo "   • All OpenADP 0.1.3 demo variations included"
+echo "   • SETUP.md included for developer onboarding"
 echo "   • Developer quickstart guide points to working browser SDK"
 echo ""
 echo "🌐 To view the homepage:"
