@@ -128,7 +128,7 @@ from .client import (
     discover_server_urls
 )
 
-__version__ = "0.1.3"
+__version__ = "0.1.2"
 __author__ = "OpenADP Team"
 __email__ = "contact@openadp.org"
 __description__ = "OpenADP Python SDK for distributed secret sharing and advanced data protection"

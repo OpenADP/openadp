@@ -232,7 +232,7 @@ class OpenADPTestRunner:
         
         # Test import of openadp module
         success, stdout, stderr = self.run_command([
-            "bash", "-c", "source venv/bin/activate && python -c 'import openadp; print(\"OpenADP Python SDK imported successfully\")'"
+            "bash", "-c", "source venv/bin/activate && python3 -c 'import openadp; print(\"OpenADP Python SDK imported successfully\")'"
         ])
         
         duration = time.time() - start_time

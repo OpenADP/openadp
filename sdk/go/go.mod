@@ -1,6 +1,6 @@
 module github.com/openadp/openadp/sdk/go
 
-go 1.23.0
+go 1.23
 
 require (
 	github.com/flynn/noise v1.1.0

@@ -278,11 +278,38 @@ build_go_components() {
         return 1
     fi
     
+    # Check Go version compatibility
+    local go_version=$(go version | grep -o 'go[0-9]\+\.[0-9]\+' | sed 's/go//')
+    local major=$(echo $go_version | cut -d. -f1)
+    local minor=$(echo $go_version | cut -d. -f2)
+    
+    if (( major < 1 || (major == 1 && minor < 23) )); then
+        print_warning "Go $go_version detected, but OpenADP requires Go 1.23+"
+        if [[ $ARCH == "aarch64" || $ARCH == "armv7l" ]]; then
+            print_info "For Raspberry Pi, install Go 1.23+ manually:"
+            echo "  wget https://go.dev/dl/go1.23.4.linux-arm64.tar.gz"
+            echo "  sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.23.4.linux-arm64.tar.gz"
+            echo "  export PATH=\$PATH:/usr/local/go/bin"
+            echo "  # Add to ~/.bashrc: export PATH=\$PATH:/usr/local/go/bin"
+        else
+            print_info "Please upgrade Go to version 1.23 or later:"
+            echo "  https://golang.org/dl/"
+        fi
+        print_warning "Skipping Go build due to version incompatibility"
+        return 1
+    fi
+    
     print_info "Downloading Go dependencies..."
-    go mod download
+    if ! go mod download; then
+        print_error "Failed to download Go dependencies"
+        return 1
+    fi
     
     print_info "Building Go tools..."
-    make build
+    if ! make build-go; then
+        print_error "Failed to build Go components"
+        return 1
+    fi
     
     print_status "Go components built"
 }
