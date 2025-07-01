@@ -5,7 +5,7 @@ go 1.23.0
 require (
 	github.com/flynn/noise v1.1.0
 	github.com/openadp/ocrypt v0.1.0
-	github.com/openadp/openadp/sdk/go v0.1.0
+	github.com/openadp/openadp/sdk/go v0.1.3
 	modernc.org/sqlite v1.33.1
 )
 

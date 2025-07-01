@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	version   = "1.0.0"
+	version   = "0.1.3"
 	nonceSize = 12 // AES-GCM nonce size
 )
 

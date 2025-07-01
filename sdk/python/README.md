@@ -330,7 +330,7 @@ This project is licensed under the MIT License - see the [LICENSE](../../LICENSE
 
 ## Changelog
 
-### Version 1.0.0
+### Version 0.1.3
 - Initial release with full Go compatibility
 - Complete Noise-NK protocol implementation
 - Multi-server client with automatic failover

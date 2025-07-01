@@ -43,7 +43,7 @@ print_banner() {
     echo " ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═════╝ ╚═╝     "
     echo ""
     echo "        OpenADP Node Automated Update/Install Script"
-    echo "                  Version 1.0.0"
+    echo "                  Version 0.1.3"
     echo "================================================================="
     echo -e "${NC}"
 }
@@ -458,11 +458,11 @@ build_binaries() {
             go mod tidy
             
             echo 'Building OpenADP server binary...'
-            go build -o '$INSTALL_DIR/bin/openadp-server' -ldflags '-X main.version=1.0.0' ./cmd/openadp-server
+            go build -o '$INSTALL_DIR/bin/openadp-server' -ldflags '-X main.version=0.1.3' ./cmd/openadp-server
             
             echo 'Building additional tools...'
-            go build -o '$INSTALL_DIR/bin/openadp-encrypt' -ldflags '-X main.version=1.0.0' ./cmd/openadp-encrypt || echo 'Note: openadp-encrypt build failed, skipping'
-            go build -o '$INSTALL_DIR/bin/openadp-decrypt' -ldflags '-X main.version=1.0.0' ./cmd/openadp-decrypt || echo 'Note: openadp-decrypt build failed, skipping'
+            go build -o '$INSTALL_DIR/bin/openadp-encrypt' -ldflags '-X main.version=0.1.3' ./cmd/openadp-encrypt || echo 'Note: openadp-encrypt build failed, skipping'
+            go build -o '$INSTALL_DIR/bin/openadp-decrypt' -ldflags '-X main.version=0.1.3' ./cmd/openadp-decrypt || echo 'Note: openadp-decrypt build failed, skipping'
             
             # Clean up
             go clean -cache -modcache 2>/dev/null || true

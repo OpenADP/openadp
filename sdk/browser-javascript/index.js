@@ -11,7 +11,7 @@ import { NoiseNK, generateStaticKeyPair } from './noise-nk.js';
 export { NoiseNK, generateStaticKeyPair };
 
 // Version and protocol information
-export const VERSION = '1.0.0';
+export const VERSION = '0.1.3';
 export const SUPPORTED_PROTOCOLS = ['Noise_NK_25519_AESGCM_SHA256'];
 
 /**
@@ -46,7 +46,7 @@ export function createServer(staticKeyPair, prologue = new Uint8Array()) {
  * 
  * @author OpenADP Team <contact@openadp.org>
  * @license MIT
- * @version 1.0.0
+ * @version 0.1.3
  */
 
 export { register, recover, OcryptError } from './ocrypt.js'; 

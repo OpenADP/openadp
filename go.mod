@@ -8,8 +8,8 @@ require (
 	github.com/flynn/noise v1.1.0
 	github.com/gorilla/mux v1.8.1
 	github.com/openadp/ocrypt v0.1.0
-	github.com/openadp/openadp/sdk/go v0.1.0
-	github.com/openadp/server v0.1.0
+	github.com/openadp/openadp/sdk/go v0.1.3
+	github.com/openadp/server v0.1.3
 	golang.org/x/term v0.32.0
 )
 
