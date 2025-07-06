@@ -637,7 +637,8 @@ impl EncryptedOpenADPClient {
             if !noise.handshake_complete {
                 // Generate session ID - use random 16-byte ID, base64 encoded (matches Go server expectation)
                 use rand::RngCore;
-                let mut rng = rand::thread_rng();
+                use rand::rngs::OsRng;
+                let mut rng = OsRng;
                 let mut session_bytes = [0u8; 16];  // Changed from 8 to 16 bytes
                 rng.fill_bytes(&mut session_bytes);
                 let session_id = base64::engine::general_purpose::STANDARD.encode(&session_bytes);
@@ -1164,7 +1165,8 @@ impl MultiServerClient {
             }
             ServerSelectionStrategy::Random => {
                 use rand::Rng;
-                let mut rng = rand::thread_rng();
+                use rand::rngs::OsRng;
+                let mut rng = OsRng;
                 let index = rng.gen_range(0..self.clients.len());
                 Ok(&self.clients[index])
             }
@@ -1189,7 +1191,8 @@ impl MultiServerClient {
             }
             ServerSelectionStrategy::Random => {
                 use rand::Rng;
-                let mut rng = rand::thread_rng();
+                use rand::rngs::OsRng;
+                let mut rng = OsRng;
                 let index = rng.gen_range(0..self.clients.len());
                 Ok(&mut self.clients[index])
             }

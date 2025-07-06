@@ -9,6 +9,7 @@
 #include <cctype>
 #include <openssl/bn.h>
 #include <sstream>
+#include <future>
 
 namespace openadp {
 namespace keygen {
@@ -200,82 +201,127 @@ GenerateEncryptionKeyResult generate_encryption_key(
         }
         */
         
-        // Register shares with servers
+        // Step 8: Register with servers (concurrent)
         std::vector<ServerInfo> successful_servers;
+        std::vector<std::string> registration_errors;
         
-        for (size_t i = 0; i < server_infos.size() && i < shares.size(); i++) {
+        // Create futures for concurrent registration
+        std::vector<std::future<std::pair<bool, std::string>>> registration_futures;
+        
+        for (size_t i = 0; i < server_infos.size(); ++i) {
             const auto& server_info = server_infos[i];
-            const auto& share = shares[i];  // Get the corresponding share
             
-            try {
-                client::EncryptedOpenADPClient client(server_info.url, server_info.public_key);
-                
-                // Find the auth code for this server
-                auto auth_it = auth_codes.server_auth_codes.find(server_info.url);
-                std::string server_auth_code = (auth_it != auth_codes.server_auth_codes.end()) ? 
-                                               auth_it->second : auth_codes.base_auth_code;
-                
-                if (debug::is_debug_mode_enabled()) {
-                    debug::debug_log("Using auth code for server " + server_info.url + ": " + server_auth_code);
-                }
-                
-                // Use the X and Y coordinates from the share
-                int x = share.x;
-                std::string share_y_hex = share.y;
-                
-                // Convert Y coordinate from hex to base64-encoded little-endian bytes
-                std::string y_base64;
-                BIGNUM* y_bn = BN_new();
-                BN_hex2bn(&y_bn, share_y_hex.c_str());
-                
-                // ✅ CRITICAL FIX: Reduce Y coordinate modulo Q (Ed25519 group order)
-                BIGNUM* q_bn = BN_new();
-                BN_hex2bn(&q_bn, "1000000000000000000000000000000014DEF9DEA2F79CD65812631A5CF5D3ED");
-                BN_CTX* mod_ctx = BN_CTX_new();
-                BN_mod(y_bn, y_bn, q_bn, mod_ctx);
-                BN_free(q_bn);
-                BN_CTX_free(mod_ctx);
-                
-                // Convert y to little-endian 32-byte array for base64 encoding
-                Bytes y_bytes(32, 0);
-                int y_size = BN_num_bytes(y_bn);
-                if (y_size <= 32) {
-                    // Convert to big-endian first
-                    Bytes temp_bytes(y_size);
-                    BN_bn2bin(y_bn, temp_bytes.data());
+            // Find the auth code for this server
+            auto auth_it = auth_codes.server_auth_codes.find(server_info.url);
+            if (auth_it == auth_codes.server_auth_codes.end()) {
+                registration_errors.push_back("Server " + std::to_string(i + 1) + ": No auth code");
+                continue;
+            }
+            
+            std::string server_auth_code = auth_it->second;
+            
+            // Get the share for this server
+            if (i >= shares.size()) {
+                registration_errors.push_back("Server " + std::to_string(i + 1) + ": No corresponding share");
+                continue;
+            }
+            
+            const auto& share = shares[i];
+            int x = share.x;
+            std::string share_y_hex = share.y;
+            
+            // Launch async task for concurrent registration
+            auto future = std::async(std::launch::async, [server_info, server_auth_code, identity, max_guesses, expiration, x, share_y_hex]() mutable -> std::pair<bool, std::string> {
+                try {
+                    client::EncryptedOpenADPClient client(server_info.url, server_info.public_key);
                     
-                    // Copy to 32-byte array (right-aligned) and reverse to little-endian
-                    std::copy(temp_bytes.begin(), temp_bytes.end(), 
-                            y_bytes.end() - temp_bytes.size());
-                    std::reverse(y_bytes.begin(), y_bytes.end());
+                    // Convert share Y to base64-encoded 32-byte little-endian format (per API spec)
+                    std::string y_base64;
+                    BIGNUM* y_bn = BN_new();
+                    if (BN_hex2bn(&y_bn, share_y_hex.c_str()) == 0) {
+                        BN_free(y_bn);
+                        return std::make_pair(false, "Failed to parse Y hex string");
+                    }
+                    
+                    // Reduce Y modulo Q to ensure it's in valid range
+                    BIGNUM* q_bn = BN_new();
+                    if (BN_hex2bn(&q_bn, "1000000000000000000000000000000014DEF9DEA2F79CD65812631A5CF5D3ED") == 0) {
+                        BN_free(y_bn);
+                        BN_free(q_bn);
+                        return std::make_pair(false, "Failed to parse Q hex string");
+                    }
+                    
+                    BN_CTX* mod_ctx = BN_CTX_new();
+                    BN_mod(y_bn, y_bn, q_bn, mod_ctx);
+                    BN_free(q_bn);
+                    BN_CTX_free(mod_ctx);
+                    
+                    // Convert y to little-endian 32-byte array for base64 encoding
+                    Bytes y_bytes(32, 0);
+                    int y_size = BN_num_bytes(y_bn);
+                    if (y_size <= 32) {
+                        // Convert to big-endian first
+                        Bytes temp_bytes(y_size);
+                        BN_bn2bin(y_bn, temp_bytes.data());
+                        
+                        // Copy to 32-byte array (right-aligned) and reverse to little-endian
+                        std::copy(temp_bytes.begin(), temp_bytes.end(), 
+                                y_bytes.end() - temp_bytes.size());
+                        std::reverse(y_bytes.begin(), y_bytes.end());
+                    }
+                    
+                    y_base64 = utils::base64_encode(y_bytes);
+                    BN_free(y_bn);
+                    
+                    client::RegisterSecretRequest request(server_auth_code, identity, 1, max_guesses, expiration, x, y_base64, true);
+                    nlohmann::json response = client.register_secret(request);
+                    
+                    if (response.contains("success") && response["success"].get<bool>()) {
+                        return std::make_pair(true, server_info.url);
+                    } else if (response.is_boolean() && response.get<bool>()) {
+                        // Handle boolean true response
+                        return std::make_pair(true, server_info.url);
+                    } else {
+                        return std::make_pair(false, "Registration returned false");
+                    }
+                } catch (const std::exception& e) {
+                    return std::make_pair(false, std::string("Registration failed: ") + e.what());
                 }
-                
-                y_base64 = utils::base64_encode(y_bytes);
-                BN_free(y_bn);
-                
-                client::RegisterSecretRequest request(server_auth_code, identity, 1, max_guesses, expiration, x, y_base64, true);
-                nlohmann::json response = client.register_secret(request);
-                
-                if (response.contains("success") && response["success"].get<bool>()) {
-                    successful_servers.push_back(server_info);
-                } else if (response.is_boolean() && response.get<bool>()) {
-                    // Handle boolean true response
-                    successful_servers.push_back(server_info);
+            });
+            
+            registration_futures.push_back(std::move(future));
+        }
+        
+        // Wait for all registration futures to complete
+        for (size_t i = 0; i < registration_futures.size(); ++i) {
+            try {
+                auto result = registration_futures[i].get();
+                if (result.first) {
+                    // Find the corresponding server_info
+                    for (const auto& server_info : server_infos) {
+                        if (server_info.url == result.second) {
+                            successful_servers.push_back(server_info);
+                            break;
+                        }
+                    }
+                } else {
+                    registration_errors.push_back("Server " + std::to_string(i + 1) + ": " + result.second);
                 }
             } catch (const std::exception& e) {
-                if (debug::is_debug_mode_enabled()) {
-                    debug::debug_log("Failed to register with server " + server_info.url + ": " + e.what());
-                }
-                // Continue with other servers
-                continue;
+                registration_errors.push_back("Server " + std::to_string(i + 1) + ": Future exception: " + e.what());
             }
         }
         
         if (successful_servers.size() < static_cast<size_t>(threshold)) {
-            return GenerateEncryptionKeyResult::error(
-                "Not enough servers responded successfully. Got " + 
-                std::to_string(successful_servers.size()) + ", need " + std::to_string(threshold)
-            );
+            std::string error_msg = "Not enough servers responded successfully. Got " + 
+                std::to_string(successful_servers.size()) + ", need " + std::to_string(threshold);
+            if (!registration_errors.empty()) {
+                error_msg += ". Errors: ";
+                for (const auto& error : registration_errors) {
+                    error_msg += error + "; ";
+                }
+            }
+            return GenerateEncryptionKeyResult::error(error_msg);
         }
         
         // Derive encryption key from the secret point S = secret * U
@@ -337,84 +383,118 @@ RecoverEncryptionKeyResult recover_encryption_key(
             debug::debug_log("Recovery: B = r * U computed");
         }
         
-        // Recover shares from servers
+        // Compress the blinded point B to send to server
+        Bytes b_compressed = crypto::point_compress(B);
+        std::string b_base64 = utils::base64_encode(b_compressed);
+        
+        if (debug::is_debug_mode_enabled()) {
+            debug::debug_log("Recovery: B compressed size=" + std::to_string(b_compressed.size()));
+            debug::debug_log("Recovery: B base64=" + b_base64);
+        }
+        
+        // Recover shares from servers (concurrent)
         std::vector<Share> shares;
         int remaining_guesses = 0;
         int actual_num_guesses = 0;
         int actual_max_guesses = 0;
         
+        // Create futures for concurrent recovery
+        std::vector<std::future<std::pair<bool, std::tuple<int, std::string, int, int>>>> recovery_futures;
+        
         for (const auto& server_info : server_infos) {
-            try {
-                // Find the auth code for this server
-                auto auth_it = auth_codes.server_auth_codes.find(server_info.url);
-                if (auth_it == auth_codes.server_auth_codes.end()) {
-                    continue; // Skip servers without auth codes
-                }
-                
-                client::EncryptedOpenADPClient client(server_info.url, server_info.public_key);
-                
-                // First, get the guess number by listing backups
-                nlohmann::json backups_response = client.list_backups(identity);
-                int guess_num = 0;  // Default to 0 for first guess (0-based indexing)
-                
-                // Extract guess number from backup info
-                if (backups_response.is_array() && !backups_response.empty()) {
-                    for (const auto& backup : backups_response) {
-                        if (backup.contains("uid") && backup.contains("did") && backup.contains("bid") &&
-                            backup["uid"].get<std::string>() == identity.uid &&
-                            backup["did"].get<std::string>() == identity.did &&
-                            backup["bid"].get<std::string>() == identity.bid) {
-                            guess_num = backup.contains("num_guesses") ? backup["num_guesses"].get<int>() : 0;
-                            break;
+            // Find the auth code for this server
+            auto auth_it = auth_codes.server_auth_codes.find(server_info.url);
+            if (auth_it == auth_codes.server_auth_codes.end()) {
+                continue; // Skip servers without auth codes
+            }
+            
+            std::string server_auth_code = auth_it->second;
+            
+            // Launch async task for concurrent recovery
+            auto future = std::async(std::launch::async, [server_info, server_auth_code, identity, b_base64](
+                ) mutable -> std::pair<bool, std::tuple<int, std::string, int, int>> {
+                try {
+                    client::EncryptedOpenADPClient client(server_info.url, server_info.public_key);
+                    
+                    // First, get the guess number by listing backups
+                    nlohmann::json backups_response = client.list_backups(identity);
+                    int guess_num = 0;  // Default to 0 for first guess (0-based indexing)
+                    
+                    // Extract guess number from backup info
+                    if (backups_response.is_array() && !backups_response.empty()) {
+                        for (const auto& backup : backups_response) {
+                            if (backup.contains("uid") && backup.contains("did") && backup.contains("bid") &&
+                                backup["uid"].get<std::string>() == identity.uid &&
+                                backup["did"].get<std::string>() == identity.did &&
+                                backup["bid"].get<std::string>() == identity.bid) {
+                                guess_num = backup.contains("num_guesses") ? backup["num_guesses"].get<int>() : 0;
+                                break;
+                            }
                         }
                     }
-                }
-                
-                // Compress the blinded point B to send to server
-                Bytes b_compressed = crypto::point_compress(B);
-                std::string b_base64 = utils::base64_encode(b_compressed);
-                
-                if (debug::is_debug_mode_enabled()) {
-                    debug::debug_log("Recovery: B compressed size=" + std::to_string(b_compressed.size()));
-                    debug::debug_log("Recovery: B base64=" + b_base64);
-                }
-                
-                // Create a fresh client for the recovery request
-                client::EncryptedOpenADPClient fresh_client(server_info.url, server_info.public_key);
-                
-                std::string server_auth_code = auth_it->second;
-                client::RecoverSecretRequest request(server_auth_code, identity, b_base64, guess_num);
-                nlohmann::json response = fresh_client.recover_secret(request);
-                
-                // Check if RecoverSecret succeeded (response contains si_b)
-                if (response.contains("si_b")) {
-                    std::string si_b = response["si_b"].get<std::string>();
                     
-                    // Extract the x coordinate from the server response
-                    int x_coordinate = 1; // Default fallback
-                    if (response.contains("x")) {
-                        x_coordinate = response["x"].get<int>();
+                    // Create a fresh client for the recovery request
+                    client::EncryptedOpenADPClient fresh_client(server_info.url, server_info.public_key);
+                    
+                    client::RecoverSecretRequest request(server_auth_code, identity, b_base64, guess_num);
+                    nlohmann::json response = fresh_client.recover_secret(request);
+                    
+                    // Check if RecoverSecret succeeded (response contains si_b)
+                    if (response.contains("si_b")) {
+                        std::string si_b = response["si_b"].get<std::string>();
+                        
+                        // Extract the x coordinate from the server response
+                        int x_coordinate = 1; // Default fallback
+                        if (response.contains("x")) {
+                            x_coordinate = response["x"].get<int>();
+                        }
+                        
+                        // Extract guess information
+                        int num_guesses = 0;
+                        int max_guesses = 0;
+                        if (response.contains("num_guesses")) {
+                            num_guesses = response["num_guesses"].get<int>();
+                        }
+                        if (response.contains("max_guesses")) {
+                            max_guesses = response["max_guesses"].get<int>();
+                        }
+                        
+                        return std::make_pair(true, std::make_tuple(x_coordinate, si_b, num_guesses, max_guesses));
+                    } else {
+                        return std::make_pair(false, std::make_tuple(0, "", 0, 0));
                     }
+                } catch (const std::exception& e) {
+                    return std::make_pair(false, std::make_tuple(0, "", 0, 0));
+                }
+            });
+            
+            recovery_futures.push_back(std::move(future));
+        }
+        
+        // Wait for all recovery futures to complete
+        for (auto& future : recovery_futures) {
+            try {
+                auto result = future.get();
+                if (result.first) {
+                    int x_coordinate = std::get<0>(result.second);
+                    std::string si_b = std::get<1>(result.second);
+                    int num_guesses = std::get<2>(result.second);
+                    int max_guesses = std::get<3>(result.second);
                     
                     // Capture guess information from server response (first successful server)
                     if (actual_num_guesses == 0 && actual_max_guesses == 0) {
-                        if (response.contains("num_guesses")) {
-                            actual_num_guesses = response["num_guesses"].get<int>();
-                        }
-                        if (response.contains("max_guesses")) {
-                            actual_max_guesses = response["max_guesses"].get<int>();
-                        }
+                        actual_num_guesses = num_guesses;
+                        actual_max_guesses = max_guesses;
                     }
                     
-                    remaining_guesses = response.contains("max_guesses") ? 
-                        response["max_guesses"].get<int>() - (response.contains("num_guesses") ? response["num_guesses"].get<int>() : 0) : 10;
+                    remaining_guesses = max_guesses - num_guesses;
                     
                     // Create share using the actual x coordinate from server response
                     shares.emplace_back(x_coordinate, si_b);
                     
                     if (debug::is_debug_mode_enabled()) {
-                        debug::debug_log("Successfully recovered share from server " + server_info.url + 
-                                       ", si_b=" + si_b + ", remaining_guesses=" + std::to_string(remaining_guesses));
+                        debug::debug_log("Successfully recovered share, si_b=" + si_b + 
+                                       ", remaining_guesses=" + std::to_string(remaining_guesses));
                     }
                 }
             } catch (const std::exception& e) {

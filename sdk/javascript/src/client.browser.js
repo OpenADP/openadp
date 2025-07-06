@@ -645,7 +645,9 @@ export class EncryptedOpenADPClient {
 
     async _performHandshake() {
         // Step 1: Generate session ID
-        const sessionID = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const randomBytes = crypto.getRandomValues(new Uint8Array(8));
+        const randomHex = Array.from(randomBytes, b => b.toString(16).padStart(2, '0')).join('');
+        const sessionID = `session_${Date.now()}_${randomHex}`;
         
         // Step 2: Initialize Noise-NK as initiator
         this.noise = new NoiseNK();
@@ -980,7 +982,9 @@ export class MultiServerClient {
                 return server;
             
             case ServerSelectionStrategy.RANDOM:
-                const randomIndex = Math.floor(Math.random() * this.liveServers.length);
+                const randomBytes = crypto.getRandomValues(new Uint8Array(4));
+        const randomValue = new DataView(randomBytes.buffer).getUint32(0);
+        const randomIndex = randomValue % this.liveServers.length;
                 return this.liveServers[randomIndex];
             
             case ServerSelectionStrategy.FIRST_AVAILABLE:

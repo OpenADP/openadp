@@ -256,7 +256,7 @@ func (c *Client) RefreshServers() error {
 	return nil // Always succeeds for now
 }
 
-// RegisterSecret registers a secret across multiple servers with failover
+// RegisterSecret registers a secret with servers using failover (concurrent)
 func (c *Client) RegisterSecret(uid, did, bid string, version, x int, y []byte, maxGuesses, expiration int, authData map[string]interface{}) (bool, error) {
 	c.mu.RLock()
 	liveServers := make([]*EncryptedOpenADPClient, len(c.liveServers))
@@ -285,21 +285,42 @@ func (c *Client) RegisterSecret(uid, did, bid string, version, x int, y []byte, 
 
 	yStr := base64.StdEncoding.EncodeToString(yBytes32)
 
-	// Try each server until one succeeds
-	var lastErr error
-	for _, client := range liveServers {
-		success, err := client.RegisterSecret("", uid, did, bid, version, x, yStr, maxGuesses, expiration, true, authData)
-		if err == nil && success {
-			return true, nil
-		}
-		lastErr = err
-		log.Printf("Failed to register with %s: %v", client.URL, err)
+	// Try all servers concurrently and return on first success
+	type result struct {
+		success bool
+		err     error
 	}
 
-	return false, fmt.Errorf("all servers failed, last error: %v", lastErr)
+	resultChan := make(chan result, len(liveServers))
+
+	// Launch goroutines for concurrent registration attempts
+	for _, client := range liveServers {
+		go func(client *EncryptedOpenADPClient) {
+			success, err := client.RegisterSecret("", uid, did, bid, version, x, yStr, maxGuesses, expiration, true, authData)
+			resultChan <- result{success: success, err: err}
+		}(client)
+	}
+
+	// Wait for first successful result or collect all errors
+	var errors []error
+	for i := 0; i < len(liveServers); i++ {
+		res := <-resultChan
+		if res.err == nil && res.success {
+			return true, nil
+		}
+		if res.err != nil {
+			errors = append(errors, res.err)
+		}
+	}
+
+	// All servers failed
+	if len(errors) > 0 {
+		return false, fmt.Errorf("all servers failed, last error: %v", errors[len(errors)-1])
+	}
+	return false, fmt.Errorf("all servers returned false")
 }
 
-// RecoverSecret recovers a secret from servers with failover
+// RecoverSecret recovers a secret from servers with failover (concurrent)
 func (c *Client) RecoverSecret(authCode, uid, did, bid, b string, guessNum int, authData map[string]interface{}) (map[string]interface{}, error) {
 	c.mu.RLock()
 	liveServers := make([]*EncryptedOpenADPClient, len(c.liveServers))
@@ -313,21 +334,37 @@ func (c *Client) RecoverSecret(authCode, uid, did, bid, b string, guessNum int, 
 		}
 	}
 
-	// Try each server until one succeeds
-	var lastErr error
-	for _, client := range liveServers {
-		result, err := client.RecoverSecret(authCode, uid, did, bid, b, guessNum, true, authData)
-		if err == nil {
-			return result, nil
-		}
-		lastErr = err
-		log.Printf("Failed to recover from %s: %v", client.URL, err)
+	// Try all servers concurrently and return on first success
+	type result struct {
+		data map[string]interface{}
+		err  error
 	}
 
-	return nil, fmt.Errorf("all servers failed, last error: %v", lastErr)
+	resultChan := make(chan result, len(liveServers))
+
+	// Launch goroutines for concurrent recovery attempts
+	for _, client := range liveServers {
+		go func(client *EncryptedOpenADPClient) {
+			data, err := client.RecoverSecret(authCode, uid, did, bid, b, guessNum, true, authData)
+			resultChan <- result{data: data, err: err}
+		}(client)
+	}
+
+	// Wait for first successful result or collect all errors
+	var errors []error
+	for i := 0; i < len(liveServers); i++ {
+		res := <-resultChan
+		if res.err == nil {
+			return res.data, nil
+		}
+		errors = append(errors, res.err)
+	}
+
+	// All servers failed
+	return nil, fmt.Errorf("all servers failed, last error: %v", errors[len(errors)-1])
 }
 
-// ListBackups lists backups for a user from the first available server
+// ListBackups lists backups for a user from the first available server (concurrent)
 func (c *Client) ListBackups(uid string) ([]map[string]interface{}, error) {
 	c.mu.RLock()
 	liveServers := make([]*EncryptedOpenADPClient, len(c.liveServers))
@@ -341,18 +378,34 @@ func (c *Client) ListBackups(uid string) ([]map[string]interface{}, error) {
 		}
 	}
 
-	// Try each server until one succeeds
-	var lastErr error
-	for _, client := range liveServers {
-		result, err := client.ListBackups(uid, false, nil)
-		if err == nil {
-			return result, nil
-		}
-		lastErr = err
-		log.Printf("Failed to list backups from %s: %v", client.URL, err)
+	// Try all servers concurrently and return on first success
+	type result struct {
+		data []map[string]interface{}
+		err  error
 	}
 
-	return nil, fmt.Errorf("all servers failed, last error: %v", lastErr)
+	resultChan := make(chan result, len(liveServers))
+
+	// Launch goroutines for concurrent list attempts
+	for _, client := range liveServers {
+		go func(client *EncryptedOpenADPClient) {
+			data, err := client.ListBackups(uid, false, nil)
+			resultChan <- result{data: data, err: err}
+		}(client)
+	}
+
+	// Wait for first successful result or collect all errors
+	var errors []error
+	for i := 0; i < len(liveServers); i++ {
+		res := <-resultChan
+		if res.err == nil {
+			return res.data, nil
+		}
+		errors = append(errors, res.err)
+	}
+
+	// All servers failed
+	return nil, fmt.Errorf("all servers failed, last error: %v", errors[len(errors)-1])
 }
 
 // Echo sends an echo message to test connectivity

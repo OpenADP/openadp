@@ -1,0 +1,45 @@
+sdk/cpp/include/openadp/client.hpp:    nlohmann::json register_secret_standardized(const RegisterSecretRequest& request);
+sdk/cpp/include/openadp/client.hpp:    nlohmann::json register_secret(const RegisterSecretRequest& request);
+sdk/cpp/src/keygen.cpp:                nlohmann::json response = client.register_secret(request);
+sdk/cpp/src/client.cpp:nlohmann::json BasicOpenADPClient::register_secret_standardized(const RegisterSecretRequest& request) {
+sdk/cpp/src/client.cpp:nlohmann::json EncryptedOpenADPClient::register_secret(const RegisterSecretRequest& request) {
+sdk/cpp/src/ocrypt.cpp:Bytes register_secret(
+sdk/cpp/tests/test_ocrypt.cpp:        ocrypt::register_secret("", "app_id", test_secret, "password", 10, ""),
+sdk/cpp/tests/test_ocrypt.cpp:        ocrypt::register_secret("user", "", test_secret, "password", 10, ""),
+sdk/cpp/tests/test_ocrypt.cpp:        ocrypt::register_secret("user", "app", empty_secret, "password", 10, ""),
+sdk/cpp/tests/test_ocrypt.cpp:        ocrypt::register_secret("user", "app", test_secret, "password", 0, ""),
+sdk/cpp/tests/test_ocrypt.cpp:        ocrypt::register_secret("user", "app", test_secret, "password", -1, ""),
+sdk/cpp/tests/test_ocrypt.cpp:        ocrypt::register_secret(
+sdk/cpp/tests/test_ocrypt.cpp:            ocrypt::register_secret("user", "app", small_secret, "password", 10, "");
+sdk/cpp/tests/test_ocrypt.cpp:            ocrypt::register_secret("user", "app", test_secret, "", 10, "");
+sdk/cpp/tests/test_ocrypt.cpp:            ocrypt::register_secret("user", "app", large_secret, "password", 10, "");
+sdk/cpp/tests/test_ocrypt.cpp:            ocrypt::register_secret(special_user, special_app, test_secret, "password", 10, "");
+sdk/cpp/tests/test_ocrypt.cpp:// Test error handling in register_secret  
+sdk/cpp/tests/test_ocrypt.cpp:        Bytes metadata = ocrypt::register_secret(
+sdk/cpp/tests/test_ocrypt.cpp:        Bytes metadata = ocrypt::register_secret("", "app", secret, "1234", 5, "https://servers.example.com");
+sdk/cpp/tests/test_ocrypt.cpp:        Bytes metadata = ocrypt::register_secret(
+sdk/cpp/tests/test_client.cpp:        auto result = encrypted_client.register_secret(
+sdk/cpp/tests/test_client.cpp:// Test register_secret_standardized error handling
+sdk/cpp/tests/test_client.cpp:        auto result = test_client.register_secret_standardized(request);
+sdk/cpp/tools/ocrypt-register.cpp:        Bytes metadata = ocrypt::register_secret(user_id, app_id, secret_bytes, password, max_guesses, effective_servers_url);
+sdk/cpp/README.md:Bytes metadata = ocrypt::register_secret("alice", "myapp", secret, "pin123");
+sdk/python/openadp/client.py:    def register_secret_standardized(self, request: RegisterSecretRequest) -> RegisterSecretResponse:
+sdk/python/openadp/client.py:    def register_secret(self, auth_code: str, uid: str, did: str, bid: str, 
+sdk/python/openadp/client.py:    def register_secret_standardized(self, request: RegisterSecretRequest) -> RegisterSecretResponse:
+sdk/python/openadp/client.py:        success = self.register_secret(
+sdk/python/openadp/client.py:    def register_secret(self, uid: str, did: str, bid: str, version: int, 
+sdk/python/openadp/client.py:                success = client.register_secret(
+sdk/python/openadp/client.py:    def register_secret_standardized(self, request: RegisterSecretRequest) -> RegisterSecretResponse:
+sdk/python/openadp/client.py:        success = self.register_secret(
+sdk/python/openadp/keygen.py:                success = client.register_secret(
+developer-quickstart.html:        Bytes metadata = ocrypt::register_secret(
+developer-quickstart.html:        Bytes metadata = ocrypt::register_secret("test-user", "test-app", secret_bytes, test_pin, 10);
+docs/API_REFERENCE.md:Bytes register_secret(const std::string& user_id, const std::string& app_id, const Bytes& secret, const std::string& pin, int max_guesses, const std::string& servers_url = "")
+docs/SDK_GUIDE.md:Bytes metadata = ocrypt::register_secret("user123", "myapp", secret, "1234", 10);
+docs/GETTING_STARTED.md:Bytes metadata = ocrypt::register_secret("user@example.com", "myapp", secret_bytes, "1234", 10);
+docs/SERVER_API.md:Use **PascalCase** method names (`RegisterSecret`, not `register_secret`).
+monitoring/DESIGN.md:  "capabilities": ["register_secret", "recover_secret", ...],
+server/server/server_test.go:	dbPath := "test_register_secret.db"
+server/server/server_test.go:		"register_secret",
+server/server/server_test.go:		"register_secret",
+server/server/server.go:			"register_secret",

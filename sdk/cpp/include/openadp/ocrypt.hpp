@@ -25,7 +25,7 @@ struct OcryptRecoverAndReregisterResult {
 };
 
 // Register a long-term secret protected by a PIN using OpenADP distributed cryptography
-Bytes register(
+Bytes register_secret(
     const std::string& user_id,
     const std::string& app_id, 
     const Bytes& long_term_secret,

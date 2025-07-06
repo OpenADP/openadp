@@ -266,8 +266,9 @@ async fn register_with_bid(
     // Random server selection for load balancing
     let selected_servers = if server_infos.len() > 15 { // MAX_SERVERS_FOR_LOAD_BALANCING
         use rand::seq::SliceRandom;
+        use rand::rngs::OsRng;
         let mut servers = server_infos;
-        servers.shuffle(&mut rand::thread_rng());
+        servers.shuffle(&mut OsRng);
         servers.into_iter().take(15).collect()
     } else {
         server_infos
@@ -462,7 +463,8 @@ fn wrap_secret(secret: &[u8], key: &[u8]) -> Result<WrappedSecret> {
     let key = Key::<Aes256Gcm>::from_slice(key);
     let cipher = Aes256Gcm::new(key);
     
-    let nonce_bytes: [u8; 12] = rand::thread_rng().gen();
+    use rand::rngs::OsRng;
+    let nonce_bytes: [u8; 12] = OsRng.gen();
     let nonce = Nonce::from_slice(&nonce_bytes);
     
     let ciphertext = cipher.encrypt(nonce, secret)

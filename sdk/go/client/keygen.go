@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/openadp/openadp/sdk/go/common"
 	"github.com/openadp/openadp/sdk/go/debug"
@@ -239,59 +240,104 @@ func GenerateEncryptionKey(identity *Identity, password string, maxGuesses, expi
 	fmt.Printf("OpenADP: Created %d shares with threshold %d\n", len(shares), threshold)
 
 	// Step 7: Register shares with servers using authentication codes and encryption
-	// Only use encrypted registration for sensitive operations
+	// Use concurrent registration for better reliability and speed
 	version := 1
 	registrationErrors := []string{}
 	successfulRegistrations := 0
+	var mu sync.Mutex // Mutex to protect shared variables
 
+	// Create a channel to collect registration results
+	type registrationResult struct {
+		index     int
+		serverURL string
+		success   bool
+		error     error
+	}
+
+	resultChan := make(chan registrationResult, len(shares))
+
+	// Launch goroutines for concurrent registration
 	for i, share := range shares {
 		if i >= len(clients) {
 			break // More shares than servers
 		}
 
-		client := clients[i]
-		serverURL := liveServerURLs[i]
-		authCode := authCodes.ServerAuthCodes[serverURL]
+		go func(index int, share *Share, client *EncryptedOpenADPClient, serverURL string) {
+			defer func() {
+				if r := recover(); r != nil {
+					resultChan <- registrationResult{
+						index:     index,
+						serverURL: serverURL,
+						success:   false,
+						error:     fmt.Errorf("panic during registration: %v", r),
+					}
+				}
+			}()
 
-		// Convert share Y to base64-encoded 32-byte little-endian format (per API spec)
-		yBytes := make([]byte, 32)
-		yBigInt := share.Y
-		yBigIntBytes := yBigInt.Bytes() // Big-endian format
+			authCode := authCodes.ServerAuthCodes[serverURL]
 
-		// Convert to little-endian by copying and reversing
-		if len(yBigIntBytes) <= 32 {
-			copy(yBytes[32-len(yBigIntBytes):], yBigIntBytes) // Right-align in big-endian
-			// Convert to little-endian
-			for i, j := 0, len(yBytes)-1; i < j; i, j = i+1, j-1 {
-				yBytes[i], yBytes[j] = yBytes[j], yBytes[i]
+			// Convert share Y to base64-encoded 32-byte little-endian format (per API spec)
+			yBytes := make([]byte, 32)
+			yBigInt := share.Y
+			yBigIntBytes := yBigInt.Bytes() // Big-endian format
+
+			// Convert to little-endian by copying and reversing
+			if len(yBigIntBytes) <= 32 {
+				copy(yBytes[32-len(yBigIntBytes):], yBigIntBytes) // Right-align in big-endian
+				// Convert to little-endian
+				for i, j := 0, len(yBytes)-1; i < j; i, j = i+1, j-1 {
+					yBytes[i], yBytes[j] = yBytes[j], yBytes[i]
+				}
+			} else {
+				resultChan <- registrationResult{
+					index:     index,
+					serverURL: serverURL,
+					success:   false,
+					error:     fmt.Errorf("Y coordinate too large for 32-byte encoding: %d bytes", len(yBigIntBytes)),
+				}
+				return
 			}
-		} else {
-			return &GenerateEncryptionKeyResult{
-				Error: fmt.Sprintf("Y coordinate too large for 32-byte encoding: %d bytes", len(yBigIntBytes)),
+
+			yBase64 := base64.StdEncoding.EncodeToString(yBytes)
+
+			// Use encrypted registration if server has public key, otherwise unencrypted for compatibility
+			encrypted := client.HasPublicKey()
+
+			success, err := client.RegisterSecret(
+				authCode, identity.UID, identity.DID, identity.BID, version, int(share.X.Int64()), yBase64, maxGuesses, expiration, encrypted, nil)
+
+			resultChan <- registrationResult{
+				index:     index,
+				serverURL: serverURL,
+				success:   success,
+				error:     err,
 			}
-		}
+		}(i, share, clients[i], liveServerURLs[i])
+	}
 
-		yBase64 := base64.StdEncoding.EncodeToString(yBytes)
+	// Collect results from all goroutines
+	expectedResults := min(len(shares), len(clients))
+	for i := 0; i < expectedResults; i++ {
+		result := <-resultChan
 
-		// Use encrypted registration if server has public key, otherwise unencrypted for compatibility
-		encrypted := client.HasPublicKey()
-
-		success, err := client.RegisterSecret(
-			authCode, identity.UID, identity.DID, identity.BID, version, int(share.X.Int64()), yBase64, maxGuesses, expiration, encrypted, nil)
-
-		if err != nil {
-			registrationErrors = append(registrationErrors, fmt.Sprintf("Server %d (%s): %v", i+1, serverURL, err))
-		} else if !success {
-			registrationErrors = append(registrationErrors, fmt.Sprintf("Server %d (%s): Registration returned false", i+1, serverURL))
+		mu.Lock()
+		if result.error != nil {
+			registrationErrors = append(registrationErrors, fmt.Sprintf("Server %d (%s): %v", result.index+1, result.serverURL, result.error))
+		} else if !result.success {
+			registrationErrors = append(registrationErrors, fmt.Sprintf("Server %d (%s): Registration returned false", result.index+1, result.serverURL))
 		} else {
+			client := clients[result.index]
 			encStatus := "unencrypted"
-			if encrypted {
+			if client.HasPublicKey() {
 				encStatus = "encrypted"
 			}
-			fmt.Printf("OpenADP: Registered share %s with server %d (%s) [%s]\n", share.X.String(), i+1, serverURL, encStatus)
+			fmt.Printf("OpenADP: Registered share %d with server %d (%s) [%s]\n", result.index+1, result.index+1, result.serverURL, encStatus)
 			successfulRegistrations++
 		}
+		mu.Unlock()
 	}
+
+	close(resultChan)
 
 	if successfulRegistrations < threshold {
 		return &GenerateEncryptionKeyResult{
@@ -445,108 +491,183 @@ func RecoverEncryptionKeyWithServerInfo(identity *Identity, password string, ser
 	// Step 5: Recover shares from servers using authentication codes
 	fmt.Println("OpenADP: Recovering shares from servers...")
 	recoveredPointShares := make([]*PointShare, 0, len(clients))
+	var recoveryMu sync.Mutex // Mutex to protect shared variables
 
 	// Track guess information from server responses
 	var actualNumGuesses, actualMaxGuesses int
 
-	for i, client := range clients {
-		serverURL := liveServerURLs[i]
-		authCode := authCodes.ServerAuthCodes[serverURL]
+	// Create a channel to collect recovery results
+	type recoveryResult struct {
+		index      int
+		serverURL  string
+		pointShare *PointShare
+		numGuesses int
+		maxGuesses int
+		error      error
+	}
 
-		// Get current guess number for this backup from the server
-		backups, err := client.ListBackups(identity.UID, false, nil)
-		guessNum := 0 // Default to 0 for first guess (0-based indexing)
-		if err != nil {
-			fmt.Printf("Warning: Could not list backups from server %d: %v\n", i+1, err)
-		} else {
-			// Find our backup in the list using the complete primary key (UID, DID, BID)
-			for _, backupMap := range backups {
-				if backupUID, ok := backupMap["uid"].(string); ok && backupUID == identity.UID {
-					if backupDID, ok := backupMap["did"].(string); ok && backupDID == identity.DID {
-						if backupBID, ok := backupMap["bid"].(string); ok && backupBID == identity.BID {
-							if numGuesses, ok := backupMap["num_guesses"].(float64); ok {
-								// Use current num_guesses as the next guess number (0-based)
-								guessNum = int(numGuesses)
+	resultChan := make(chan recoveryResult, len(clients))
+
+	// Launch goroutines for concurrent recovery
+	for i, client := range clients {
+		go func(index int, client *EncryptedOpenADPClient, serverURL string) {
+			defer func() {
+				if r := recover(); r != nil {
+					resultChan <- recoveryResult{
+						index:     index,
+						serverURL: serverURL,
+						error:     fmt.Errorf("panic during recovery: %v", r),
+					}
+				}
+			}()
+
+			authCode := authCodes.ServerAuthCodes[serverURL]
+
+			// Get current guess number for this backup from the server
+			backups, err := client.ListBackups(identity.UID, false, nil)
+			guessNum := 0 // Default to 0 for first guess (0-based indexing)
+			if err != nil {
+				fmt.Printf("Warning: Could not list backups from server %d: %v\n", index+1, err)
+			} else {
+				// Find our backup in the list using the complete primary key (UID, DID, BID)
+				for _, backupMap := range backups {
+					if backupUID, ok := backupMap["uid"].(string); ok && backupUID == identity.UID {
+						if backupDID, ok := backupMap["did"].(string); ok && backupDID == identity.DID {
+							if backupBID, ok := backupMap["bid"].(string); ok && backupBID == identity.BID {
+								if numGuesses, ok := backupMap["num_guesses"].(float64); ok {
+									// Use current num_guesses as the next guess number (0-based)
+									guessNum = int(numGuesses)
+								}
+								break
 							}
-							break
 						}
 					}
 				}
 			}
-		}
 
-		// Try recovery with current guess number, retry once if guess number is wrong
-		resultMap, err := client.RecoverSecret(authCode, identity.UID, identity.DID, identity.BID, bBase64Format, guessNum, true, nil)
+			// Try recovery with current guess number, retry once if guess number is wrong
+			resultMap, err := client.RecoverSecret(authCode, identity.UID, identity.DID, identity.BID, bBase64Format, guessNum, true, nil)
 
-		// If we get a guess number error, try to parse the expected number and retry
-		if err != nil && strings.Contains(err.Error(), "expecting guess_num =") {
-			// Parse expected guess number from error message like "expecting guess_num = 1"
-			errorStr := err.Error()
-			if idx := strings.Index(errorStr, "expecting guess_num = "); idx != -1 {
-				expectedStr := errorStr[idx+len("expecting guess_num = "):]
-				if spaceIdx := strings.Index(expectedStr, " "); spaceIdx != -1 {
-					expectedStr = expectedStr[:spaceIdx]
+			// If we get a guess number error, try to parse the expected number and retry
+			if err != nil && strings.Contains(err.Error(), "expecting guess_num =") {
+				// Parse expected guess number from error message like "expecting guess_num = 1"
+				errorStr := err.Error()
+				if idx := strings.Index(errorStr, "expecting guess_num = "); idx != -1 {
+					expectedStr := errorStr[idx+len("expecting guess_num = "):]
+					if spaceIdx := strings.Index(expectedStr, " "); spaceIdx != -1 {
+						expectedStr = expectedStr[:spaceIdx]
+					}
+					if expectedGuess, parseErr := strconv.Atoi(expectedStr); parseErr == nil {
+						fmt.Printf("Server %d (%s): Retrying with expected guess_num = %d\n", index+1, serverURL, expectedGuess)
+						resultMap, err = client.RecoverSecret(authCode, identity.UID, identity.DID, identity.BID, bBase64Format, expectedGuess, true, nil)
+					}
 				}
-				if expectedGuess, parseErr := strconv.Atoi(expectedStr); parseErr == nil {
-					fmt.Printf("Server %d (%s): Retrying with expected guess_num = %d\n", i+1, serverURL, expectedGuess)
-					resultMap, err = client.RecoverSecret(authCode, identity.UID, identity.DID, identity.BID, bBase64Format, expectedGuess, true, nil)
+			}
+
+			if err != nil {
+				fmt.Printf("Server %d (%s) recovery failed: %v\n", index+1, serverURL, err)
+				resultChan <- recoveryResult{
+					index:     index,
+					serverURL: serverURL,
+					error:     err,
 				}
+				return
 			}
-		}
 
-		if err != nil {
-			fmt.Printf("Server %d (%s) recovery failed: %v\n", i+1, serverURL, err)
-			continue
-		}
-
-		// Capture guess information from server response (first successful server)
-		if actualNumGuesses == 0 && actualMaxGuesses == 0 {
-			if numGuesses, ok := resultMap["num_guesses"].(float64); ok {
-				actualNumGuesses = int(numGuesses)
+			x, ok := resultMap["x"].(float64)
+			if !ok {
+				fmt.Printf("Server %d (%s): Invalid x field\n", index+1, serverURL)
+				resultChan <- recoveryResult{
+					index:     index,
+					serverURL: serverURL,
+					error:     fmt.Errorf("invalid x field"),
+				}
+				return
 			}
-			if maxGuesses, ok := resultMap["max_guesses"].(float64); ok {
-				actualMaxGuesses = int(maxGuesses)
+
+			siBBase64, ok := resultMap["si_b"].(string)
+			if !ok {
+				fmt.Printf("Server %d (%s): Invalid si_b field\n", index+1, serverURL)
+				resultChan <- recoveryResult{
+					index:     index,
+					serverURL: serverURL,
+					error:     fmt.Errorf("invalid si_b field"),
+				}
+				return
 			}
-		}
 
-		x, ok := resultMap["x"].(float64)
-		if !ok {
-			fmt.Printf("Server %d (%s): Invalid x field\n", i+1, serverURL)
-			continue
-		}
+			// Decode si_b from base64
+			siBBytes, err := base64.StdEncoding.DecodeString(siBBase64)
+			if err != nil {
+				fmt.Printf("Server %d (%s): Failed to decode si_b: %v\n", index+1, serverURL, err)
+				resultChan <- recoveryResult{
+					index:     index,
+					serverURL: serverURL,
+					error:     fmt.Errorf("failed to decode si_b: %v", err),
+				}
+				return
+			}
 
-		siBBase64, ok := resultMap["si_b"].(string)
-		if !ok {
-			fmt.Printf("Server %d (%s): Invalid si_b field\n", i+1, serverURL)
-			continue
-		}
+			// Decompress si_b from the result
+			siB4D, err := common.PointDecompress(siBBytes)
+			if err != nil {
+				fmt.Printf("Server %d (%s): Failed to decompress si_b: %v\n", index+1, serverURL, err)
+				resultChan <- recoveryResult{
+					index:     index,
+					serverURL: serverURL,
+					error:     fmt.Errorf("failed to decompress si_b: %v", err),
+				}
+				return
+			}
 
-		// Decode si_b from base64
-		siBBytes, err := base64.StdEncoding.DecodeString(siBBase64)
-		if err != nil {
-			fmt.Printf("Server %d (%s): Failed to decode si_b: %v\n", i+1, serverURL, err)
-			continue
-		}
+			siB := common.Unexpand(siB4D)
 
-		// Decompress si_b from the result
-		siB4D, err := common.PointDecompress(siBBytes)
-		if err != nil {
-			fmt.Printf("Server %d (%s): Failed to decompress si_b: %v\n", i+1, serverURL, err)
-			continue
-		}
+			// Create point share from recovered data (si * B point)
+			pointShare := &PointShare{
+				X:     big.NewInt(int64(x)),
+				Point: siB, // This is si*B point returned by server
+			}
 
-		siB := common.Unexpand(siB4D)
+			// Extract guess information
+			var numGuesses, maxGuesses int
+			if numGuessesVal, ok := resultMap["num_guesses"].(float64); ok {
+				numGuesses = int(numGuessesVal)
+			}
+			if maxGuessesVal, ok := resultMap["max_guesses"].(float64); ok {
+				maxGuesses = int(maxGuessesVal)
+			}
 
-		// Create point share from recovered data (si * B point)
-		// This matches Python's recover_sb which expects (x, Point2D) pairs
-		pointShare := &PointShare{
-			X:     big.NewInt(int64(x)),
-			Point: siB, // This is si*B point returned by server
-		}
+			resultChan <- recoveryResult{
+				index:      index,
+				serverURL:  serverURL,
+				pointShare: pointShare,
+				numGuesses: numGuesses,
+				maxGuesses: maxGuesses,
+				error:      nil,
+			}
 
-		recoveredPointShares = append(recoveredPointShares, pointShare)
-		fmt.Printf("OpenADP: Recovered share %d from server %d (%s)\n", int(x), i+1, serverURL)
+			fmt.Printf("OpenADP: Recovered share %d from server %d (%s)\n", int(x), index+1, serverURL)
+		}(i, client, liveServerURLs[i])
 	}
+
+	// Collect results from all goroutines
+	for i := 0; i < len(clients); i++ {
+		result := <-resultChan
+
+		recoveryMu.Lock()
+		if result.error == nil {
+			recoveredPointShares = append(recoveredPointShares, result.pointShare)
+
+			// Capture guess information from server response (first successful server)
+			if actualNumGuesses == 0 && actualMaxGuesses == 0 {
+				actualNumGuesses = result.numGuesses
+				actualMaxGuesses = result.maxGuesses
+			}
+		}
+		recoveryMu.Unlock()
+	}
+
+	close(resultChan)
 
 	if len(recoveredPointShares) < threshold {
 		return &RecoverEncryptionKeyResult{

@@ -233,57 +233,84 @@ pub async fn generate_encryption_key(
     let u = H(identity.uid.as_bytes(), identity.did.as_bytes(), identity.bid.as_bytes(), &pin)?;
     let _u_2d = unexpand(&u)?;
     
-    // Step 7: Register shares with servers
+    // Step 7: Register shares with servers (concurrent)
     
     let mut registration_errors = Vec::new();
     let mut successful_registrations = 0;
     
+    // Create tasks for concurrent registration
+    let mut registration_tasks = Vec::new();
+    
     for (i, mut client) in clients.into_iter().enumerate() {
-        let (share_id, share_data) = &shares[i];
-        let server_url = &live_server_infos[i].url;
-        let server_auth_code = auth_codes.get_server_code(server_url)
-            .ok_or_else(|| OpenADPError::Authentication("Missing server auth code".to_string()))?;
-        
-        // Convert share Y to base64-encoded 32-byte little-endian format (per API spec)
-        let y_big_int = rug::Integer::from(share_data);
-        
-        // Convert to 32-byte little-endian array
-        let mut y_bytes = vec![0u8; 32];
-        let y_digits = y_big_int.to_digits::<u8>(rug::integer::Order::LsfLe);
-        let copy_len = std::cmp::min(y_digits.len(), 32);
-        y_bytes[..copy_len].copy_from_slice(&y_digits[..copy_len]);
-        
-        // Encode as base64
-        let y_string = BASE64.encode(&y_bytes);
-        
-        let request = RegisterSecretRequest {
-            auth_code: server_auth_code.clone(),
-            uid: identity.uid.clone(),
-            did: identity.did.clone(),
-            bid: identity.bid.clone(),
-            version: 1,
-            x: *share_id as i32,
-            y: y_string,
-            max_guesses,
-            expiration,
-            encrypted: client.has_public_key(),
-            auth_data: None,
+        let (share_id, share_data) = shares[i].clone();
+        let server_url = live_server_infos[i].url.clone();
+        let server_auth_code = match auth_codes.get_server_code(&server_url) {
+            Some(code) => code.clone(),
+            None => {
+                registration_errors.push(format!("Server {}: Missing server auth code", i + 1));
+                continue;
+            }
         };
+        let identity_clone = identity.clone();
         
-        match client.register_secret_standardized(request).await {
-            Ok(response) => {
-                if response.success {
-                    let _enc_status = if client.has_public_key() { "encrypted" } else { "unencrypted" };
-                    successful_registrations += 1;
-                } else {
-                    let error_msg = format!("Server {} ({}): Registration returned false: {}", 
-                        i + 1, server_url, response.message);
-                    registration_errors.push(error_msg);
+        // Spawn async task for concurrent registration
+        let task = tokio::spawn(async move {
+            // Convert share Y to base64-encoded 32-byte little-endian format (per API spec)
+            let y_big_int = rug::Integer::from(share_data);
+            
+            // Convert to 32-byte little-endian array
+            let mut y_bytes = vec![0u8; 32];
+            let y_digits = y_big_int.to_digits::<u8>(rug::integer::Order::LsfLe);
+            let copy_len = std::cmp::min(y_digits.len(), 32);
+            y_bytes[..copy_len].copy_from_slice(&y_digits[..copy_len]);
+            
+            // Encode as base64
+            let y_string = BASE64.encode(&y_bytes);
+            
+            let request = RegisterSecretRequest {
+                auth_code: server_auth_code,
+                uid: identity_clone.uid,
+                did: identity_clone.did,
+                bid: identity_clone.bid,
+                version: 1,
+                x: share_id as i32,
+                y: y_string,
+                max_guesses,
+                expiration,
+                encrypted: client.has_public_key(),
+                auth_data: None,
+            };
+            
+            match client.register_secret_standardized(request).await {
+                Ok(response) => {
+                    if response.success {
+                        Ok((i, server_url, client.has_public_key()))
+                    } else {
+                        Err(format!("Server {} ({}): Registration returned false: {}", 
+                            i + 1, server_url, response.message))
+                    }
+                }
+                Err(err) => {
+                    Err(format!("Server {} ({}): {}", i + 1, server_url, err))
                 }
             }
-            Err(err) => {
-                let error_msg = format!("Server {} ({}): {}", i + 1, server_url, err);
+        });
+        
+        registration_tasks.push(task);
+    }
+    
+    // Wait for all registration tasks to complete
+    for task in registration_tasks {
+        match task.await {
+            Ok(Ok((_index, _server_url, has_public_key))) => {
+                let _enc_status = if has_public_key { "encrypted" } else { "unencrypted" };
+                successful_registrations += 1;
+            }
+            Ok(Err(error_msg)) => {
                 registration_errors.push(error_msg);
+            }
+            Err(join_error) => {
+                registration_errors.push(format!("Task join error: {}", join_error));
             }
         }
     }
@@ -394,12 +421,15 @@ pub async fn recover_encryption_key(
     let b_compressed = point_compress(&b)?;
     let b_base64 = BASE64.encode(&b_compressed);
 
-    // Step 4: Recover shares from servers
+    // Step 4: Recover shares from servers (concurrent)
     let mut recovered_point_shares = Vec::new();
     let mut actual_num_guesses = 0i32;
     let mut actual_max_guesses = 0i32;
     
-    for server_info in &selected_server_infos {
+    // Create tasks for concurrent recovery
+    let mut recovery_tasks = Vec::new();
+    
+    for server_info in selected_server_infos.iter().cloned() {
         // Parse public key if available
         let public_key = if !server_info.public_key.is_empty() {
             match parse_server_public_key(&server_info.public_key) {
@@ -412,99 +442,128 @@ pub async fn recover_encryption_key(
             None
         };
         
-        let mut client = EncryptedOpenADPClient::new(server_info.url.clone(), public_key, 30);
+        let client = EncryptedOpenADPClient::new(server_info.url.clone(), public_key, 30);
         
         // Get server auth code
-        let server_auth_code = auth_codes.get_server_code(&server_info.url)
-            .ok_or_else(|| OpenADPError::Authentication("No auth code for server".to_string()))?;
-        
-        // Get current guess number for idempotency (prevents replay attacks)
-        let mut guess_num = 0; // Default fallback
-        let list_request = ListBackupsRequest {
-            uid: identity.uid.clone(),
-            auth_code: String::new(),
-            encrypted: client.has_public_key(), // Use encryption if available
-            auth_data: None,
+        let server_auth_code = match auth_codes.get_server_code(&server_info.url) {
+            Some(code) => code.clone(),
+            None => {
+                return Err(OpenADPError::Authentication("No auth code for server".to_string()));
+            }
         };
         
-        match client.list_backups_standardized(list_request).await {
-            Ok(response) => {
-                // Find our backup in the list using the complete primary key (UID, DID, BID)
-                for backup in &response.backups {
-                    if backup.uid == identity.uid && 
-                       backup.did == identity.did &&
-                       backup.bid == identity.bid {
-                        guess_num = backup.num_guesses;
-                        break;
+        let identity_clone = identity.clone();
+        let server_url = server_info.url.clone();
+        let b_base64_clone = b_base64.clone();
+        
+        // Spawn async task for concurrent recovery
+        let task = tokio::spawn(async move {
+            let mut client = client;
+            
+            // Get current guess number for idempotency (prevents replay attacks)
+            let mut guess_num = 0; // Default fallback
+            let list_request = ListBackupsRequest {
+                uid: identity_clone.uid.clone(),
+                auth_code: String::new(),
+                encrypted: client.has_public_key(), // Use encryption if available
+                auth_data: None,
+            };
+            
+            match client.list_backups_standardized(list_request).await {
+                Ok(response) => {
+                    // Find our backup in the list using the complete primary key (UID, DID, BID)
+                    for backup in &response.backups {
+                        if backup.uid == identity_clone.uid && 
+                           backup.did == identity_clone.did &&
+                           backup.bid == identity_clone.bid {
+                            guess_num = backup.num_guesses;
+                            break;
+                        }
                     }
                 }
+                Err(err) => {
+                    return Err(format!("Cannot get current guess number for idempotency: {}", err));
+                }
             }
-            Err(err) => {
-                return Err(OpenADPError::Server(format!("Cannot get current guess number for idempotency: {}", err)));
-            }
-        }
-        
-        // Create a fresh client for RecoverSecret (don't reuse the ListBackups client)
-        let public_key_fresh = if !server_info.public_key.is_empty() {
-            match parse_server_public_key(&server_info.public_key) {
-                Ok(key) => Some(key),
-                Err(_) => None,
-            }
-        } else {
-            None
-        };
-        let mut fresh_client = EncryptedOpenADPClient::new(server_info.url.clone(), public_key_fresh, 30);
-        
-        let request = RecoverSecretRequest {
-            auth_code: server_auth_code.clone(),
-            uid: identity.uid.clone(),
-            did: identity.did.clone(),
-            bid: identity.bid.clone(),
-            guess_num: guess_num,  // Use current num_guesses directly
-            b: b_base64.clone(),
-            encrypted: fresh_client.has_public_key(),
-            auth_data: None,
-        };
-        
-
-        
-        match fresh_client.recover_secret_standardized(request).await {
-            Ok(response) => {
-                if response.success {
-                    
-                    // Capture guess information from server response (first successful server)
-                    if actual_num_guesses == 0 && actual_max_guesses == 0 {
-                        actual_num_guesses = response.num_guesses;
-                        actual_max_guesses = response.max_guesses;
-                    }
-                    
-                    // Parse the returned share
-                    if let Some(si_b) = response.si_b {
-                        
-                        // Decode base64 to get compressed point
-                        match BASE64.decode(&si_b) {
-                            Ok(si_b_bytes) => {
-                                
-                                // Decompress the point
-                                let si_b_point = point_decompress(&si_b_bytes)?;
-                                let _si_b_2d = unexpand(&si_b_point)?;
-                                
-                                // Add to point shares for Lagrange interpolation
-                                recovered_point_shares.push(PointShare::new(response.x as usize, si_b_point));
+            
+            // Create a fresh client for RecoverSecret (don't reuse the ListBackups client)
+            let public_key_fresh = if !server_info.public_key.is_empty() {
+                match parse_server_public_key(&server_info.public_key) {
+                    Ok(key) => Some(key),
+                    Err(_) => None,
+                }
+            } else {
+                None
+            };
+            let mut fresh_client = EncryptedOpenADPClient::new(server_url.clone(), public_key_fresh, 30);
+            
+            let request = RecoverSecretRequest {
+                auth_code: server_auth_code,
+                uid: identity_clone.uid,
+                did: identity_clone.did,
+                bid: identity_clone.bid,
+                guess_num: guess_num,  // Use current num_guesses directly
+                b: b_base64_clone,
+                encrypted: fresh_client.has_public_key(),
+                auth_data: None,
+            };
+            
+            match fresh_client.recover_secret_standardized(request).await {
+                Ok(response) => {
+                    if response.success {
+                        // Parse the returned share
+                        if let Some(si_b) = response.si_b {
+                            
+                            // Decode base64 to get compressed point
+                            match BASE64.decode(&si_b) {
+                                Ok(si_b_bytes) => {
+                                    
+                                                                    // Decompress the point
+                                let si_b_point = point_decompress(&si_b_bytes)
+                                    .map_err(|e| format!("Failed to decompress point: {}", e))?;
+                                    
+                                    // Return successful result
+                                    Ok((response.x as usize, si_b_point, response.num_guesses, response.max_guesses))
+                                }
+                                Err(e) => {
+                                    Err(format!("Failed to decompress point: {}", e))
+                                }
                             }
-                            Err(e) => {
-                                return Err(OpenADPError::Crypto(format!("Failed to decompress point: {}", e)));
-                            }
+                        } else {
+                            Err("Server returned success but no si_b".to_string())
                         }
                     } else {
-                        return Err(OpenADPError::Server("Server returned success but no si_b".to_string()));
+                        Err(format!("Server error: {}", response.message))
                     }
-                } else {
-                    return Err(OpenADPError::Server(format!("Server error: {}", response.message)));
+                }
+                Err(err) => {
+                    Err(format!("Cannot recover secret: {}", err))
                 }
             }
-            Err(err) => {
-                return Err(OpenADPError::Server(format!("Cannot recover secret: {}", err)));
+        });
+        
+        recovery_tasks.push(task);
+    }
+    
+    // Wait for all recovery tasks to complete
+    for task in recovery_tasks {
+        match task.await {
+            Ok(Ok((x, si_b_point, num_guesses, max_guesses))) => {
+                // Add to point shares for Lagrange interpolation
+                recovered_point_shares.push(PointShare::new(x, si_b_point));
+                
+                // Capture guess information from server response (first successful server)
+                if actual_num_guesses == 0 && actual_max_guesses == 0 {
+                    actual_num_guesses = num_guesses;
+                    actual_max_guesses = max_guesses;
+                }
+            }
+            Ok(Err(error_msg)) => {
+                // Log error but continue with other servers
+                eprintln!("Recovery error: {}", error_msg);
+            }
+            Err(join_error) => {
+                eprintln!("Task join error: {}", join_error);
             }
         }
     }
@@ -536,59 +595,86 @@ pub async fn recover_encryption_key(
     Ok(RecoverEncryptionKeyResult::success(encryption_key, actual_num_guesses, actual_max_guesses))
 }
 
-/// Fetch remaining guesses for all servers
+/// Fetch remaining guesses for all servers (concurrent)
 pub async fn fetch_remaining_guesses_for_servers(
     identity: &Identity,
     server_infos: &[ServerInfo],
 ) -> Vec<ServerInfo> {
     let mut updated_infos = Vec::new();
     
+    // Create tasks for concurrent guess fetching
+    let mut fetch_tasks = Vec::new();
+    
     for server_info in server_infos {
-        let mut updated_info = server_info.clone();
+        let server_info_clone = server_info.clone();
+        let identity_clone = identity.clone();
         
-        // Parse public key if available
-        let public_key = if !server_info.public_key.is_empty() {
-            match parse_server_public_key(&server_info.public_key) {
-                Ok(key) => Some(key),
-                Err(_) => {
-                    None
-                }
-            }
-        } else {
-            None
-        };
-        
-        let mut client = EncryptedOpenADPClient::new(server_info.url.clone(), public_key, 30);
-        
-        let request = ListBackupsRequest {
-            uid: identity.uid.clone(),
-            auth_code: String::new(),
-            encrypted: client.has_public_key(), // Use encryption if available
-            auth_data: None,
-        };
-        
-        match client.list_backups_standardized(request).await {
-            Ok(response) => {
-                // Find our backup in the list
-                for backup in &response.backups {
-                    if backup.uid == identity.uid && 
-                       backup.did == identity.did &&
-                       backup.bid == identity.bid {
-                        updated_info.remaining_guesses = Some(backup.max_guesses - backup.num_guesses);
-                        break;
+        // Spawn async task for concurrent guess fetching
+        let task = tokio::spawn(async move {
+            let mut updated_info = server_info_clone;
+            
+            // Parse public key if available
+            let public_key = if !updated_info.public_key.is_empty() {
+                match parse_server_public_key(&updated_info.public_key) {
+                    Ok(key) => Some(key),
+                    Err(_) => {
+                        None
                     }
                 }
-                
-                if updated_info.remaining_guesses.is_none() {
+            } else {
+                None
+            };
+            
+            let mut client = EncryptedOpenADPClient::new(updated_info.url.clone(), public_key, 30);
+            
+            let request = ListBackupsRequest {
+                uid: identity_clone.uid.clone(),
+                auth_code: String::new(),
+                encrypted: client.has_public_key(), // Use encryption if available
+                auth_data: None,
+            };
+            
+            match client.list_backups_standardized(request).await {
+                Ok(response) => {
+                    // Find our backup in the list
+                    for backup in &response.backups {
+                        if backup.uid == identity_clone.uid && 
+                           backup.did == identity_clone.did &&
+                           backup.bid == identity_clone.bid {
+                            updated_info.remaining_guesses = Some(backup.max_guesses - backup.num_guesses);
+                            break;
+                        }
+                    }
+                    
+                    if updated_info.remaining_guesses.is_none() {
+                        updated_info.remaining_guesses = Some(0);
+                    }
+                }
+                Err(_) => {
                     updated_info.remaining_guesses = Some(0);
                 }
             }
-            Err(_) => {
-                updated_info.remaining_guesses = Some(0);
+            
+            updated_info
+        });
+        
+        fetch_tasks.push(task);
+    }
+    
+    // Wait for all fetch tasks to complete
+    for task in fetch_tasks {
+        match task.await {
+            Ok(updated_info) => {
+                updated_infos.push(updated_info);
+            }
+            Err(join_error) => {
+                eprintln!("Task join error: {}", join_error);
+                // Add original server info with 0 remaining guesses as fallback
+                let mut fallback_info = server_infos[updated_infos.len()].clone();
+                fallback_info.remaining_guesses = Some(0);
+                updated_infos.push(fallback_info);
             }
         }
-        
-        updated_infos.push(updated_info);
     }
     
     updated_infos

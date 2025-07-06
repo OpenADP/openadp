@@ -212,7 +212,7 @@ Bytes register_with_bid(
     }
 }
 
-Bytes register(
+Bytes register_secret(
     const std::string& user_id,
     const std::string& app_id,
     const Bytes& long_term_secret,

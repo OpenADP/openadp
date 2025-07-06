@@ -143,7 +143,14 @@ async function registerWithBID(userID, appID, longTermSecret, pin, maxGuesses, b
 
     // Random server selection for load balancing (max 15 servers for performance)
     if (serverInfos.length > 15) {
-        serverInfos = serverInfos.sort(() => 0.5 - Math.random()).slice(0, 15);
+        // Fisher-Yates shuffle using crypto.getRandomValues
+        for (let i = serverInfos.length - 1; i > 0; i--) {
+            const randomBytes = crypto.getRandomValues(new Uint8Array(4));
+            const randomValue = new DataView(randomBytes.buffer).getUint32(0);
+            const j = randomValue % (i + 1);
+            [serverInfos[i], serverInfos[j]] = [serverInfos[j], serverInfos[i]];
+        }
+        serverInfos = serverInfos.slice(0, 15);
         console.log(`    Randomly selected 15 servers for load balancing`);
     }
 
