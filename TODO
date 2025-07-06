@@ -10,7 +10,6 @@
 
 * Pick random servers distributed amonog countries, not concentrated in 1.
 * Add missing tests: using up last guess.
-* Use futures and run all queries to servers in parallell.
 
 # Ocrypt
 
