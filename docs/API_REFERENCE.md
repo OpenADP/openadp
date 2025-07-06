@@ -44,6 +44,8 @@ async fn register(user_id: &str, app_id: &str, secret: &[u8], pin: &str, max_gue
 **C++:**
 ```cpp
 Bytes register_secret(const std::string& user_id, const std::string& app_id, const Bytes& secret, const std::string& pin, int max_guesses, const std::string& servers_url = "")
+
+Note that in C++ register is a keyword, so we use register_secret in C++ instead.
 ```
 
 #### Parameters
