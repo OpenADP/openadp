@@ -5,6 +5,7 @@
 * Load testing and optimization
 * Add functional test that verifies even/odd alternating with bad guesses in ocrypt.
 * Functional test verifying we get no more guesses at some point.
+* Offer alternative rate limiting, e.g. 10 guesses per day.
 
 # Client
 
