@@ -20,6 +20,7 @@ fi
 echo "📁 Creating directory structure..."
 mkdir -p "$HOMEPAGE_DIR/ghost-notes"
 mkdir -p "$HOMEPAGE_DIR/sdk/browser-javascript"
+mkdir -p "$HOMEPAGE_DIR/apps"
 
 # Copy homepage files (root level)
 echo "📄 Copying homepage files..."
@@ -27,6 +28,7 @@ cp "$SOURCE_DIR/index.html" "$HOMEPAGE_DIR/"
 cp "$SOURCE_DIR/styles.css" "$HOMEPAGE_DIR/"
 cp "$SOURCE_DIR/script.js" "$HOMEPAGE_DIR/"
 cp "$SOURCE_DIR/developer-quickstart.html" "$HOMEPAGE_DIR/"
+cp "$SOURCE_DIR/apps/evault-icon.svg" "$HOMEPAGE_DIR/apps/"
 cp "$SOURCE_DIR/quickstart-raspberry-pi.html" "$HOMEPAGE_DIR/"
 cp "$SOURCE_DIR/SETUP.md" "$HOMEPAGE_DIR/"
 cp "$SOURCE_DIR/LICENSE" "$HOMEPAGE_DIR/"
@@ -78,6 +80,7 @@ cat > "$HOMEPAGE_DIR/files" << EOF
 ./quickstart-raspberry-pi.html
 ./styles.css
 ./script.js
+./apps/evault-icon.svg
 ./ghost-notes/test.html
 ./ghost-notes/test-openadp.html
 ./ghost-notes/openadp-app.js
@@ -109,6 +112,7 @@ echo ""
 echo "📁 Directory structure:"
 echo "   $HOMEPAGE_DIR/"
 echo "   ├── index.html, styles.css, etc.  (homepage files)"
+echo "   ├── apps/                         (App-specific assets)"
 echo "   ├── ghost-notes/                  (Ghost Notes app files)"
 echo "   └── sdk/browser-javascript/       (Browser SDK files)"
 echo ""
