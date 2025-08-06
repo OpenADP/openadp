@@ -834,7 +834,7 @@ func SelectServersByRemainingGuesses(serverInfos []ServerInfo, threshold int) []
 	// Filter out servers with 0 remaining guesses (exhausted)
 	var availableServers []ServerInfo
 	for _, server := range serverInfos {
-		if server.RemainingGuesses != 0 {
+		if server.RemainingGuesses > 0 {
 			availableServers = append(availableServers, server)
 		}
 	}
@@ -849,13 +849,6 @@ func SelectServersByRemainingGuesses(serverInfos []ServerInfo, threshold int) []
 	sort.Slice(availableServers, func(i, j int) bool {
 		aGuesses := availableServers[i].RemainingGuesses
 		bGuesses := availableServers[j].RemainingGuesses
-
-		if aGuesses == -1 {
-			aGuesses = math.MaxInt32
-		}
-		if bGuesses == -1 {
-			bGuesses = math.MaxInt32
-		}
 
 		return aGuesses > bGuesses
 	})

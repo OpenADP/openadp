@@ -717,7 +717,7 @@ def select_servers_by_remaining_guesses(server_infos: List[ServerInfo], threshol
         Selected servers sorted by remaining guesses (descending)
     """
     # Filter out servers with 0 remaining guesses (exhausted)
-    available_servers = [s for s in server_infos if s.remaining_guesses != 0]
+    available_servers = [s for s in server_infos if s.remaining_guesses > 0]
     
     if len(available_servers) == 0:
         print("Warning: All servers have exhausted their guesses!")
@@ -726,8 +726,6 @@ def select_servers_by_remaining_guesses(server_infos: List[ServerInfo], threshol
     # Sort by remaining guesses (descending)
     # Servers with unknown remaining guesses (-1) are treated as having the highest priority
     def sort_key(server_info):
-        if server_info.remaining_guesses == -1:
-            return float('inf')  # Unknown guesses = highest priority
         return server_info.remaining_guesses
     
     sorted_servers = sorted(available_servers, key=sort_key, reverse=True)

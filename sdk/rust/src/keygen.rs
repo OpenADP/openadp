@@ -687,7 +687,7 @@ pub fn select_servers_by_remaining_guesses(
 ) -> Vec<ServerInfo> {
     // Filter out servers with 0 remaining guesses (exhausted)
     let mut available_servers: Vec<ServerInfo> = server_infos.iter()
-        .filter(|info| info.remaining_guesses.unwrap_or(-1) != 0)
+        .filter(|info| info.remaining_guesses.unwrap_or(-1) > 0)
         .cloned()
         .collect();
     
@@ -698,16 +698,8 @@ pub fn select_servers_by_remaining_guesses(
     // Sort by remaining guesses (descending)
     // Servers with unknown remaining guesses (-1) are treated as having the highest priority
     available_servers.sort_by(|a, b| {
-        let a_guesses = if a.remaining_guesses.unwrap_or(-1) == -1 { 
-            i32::MAX 
-        } else { 
-            a.remaining_guesses.unwrap_or(0) 
-        };
-        let b_guesses = if b.remaining_guesses.unwrap_or(-1) == -1 { 
-            i32::MAX 
-        } else { 
-            b.remaining_guesses.unwrap_or(0) 
-        };
+        let a_guesses = a.remaining_guesses.unwrap_or(0);
+        let b_guesses = b.remaining_guesses.unwrap_or(0);
         b_guesses.cmp(&a_guesses)
     });
     

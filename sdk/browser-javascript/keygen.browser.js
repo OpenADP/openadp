@@ -739,7 +739,7 @@ async function fetchRemainingGuessesForServers(identity, serverInfos) {
  */
 function selectServersByRemainingGuesses(serverInfos, threshold) {
     // Filter out servers with 0 remaining guesses (exhausted)
-    const availableServers = serverInfos.filter(s => s.remainingGuesses !== 0);
+    const availableServers = serverInfos.filter(s => s.remainingGuesses > 0);
     
     if (availableServers.length === 0) {
         console.warn("Warning: All servers have exhausted their guesses!");
@@ -749,9 +749,7 @@ function selectServersByRemainingGuesses(serverInfos, threshold) {
     // Sort by remaining guesses (descending)
     // Servers with unknown remaining guesses (-1) are treated as having the highest priority
     const sortedServers = availableServers.sort((a, b) => {
-        const aGuesses = a.remainingGuesses === -1 ? Infinity : a.remainingGuesses;
-        const bGuesses = b.remainingGuesses === -1 ? Infinity : b.remainingGuesses;
-        return bGuesses - aGuesses;
+        return b.remainingGuesses - a.remainingGuesses;
     });
     
     // Select threshold + 2 servers for redundancy, but don't exceed available servers
